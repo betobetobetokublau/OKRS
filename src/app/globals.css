@@ -2,26 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
+@import './polaris.css';
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-primary: #5c6ac4;
+  --color-primary-dark: #4959bd;
+  --color-success: #50b83c;
+  --color-warning: #f49342;
+  --color-danger: #de3618;
+  --color-info: #47c1bf;
+  --color-bg: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-text: #212b36;
+  --color-text-subdued: #637381;
+  --color-border: #dfe3e8;
+  --color-sidebar: #1c2260;
+  --color-sidebar-text: #ffffff;
+  --color-sidebar-hover: #2e3477;
+  --color-topbar: #ffffff;
+  --font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', Roboto, 'Segoe UI', 'Helvetica Neue', sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --color-bg: #0d1117;
+  --color-surface: #161b22;
+  --color-text: #c9d1d9;
+  --color-text-subdued: #8b949e;
+  --color-border: #30363d;
+  --color-sidebar: #0d1117;
+  --color-sidebar-hover: #161b22;
+  --color-topbar: #161b22;
+}
+
+html {
+  font-size: 62.5%;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-family);
+  font-size: 1.4rem;
+  line-height: 2rem;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-subdued);
+}
+
+/* Progress bar fill animation */
+@keyframes progressFill {
+  from { width: 0; }
+}
+
+/* Skill tree glow effect */
+@keyframes skillGlow {
+  0%, 100% { box-shadow: 0 0 8px rgba(92, 106, 196, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(92, 106, 196, 0.8); }
+}
+
+.glow-completed {
+  animation: skillGlow 2s ease-in-out infinite;
 }
