@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auditoría Visual — Auth Pages</title>
+<link rel="stylesheet" href="../src/app/polaris.css">
+<style>
+  :root {
+    --color-primary: #5c6ac4;
+    --color-primary-dark: #4959bd;
+    --color-success: #50b83c;
+    --color-warning: #f49342;
+    --color-danger: #de3618;
+    --color-info: #47c1bf;
+    --color-bg: #f4f6f8;
+    --color-surface: #ffffff;
+    --color-text: #212b36;
+    --color-text-subdued: #637381;
+    --color-border: #dfe3e8;
+    --font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', Roboto, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  }
+  html { font-size: 62.5%; }
+  body { font-family: var(--font-family); font-size: 1.4rem; line-height: 2rem; color: var(--color-text); background-color: var(--color-bg); margin: 0; padding: 0; }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  .audit-nav {
+    position: sticky; top: 0; z-index: 999; background: #1c2260; padding: 1.2rem 2.4rem;
+    display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;
+  }
+  .audit-nav span { color: rgba(255,255,255,0.5); font-size: 1.2rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+  .audit-nav a { color: rgba(255,255,255,0.8); text-decoration: none; font-size: 1.3rem; padding: 0.4rem 1rem; border-radius: 4px; transition: all 0.15s; }
+  .audit-nav a:hover, .audit-nav a.active { color: white; background: rgba(255,255,255,0.15); }
+
+  .view-label {
+    background: #5c6ac4; color: white; display: inline-block; padding: 0.4rem 1.2rem;
+    border-radius: 4px; font-size: 1.2rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; margin: 3.2rem 0 1.6rem;
+  }
+  .view-container { max-width: 1200px; margin: 0 auto; padding: 0 2.4rem 4rem; }
+  .view-separator { border: none; border-top: 2px dashed #dfe3e8; margin: 4rem 0; }
+
+  .auth-wrapper {
+    min-height: 60vh; display: flex; align-items: center; justify-content: center;
+    background-color: #f4f6f8; padding: 2rem;
+  }
+  .card {
+    background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border: 1px solid var(--color-border);
+  }
+  input[type="email"], input[type="password"], input[type="text"], input[type="date"], textarea, select {
+    width: 100%; padding: 0.8rem 1.2rem; font-size: 1.4rem;
+    border: 1px solid #c4cdd5; border-radius: 4px; outline: none;
+    font-family: var(--font-family); transition: border-color 0.2s;
+  }
+  input:focus, textarea:focus, select:focus { border-color: #5c6ac4; }
+  .btn-primary {
+    width: 100%; padding: 1rem; font-size: 1.4rem; font-weight: 600;
+    color: white; background-color: #5c6ac4; border: none; border-radius: 4px; cursor: pointer;
+  }
+  .btn-primary:hover { background-color: #4959bd; }
+  .btn-warning {
+    width: 100%; padding: 1rem; font-size: 1.4rem; font-weight: 600;
+    color: white; background-color: #f49342; border: none; border-radius: 4px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<nav class="audit-nav">
+  <span>Auditoría Visual</span>
+  <a href="01-auth.html" class="active">Auth</a>
+  <a href="02-dashboard.html">Dashboard</a>
+  <a href="03-objetivos-kpis.html">Objetivos & KPIs</a>
+  <a href="04-tareas-revision.html">Tareas & Revisión</a>
+  <a href="05-admin.html">Admin</a>
+  <a href="06-trimestral.html">Trimestral</a>
+</nav>
+
+<div class="view-container">
+
+  <!-- ==================== LOGIN ==================== -->
+  <div class="view-label">Vista: /login</div>
+  <div class="auth-wrapper">
+    <div class="card" style="width: 100%; max-width: 420px; padding: 3.2rem;">
+      <div style="text-align: center; margin-bottom: 2.4rem;">
+        <div style="width: 56px; height: 56px; border-radius: 12px; background-color: #5c6ac4; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.6rem;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+          </svg>
+        </div>
+        <h1 style="font-size: 2rem; font-weight: 600; color: #212b36;">Plataforma OKRs</h1>
+        <p style="color: #637381; margin-top: 0.4rem; font-size: 1.4rem;">Inicia sesión para continuar</p>
+      </div>
+      <form onsubmit="return false">
+        <div style="display: flex; flex-direction: column; gap: 1.6rem;">
+          <div>
+            <label style="display: block; font-size: 1.4rem; font-weight: 500; color: #212b36; margin-bottom: 0.4rem;">Correo electrónico</label>
+            <input type="email" placeholder="tu@empresa.com" value="alberto@kublau.com">
+          </div>
+          <div>
+            <label style="display: block; font-size: 1.4rem; font-weight: 500; color: #212b36; margin-bottom: 0.4rem;">Contraseña</label>
+            <input type="password" placeholder="Tu contraseña" value="••••••••">
+          </div>
+          <button class="btn-primary" style="margin-top: 0.8rem;">Iniciar sesión</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== LOGIN ERROR STATE ==================== -->
+  <div class="view-label">Vista: /login — Estado de error</div>
+  <div class="auth-wrapper">
+    <div class="card" style="width: 100%; max-width: 420px; padding: 3.2rem;">
+      <div style="text-align: center; margin-bottom: 2.4rem;">
+        <div style="width: 56px; height: 56px; border-radius: 12px; background-color: #5c6ac4; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.6rem;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+          </svg>
+        </div>
+        <h1 style="font-size: 2rem; font-weight: 600; color: #212b36;">Plataforma OKRs</h1>
+        <p style="color: #637381; margin-top: 0.4rem; font-size: 1.4rem;">Inicia sesión para continuar</p>
+      </div>
+      <form onsubmit="return false">
+        <div style="padding: 1.2rem; border-radius: 4px; background-color: #fbeae5; color: #bf0711; font-size: 1.3rem; margin-bottom: 1.6rem; border: 1px solid #e3b5af;">
+          Credenciales incorrectas. Intenta de nuevo.
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 1.6rem;">
+          <div>
+            <label style="display: block; font-size: 1.4rem; font-weight: 500; color: #212b36; margin-bottom: 0.4rem;">Correo electrónico</label>
+            <input type="email" value="wrong@email.com">
+          </div>
+          <div>
+            <label style="display: block; font-size: 1.4rem; font-weight: 500; color: #212b36; margin-bottom: 0.4rem;">Contraseña</label>
+            <input type="password" value="••••">
+          </div>
+          <button class="btn-primary" style="margin-top: 0.8rem;">Iniciar sesión</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <hr class="view-separator">
+
+  <!-- ==================== CAMBIAR PASSWORD ==================== -->
+  <div class="view-label">Vista: /cambiar-password</div>
+  <div class="auth-wrapper">
+    <div class="card" style="width: 100%; max-width: 420px; padding: 3.2rem;">
+      <div style="text-align: center; margin-bottom: 2.4rem;">
+        <div style="width: 56px; height: 56px; border-radius: 12px; background-color: #f49342; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1.6rem;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+          </svg>
+        </div>
+        <h1 style="font-size: 2rem; font-weight: 600; color: #212b36;">Cambiar contraseña</h1>
+        <p style="color: #637381; margin-top: 0.4rem; font-size: 1.4rem;">Debes cambiar tu contraseña temporal antes de continuar</p>
+      </div>
+      <form onsubmit="return false">
+        <div style="display: flex; flex-direction: column; gap: 1.6rem;">
+          <div>
+            <label style="display: block; font-size: 1.4rem; font-weight: 500; color: #212b36; margin-bottom: 0.4rem;">Nueva contraseña</label>
+            <input type="password" placeholder="Mínimo 8 caracteres">
+          </div>
+          <div>
+            <label style="display: block; font-size: 1.4rem; font-weight: 500; color: #212b36; margin-bottom: 0.4rem;">Confirmar contraseña</label>
+            <input type="password" placeholder="Repite la contraseña">
+          </div>
+          <button class="btn-warning" style="margin-top: 0.8rem;">Cambiar contraseña</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

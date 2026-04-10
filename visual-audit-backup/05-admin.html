@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auditoría Visual — Admin Pages</title>
+<link rel="stylesheet" href="../src/app/polaris.css">
+<style>
+  :root {
+    --color-primary: #5c6ac4;
+    --color-primary-dark: #4959bd;
+    --color-success: #50b83c;
+    --color-warning: #f49342;
+    --color-danger: #de3618;
+    --color-info: #47c1bf;
+    --color-bg: #f4f6f8;
+    --color-surface: #ffffff;
+    --color-text: #212b36;
+    --color-text-subdued: #637381;
+    --color-border: #dfe3e8;
+    --font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', Roboto, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  }
+  html { font-size: 62.5%; }
+  body { font-family: var(--font-family); font-size: 1.4rem; line-height: 2rem; color: var(--color-text); background-color: var(--color-bg); margin: 0; padding: 0; }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  /* ── Audit navigation ── */
+  .audit-nav {
+    position: sticky; top: 0; z-index: 999; background: #1c2260; padding: 1.2rem 2.4rem;
+    display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;
+  }
+  .audit-nav span { color: rgba(255,255,255,0.5); font-size: 1.2rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+  .audit-nav a { color: rgba(255,255,255,0.8); text-decoration: none; font-size: 1.3rem; padding: 0.4rem 1rem; border-radius: 4px; transition: all 0.15s; }
+  .audit-nav a:hover, .audit-nav a.active { color: white; background: rgba(255,255,255,0.15); }
+
+  /* ── Section labels ── */
+  .view-label {
+    background: #5c6ac4; color: white; display: inline-block; padding: 0.4rem 1.2rem;
+    border-radius: 4px; font-size: 1.2rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; margin: 3.2rem 0 1.6rem;
+  }
+  .view-container { max-width: 1200px; margin: 0 auto; padding: 0 2.4rem 4rem; }
+  .view-separator { border: none; border-top: 2px dashed #dfe3e8; margin: 4rem 0; }
+
+  /* ── App shell simulation ── */
+  .app-shell {
+    background: #f4f6f8; border-radius: 8px; border: 1px solid #dfe3e8;
+    overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  }
+  .app-topbar {
+    background: white; border-bottom: 1px solid #dfe3e8; padding: 0 2.4rem;
+    height: 5.6rem; display: flex; align-items: center; justify-content: space-between;
+  }
+  .app-topbar-brand { display: flex; align-items: center; gap: 1rem; }
+  .app-topbar-brand .logo {
+    width: 32px; height: 32px; border-radius: 8px; background: #5c6ac4;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .app-topbar-brand .workspace-name { font-size: 1.5rem; font-weight: 600; color: #212b36; }
+  .app-topbar-right { display: flex; align-items: center; gap: 1.2rem; }
+  .app-topbar-right .period-badge {
+    padding: 0.4rem 1rem; background: #e3f1df; color: #108043; border-radius: 12px;
+    font-size: 1.2rem; font-weight: 500;
+  }
+  .avatar-circle {
+    width: 32px; height: 32px; border-radius: 50%; background: #5c6ac4;
+    display: flex; align-items: center; justify-content: center; color: white;
+    font-size: 1.2rem; font-weight: 600; flex-shrink: 0;
+  }
+
+  .app-layout { display: flex; min-height: 52rem; }
+
+  /* ── Sidebar ── */
+  .app-sidebar {
+    width: 22rem; background: white; border-right: 1px solid #dfe3e8;
+    padding: 1.6rem 0; flex-shrink: 0;
+  }
+  .sidebar-section-label {
+    padding: 0.8rem 1.6rem; font-size: 1.1rem; font-weight: 600;
+    color: #919eab; text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .sidebar-link {
+    display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1.6rem;
+    font-size: 1.4rem; color: #637381; text-decoration: none; cursor: default;
+    border-radius: 0; transition: background 0.1s;
+  }
+  .sidebar-link:hover { background: #f4f6f8; color: #212b36; }
+  .sidebar-link.active { background: #f0f1fa; color: #5c6ac4; font-weight: 500; }
+  .sidebar-link svg { flex-shrink: 0; }
+
+  /* ── Main content ── */
+  .app-main { flex: 1; padding: 2.4rem; overflow: auto; }
+
+  /* ── Shared components ── */
+  .card {
+    background: white; border-radius: 8px; box-shadow: none;
+    border: 1px solid var(--color-border);
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.6rem;
+    padding: 0.8rem 1.6rem; font-size: 1.4rem; font-weight: 600;
+    border: none; border-radius: 4px; cursor: pointer; font-family: var(--font-family);
+    transition: background 0.15s;
+  }
+  .btn-primary { color: white; background-color: #5c6ac4; }
+  .btn-primary:hover { background-color: #4959bd; }
+  .btn-secondary { color: #212b36; background-color: white; border: 1px solid #c4cdd5; }
+  .btn-secondary:hover { background-color: #f4f6f8; }
+  .btn-sm { padding: 0.5rem 1rem; font-size: 1.3rem; font-weight: 500; }
+  .btn-success-ghost { color: #108043; background: #e3f1df; border: none; }
+  .btn-success-ghost:hover { background: #bbe5b3; }
+  .btn-danger-ghost { color: #bf0711; background: #fbeae5; border: none; }
+  .btn-danger-ghost:hover { background: #f4b8b3; }
+  .btn-warning-ghost { color: #8a5c00; background: #fdf3e7; border: none; }
+
+  input[type="email"], input[type="password"], input[type="text"], input[type="date"], input[type="url"], textarea, select {
+    width: 100%; padding: 0.8rem 1.2rem; font-size: 1.4rem;
+    border: 1px solid #c4cdd5; border-radius: 4px; outline: none;
+    font-family: var(--font-family); transition: border-color 0.2s; background: white;
+  }
+  input:focus, textarea:focus, select:focus { border-color: #5c6ac4; box-shadow: 0 0 0 3px rgba(92,106,196,0.15); }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px;
+    font-size: 1.2rem; font-weight: 500; white-space: nowrap;
+  }
+  .badge-success { color: #108043; background: #e3f1df; }
+  .badge-gray    { color: #637381; background: #f4f6f8; }
+  .badge-warning { color: #8a5c00; background: #fdf3e7; }
+  .badge-info    { color: #006fbb; background: #ebf5fa; }
+  .badge-primary { color: #4959bd; background: #f0f1fa; }
+
+  /* ── Role color tags ── */
+  .role-admin   { color: #4959bd; background: #f0f1fa; }
+  .role-manager { color: #006fbb; background: #ebf5fa; }
+  .role-member  { color: #637381; background: #f4f6f8; }
+
+  /* ── Table ── */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 1.4rem; }
+  .data-table thead tr { background: #f9fafb; }
+  .data-table th {
+    padding: 1.2rem 1.6rem; text-align: left; font-weight: 600;
+    color: #637381; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .data-table td { padding: 1.2rem 1.6rem; }
+  .data-table tbody tr { border-top: 1px solid #f4f6f8; }
+  .data-table tbody tr:hover { background: #fafbfc; }
+
+  /* ── Progress bar ── */
+  .progress-bar-track { height: 6px; background: #dfe3e8; border-radius: 3px; overflow: hidden; }
+  .progress-bar-fill  { height: 100%; border-radius: 3px; background: #5c6ac4; transition: width 0.3s; }
+  .progress-bar-fill.success { background: #50b83c; }
+  .progress-bar-fill.warning { background: #f49342; }
+
+  /* ── Breadcrumb ── */
+  .breadcrumb { display: flex; align-items: center; gap: 0.6rem; font-size: 1.3rem; color: #637381; margin-bottom: 1.6rem; }
+  .breadcrumb a { color: #5c6ac4; text-decoration: none; }
+  .breadcrumb a:hover { text-decoration: underline; }
+  .breadcrumb-sep { color: #c4cdd5; }
+
+  /* ── Modal overlay ── */
+  .modal-backdrop {
+    background: rgba(0,0,0,0.5); border-radius: 8px; padding: 4rem 2rem;
+    display: flex; align-items: center; justify-content: center; min-height: 48rem;
+  }
+  .modal-card {
+    background: white; border-radius: 12px; padding: 2.4rem;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18); width: 100%; max-width: 480px;
+  }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+  .modal-header h2 { font-size: 1.8rem; font-weight: 600; color: #212b36; margin: 0; }
+  .modal-close { background: none; border: none; cursor: pointer; font-size: 2.2rem; color: #637381; line-height: 1; padding: 0; }
+  .modal-close:hover { color: #212b36; }
+
+  /* ── Form field ── */
+  .field { display: flex; flex-direction: column; gap: 0.4rem; }
+  .field label { font-size: 1.4rem; font-weight: 500; color: #212b36; }
+  .field .hint { font-size: 1.2rem; color: #637381; }
+
+  /* ── Department color dot ── */
+  .dept-icon {
+    width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center;
+    justify-content: center; flex-shrink: 0;
+  }
+  .dept-dot { width: 16px; height: 16px; border-radius: 50%; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 0; border-bottom: 2px solid #dfe3e8; margin-bottom: 2rem; }
+  .tab-btn {
+    padding: 1rem 1.8rem; font-size: 1.4rem; font-weight: 500; color: #637381;
+    background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent;
+    margin-bottom: -2px; transition: all 0.15s;
+  }
+  .tab-btn.active { color: #5c6ac4; border-bottom-color: #5c6ac4; font-weight: 600; }
+  .tab-btn:hover:not(.active) { color: #212b36; background: #f4f6f8; }
+
+  /* ── Page header ── */
+  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2.4rem; }
+  .page-header h1 { font-size: 2.4rem; font-weight: 600; color: #212b36; margin: 0 0 0.4rem; }
+  .page-header p { color: #637381; font-size: 1.4rem; margin: 0; }
+
+  /* ── Success/info banner ── */
+  .banner-success { padding: 1.2rem 1.6rem; border-radius: 8px; background: #e3f1df; color: #108043; font-size: 1.3rem; border: 1px solid #bbe5b3; margin-bottom: 2rem; }
+  .temp-password-box { padding: 1.6rem; background: #e3f1df; border-radius: 8px; margin-bottom: 1.6rem; }
+  .temp-password-box p { font-size: 1.3rem; color: #108043; margin: 0 0 0.8rem; }
+  .temp-password-box .cred-line { font-size: 1.4rem; color: #212b36; margin: 0 0 0.4rem; }
+</style>
+</head>
+<body>
+
+<!-- ── Audit navigation bar ── -->
+<nav class="audit-nav">
+  <span>Auditoría Visual</span>
+  <a href="01-auth.html">Auth</a>
+  <a href="02-dashboard.html">Dashboard</a>
+  <a href="03-objetivos-kpis.html">Objetivos &amp; KPIs</a>
+  <a href="04-tareas-revision.html">Tareas &amp; Revisión</a>
+  <a href="05-admin.html" class="active">Admin</a>
+  <a href="06-trimestral.html">Trimestral</a>
+</nav>
+
+<div class="view-container">
+
+<!-- ============================================================
+     VISTA 1 — EQUIPO (lista de usuarios)
+     ============================================================ -->
+<div class="view-label">Vista: /[workspace]/equipo</div>
+<div class="app-shell">
+  <!-- Top bar -->
+  <div class="app-topbar">
+    <div class="app-topbar-brand">
+      <div class="logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+          <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+        </svg>
+      </div>
+      <span class="workspace-name">Kublau</span>
+    </div>
+    <div class="app-topbar-right">
+      <span class="period-badge">Q1 2026 — Activo</span>
+      <div class="avatar-circle">AL</div>
+    </div>
+  </div>
+  <!-- Layout -->
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="app-sidebar">
+      <div class="sidebar-section-label">Principal</div>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Mis OKRs
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        Tareas
+      </a>
+      <div class="sidebar-section-label" style="margin-top:1.2rem;">Admin</div>
+      <a class="sidebar-link active" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Equipo
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Periodos
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Departamentos
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 005.64 5.64M4.93 19.07A10 10 0 0018.36 18.36"/></svg>
+        Configuración
+      </a>
+    </aside>
+
+    <!-- Main content -->
+    <main class="app-main">
+      <div class="page-header">
+        <div>
+          <h1>Equipo</h1>
+          <p>Gestiona los usuarios del workspace</p>
+        </div>
+        <button class="btn btn-primary">+ Invitar usuario</button>
+      </div>
+
+      <!-- Team table -->
+      <div class="card" style="border-radius:8px;overflow:hidden;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Email</th>
+              <th>Rol</th>
+              <th>Departamentos</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Row 1 -->
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:1rem;">
+                  <div class="avatar-circle" style="background:#5c6ac4;">AL</div>
+                  <span style="font-weight:500;color:#212b36;">Alberto López</span>
+                </div>
+              </td>
+              <td style="color:#637381;">alberto@kublau.com</td>
+              <td>
+                <select style="padding:0.4rem 0.8rem;font-size:1.3rem;border:1px solid #c4cdd5;border-radius:4px;width:auto;">
+                  <option selected>Administrador</option>
+                  <option>Manager</option>
+                  <option>Miembro</option>
+                </select>
+              </td>
+              <td>
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+                  <span class="badge" style="background:#5c6ac420;color:#5c6ac4;">Marketing</span>
+                  <span class="badge" style="background:#47c1bf20;color:#37a49b;">Producto</span>
+                </div>
+              </td>
+              <td><span class="badge badge-success">Activo</span></td>
+            </tr>
+            <!-- Row 2 -->
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:1rem;">
+                  <div class="avatar-circle" style="background:#47c1bf;">MG</div>
+                  <span style="font-weight:500;color:#212b36;">María García</span>
+                </div>
+              </td>
+              <td style="color:#637381;">maria.garcia@kublau.com</td>
+              <td>
+                <select style="padding:0.4rem 0.8rem;font-size:1.3rem;border:1px solid #c4cdd5;border-radius:4px;width:auto;">
+                  <option>Administrador</option>
+                  <option selected>Manager</option>
+                  <option>Miembro</option>
+                </select>
+              </td>
+              <td>
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+                  <span class="badge" style="background:#de361820;color:#bf3515;">Ventas</span>
+                </div>
+              </td>
+              <td><span class="badge badge-success">Activo</span></td>
+            </tr>
+            <!-- Row 3 -->
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:1rem;">
+                  <div class="avatar-circle" style="background:#f49342;">CR</div>
+                  <span style="font-weight:500;color:#212b36;">Carlos Ruiz</span>
+                </div>
+              </td>
+              <td style="color:#637381;">carlos.ruiz@kublau.com</td>
+              <td>
+                <select style="padding:0.4rem 0.8rem;font-size:1.3rem;border:1px solid #c4cdd5;border-radius:4px;width:auto;">
+                  <option>Administrador</option>
+                  <option>Manager</option>
+                  <option selected>Miembro</option>
+                </select>
+              </td>
+              <td>
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+                  <span class="badge" style="background:#47c1bf20;color:#37a49b;">Producto</span>
+                  <span class="badge" style="background:#50b83c20;color:#2d8a1f;">Tecnología</span>
+                </div>
+              </td>
+              <td><span class="badge badge-success">Activo</span></td>
+            </tr>
+            <!-- Row 4 -->
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:1rem;">
+                  <div class="avatar-circle" style="background:#50b83c;">LM</div>
+                  <span style="font-weight:500;color:#212b36;">Laura Martínez</span>
+                </div>
+              </td>
+              <td style="color:#637381;">laura.martinez@kublau.com</td>
+              <td>
+                <select style="padding:0.4rem 0.8rem;font-size:1.3rem;border:1px solid #c4cdd5;border-radius:4px;width:auto;">
+                  <option>Administrador</option>
+                  <option selected>Manager</option>
+                  <option>Miembro</option>
+                </select>
+              </td>
+              <td>
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+                  <span class="badge" style="background:#5c6ac420;color:#5c6ac4;">Marketing</span>
+                </div>
+              </td>
+              <td><span class="badge badge-success">Activo</span></td>
+            </tr>
+            <!-- Row 5 -->
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:1rem;">
+                  <div class="avatar-circle" style="background:#9c6ade;">JF</div>
+                  <span style="font-weight:500;color:#212b36;">Javier Fernández</span>
+                </div>
+              </td>
+              <td style="color:#637381;">javier.fernandez@kublau.com</td>
+              <td>
+                <select style="padding:0.4rem 0.8rem;font-size:1.3rem;border:1px solid #c4cdd5;border-radius:4px;width:auto;">
+                  <option>Administrador</option>
+                  <option>Manager</option>
+                  <option selected>Miembro</option>
+                </select>
+              </td>
+              <td>
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+                  <span class="badge" style="background:#de361820;color:#bf3515;">Ventas</span>
+                </div>
+              </td>
+              <td><span class="badge badge-success">Activo</span></td>
+            </tr>
+            <!-- Row 6 -->
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:1rem;">
+                  <div class="avatar-circle" style="background:#637381;">AS</div>
+                  <span style="font-weight:500;color:#212b36;">Ana Sánchez</span>
+                </div>
+              </td>
+              <td style="color:#637381;">ana.sanchez@kublau.com</td>
+              <td>
+                <select style="padding:0.4rem 0.8rem;font-size:1.3rem;border:1px solid #c4cdd5;border-radius:4px;width:auto;">
+                  <option>Administrador</option>
+                  <option>Manager</option>
+                  <option selected>Miembro</option>
+                </select>
+              </td>
+              <td>
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+                  <span class="badge" style="background:#50b83c20;color:#2d8a1f;">Tecnología</span>
+                  <span class="badge" style="background:#47c1bf20;color:#37a49b;">Producto</span>
+                </div>
+              </td>
+              <td><span class="badge badge-success">Activo</span></td>
+            </tr>
+            <!-- Row 7 -->
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:1rem;">
+                  <div class="avatar-circle" style="background:#de3618;">PT</div>
+                  <span style="font-weight:500;color:#212b36;">Pablo Torres</span>
+                </div>
+              </td>
+              <td style="color:#637381;">pablo.torres@kublau.com</td>
+              <td>
+                <select style="padding:0.4rem 0.8rem;font-size:1.3rem;border:1px solid #c4cdd5;border-radius:4px;width:auto;">
+                  <option>Administrador</option>
+                  <option>Manager</option>
+                  <option selected>Miembro</option>
+                </select>
+              </td>
+              <td>
+                <div style="display:flex;gap:0.4rem;">
+                  <span class="badge" style="background:#5c6ac420;color:#5c6ac4;">Marketing</span>
+                </div>
+              </td>
+              <td><span class="badge badge-success">Activo</span></td>
+            </tr>
+            <!-- Row 8 -->
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:1rem;">
+                  <div class="avatar-circle" style="background:#006fbb;">ER</div>
+                  <span style="font-weight:500;color:#212b36;">Elena Rodríguez</span>
+                </div>
+              </td>
+              <td style="color:#637381;">elena.rodriguez@kublau.com</td>
+              <td>
+                <select style="padding:0.4rem 0.8rem;font-size:1.3rem;border:1px solid #c4cdd5;border-radius:4px;width:auto;">
+                  <option>Administrador</option>
+                  <option selected>Manager</option>
+                  <option>Miembro</option>
+                </select>
+              </td>
+              <td>
+                <div style="display:flex;gap:0.4rem;">
+                  <span class="badge" style="background:#de361820;color:#bf3515;">Ventas</span>
+                  <span class="badge" style="background:#5c6ac420;color:#5c6ac4;">Marketing</span>
+                </div>
+              </td>
+              <td><span class="badge badge-success">Activo</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+</div><!-- /app-shell -->
+
+<hr class="view-separator">
+
+<!-- ============================================================
+     VISTA 1b — MODAL "Crear usuario" (form vacío)
+     ============================================================ -->
+<div class="view-label">Vista: /[workspace]/equipo — Modal "Crear usuario"</div>
+<div class="app-shell">
+  <div class="app-topbar">
+    <div class="app-topbar-brand">
+      <div class="logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+          <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+        </svg>
+      </div>
+      <span class="workspace-name">Kublau</span>
+    </div>
+    <div class="app-topbar-right">
+      <span class="period-badge">Q1 2026 — Activo</span>
+      <div class="avatar-circle">AL</div>
+    </div>
+  </div>
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Crear usuario</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:1.6rem;">
+        <div class="field">
+          <label>Nombre completo</label>
+          <input type="text" placeholder="Ej: Sofía Morales" value="">
+        </div>
+        <div class="field">
+          <label>Correo electrónico</label>
+          <input type="email" placeholder="sofia@kublau.com" value="">
+        </div>
+        <div class="field">
+          <label>Rol</label>
+          <select>
+            <option selected>Miembro</option>
+            <option>Manager</option>
+            <option>Administrador</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Departamentos</label>
+          <div style="display:flex;flex-wrap:wrap;gap:0.8rem;padding:1rem;border:1px solid #c4cdd5;border-radius:4px;">
+            <label style="display:flex;align-items:center;gap:0.5rem;font-size:1.3rem;cursor:pointer;">
+              <input type="checkbox"> Marketing
+            </label>
+            <label style="display:flex;align-items:center;gap:0.5rem;font-size:1.3rem;cursor:pointer;">
+              <input type="checkbox" checked> Ventas
+            </label>
+            <label style="display:flex;align-items:center;gap:0.5rem;font-size:1.3rem;cursor:pointer;">
+              <input type="checkbox"> Producto
+            </label>
+            <label style="display:flex;align-items:center;gap:0.5rem;font-size:1.3rem;cursor:pointer;">
+              <input type="checkbox"> Tecnología
+            </label>
+            <label style="display:flex;align-items:center;gap:0.5rem;font-size:1.3rem;cursor:pointer;">
+              <input type="checkbox"> Operaciones
+            </label>
+          </div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:1rem;">Crear usuario</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="view-separator">
+
+<!-- ============================================================
+     VISTA 1c — MODAL "Usuario creado" (contraseña temporal)
+     ============================================================ -->
+<div class="view-label">Vista: /[workspace]/equipo — Modal "Usuario creado" + contraseña temporal</div>
+<div class="app-shell">
+  <div class="app-topbar">
+    <div class="app-topbar-brand">
+      <div class="logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+          <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+        </svg>
+      </div>
+      <span class="workspace-name">Kublau</span>
+    </div>
+    <div class="app-topbar-right">
+      <span class="period-badge">Q1 2026 — Activo</span>
+      <div class="avatar-circle">AL</div>
+    </div>
+  </div>
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2 style="font-size:1.8rem;font-weight:600;color:#212b36;margin:0 0 1.6rem;">Usuario creado</h2>
+      <div class="temp-password-box">
+        <p>Comparte estas credenciales con el usuario:</p>
+        <p class="cred-line"><strong>Email:</strong> sofia.morales@kublau.com</p>
+        <p class="cred-line" style="margin:0;"><strong>Contraseña temporal:</strong> <span style="font-family:monospace;font-size:1.5rem;letter-spacing:0.05em;background:#bbe5b3;padding:0.2rem 0.6rem;border-radius:3px;">Kx7mPqR3nZ</span></p>
+      </div>
+      <p style="font-size:1.2rem;color:#637381;margin:0 0 1.6rem;">El usuario deberá cambiar esta contraseña al iniciar sesión por primera vez.</p>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:1rem;">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<hr class="view-separator">
+
+<!-- ============================================================
+     VISTA 2 — PERIODOS
+     ============================================================ -->
+<div class="view-label">Vista: /[workspace]/periodos</div>
+<div class="app-shell">
+  <div class="app-topbar">
+    <div class="app-topbar-brand">
+      <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+      <span class="workspace-name">Kublau</span>
+    </div>
+    <div class="app-topbar-right">
+      <span class="period-badge">Q1 2026 — Activo</span>
+      <div class="avatar-circle">AL</div>
+    </div>
+  </div>
+  <div class="app-layout">
+    <aside class="app-sidebar">
+      <div class="sidebar-section-label">Principal</div>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Mis OKRs
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        Tareas
+      </a>
+      <div class="sidebar-section-label" style="margin-top:1.2rem;">Admin</div>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Equipo
+      </a>
+      <a class="sidebar-link active" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Periodos
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Departamentos
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 005.64 5.64M4.93 19.07A10 10 0 0018.36 18.36"/></svg>
+        Configuración
+      </a>
+    </aside>
+
+    <main class="app-main">
+      <div class="page-header">
+        <div>
+          <h1>Periodos</h1>
+          <p>Gestiona los periodos trimestrales</p>
+        </div>
+        <button class="btn btn-primary">+ Crear periodo</button>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:1.2rem;">
+
+        <!-- Period card 1 — Active -->
+        <div class="card" style="padding:2rem;display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.4rem;">
+              <h3 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0;">Q1 2026</h3>
+              <span class="badge badge-success">Activo</span>
+            </div>
+            <p style="font-size:1.3rem;color:#637381;margin:0;">1 ene 2026 — 31 mar 2026</p>
+          </div>
+          <div style="display:flex;gap:0.8rem;">
+            <button class="btn btn-sm btn-danger-ghost">Archivar</button>
+          </div>
+        </div>
+
+        <!-- Period card 2 — Upcoming/Draft -->
+        <div class="card" style="padding:2rem;display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.4rem;">
+              <h3 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0;">Q2 2026</h3>
+              <span class="badge badge-warning">Borrador</span>
+            </div>
+            <p style="font-size:1.3rem;color:#637381;margin:0;">1 abr 2026 — 30 jun 2026</p>
+          </div>
+          <div style="display:flex;gap:0.8rem;">
+            <button class="btn btn-sm btn-success-ghost">Activar</button>
+          </div>
+        </div>
+
+        <!-- Period card 3 — Upcoming -->
+        <div class="card" style="padding:2rem;display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.4rem;">
+              <h3 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0;">Q3 2026</h3>
+              <span class="badge badge-info">Próximo</span>
+            </div>
+            <p style="font-size:1.3rem;color:#637381;margin:0;">1 jul 2026 — 30 sep 2026</p>
+          </div>
+          <div style="display:flex;gap:0.8rem;">
+            <button class="btn btn-sm btn-success-ghost">Activar</button>
+          </div>
+        </div>
+
+        <!-- Period card 4 — Archived -->
+        <div class="card" style="padding:2rem;display:flex;align-items:center;justify-content:space-between;opacity:0.72;">
+          <div>
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.4rem;">
+              <h3 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0;">Q4 2025</h3>
+              <span class="badge badge-gray">Archivado</span>
+            </div>
+            <p style="font-size:1.3rem;color:#637381;margin:0;">1 oct 2025 — 31 dic 2025</p>
+          </div>
+          <div style="display:flex;gap:0.8rem;">
+            <!-- Archived: no actions -->
+            <span style="font-size:1.2rem;color:#919eab;">Sin acciones</span>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<hr class="view-separator">
+
+<!-- ============================================================
+     VISTA 2b — MODAL "Crear periodo"
+     ============================================================ -->
+<div class="view-label">Vista: /[workspace]/periodos — Modal "Crear periodo"</div>
+<div class="app-shell">
+  <div class="app-topbar">
+    <div class="app-topbar-brand">
+      <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+      <span class="workspace-name">Kublau</span>
+    </div>
+    <div class="app-topbar-right">
+      <span class="period-badge">Q1 2026 — Activo</span>
+      <div class="avatar-circle">AL</div>
+    </div>
+  </div>
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Crear periodo</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:1.6rem;">
+        <div class="field">
+          <label>Nombre</label>
+          <input type="text" placeholder="Ej: Q2 2026" value="Q4 2026">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;">
+          <div class="field">
+            <label>Fecha inicio</label>
+            <input type="date" value="2026-10-01">
+          </div>
+          <div class="field">
+            <label>Fecha fin</label>
+            <input type="date" value="2026-12-31">
+          </div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:1rem;">Crear periodo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="view-separator">
+
+<!-- ============================================================
+     VISTA 3 — DEPARTAMENTOS (grid)
+     ============================================================ -->
+<div class="view-label">Vista: /[workspace]/departamentos</div>
+<div class="app-shell">
+  <div class="app-topbar">
+    <div class="app-topbar-brand">
+      <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+      <span class="workspace-name">Kublau</span>
+    </div>
+    <div class="app-topbar-right">
+      <span class="period-badge">Q1 2026 — Activo</span>
+      <div class="avatar-circle">AL</div>
+    </div>
+  </div>
+  <div class="app-layout">
+    <aside class="app-sidebar">
+      <div class="sidebar-section-label">Principal</div>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Mis OKRs
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        Tareas
+      </a>
+      <div class="sidebar-section-label" style="margin-top:1.2rem;">Admin</div>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        Equipo
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Periodos
+      </a>
+      <a class="sidebar-link active" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Departamentos
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 005.64 5.64"/></svg>
+        Configuración
+      </a>
+    </aside>
+
+    <main class="app-main">
+      <div class="page-header">
+        <div>
+          <h1>Departamentos</h1>
+          <p>Organiza tu equipo por departamentos</p>
+        </div>
+        <button class="btn btn-primary">+ Crear departamento</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1.6rem;">
+
+        <!-- Card 1 — Marketing -->
+        <div class="card" style="padding:2rem;cursor:pointer;transition:box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+          <div style="display:flex;align-items:center;gap:1.2rem;margin-bottom:1.2rem;">
+            <div class="dept-icon" style="background:#5c6ac420;">
+              <div class="dept-dot" style="background:#5c6ac4;"></div>
+            </div>
+            <h3 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0;">Marketing</h3>
+          </div>
+          <div style="display:flex;gap:2rem;">
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">4</div>
+              <div style="font-size:1.2rem;color:#637381;">Miembros</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">6</div>
+              <div style="font-size:1.2rem;color:#637381;">KPIs</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">3</div>
+              <div style="font-size:1.2rem;color:#637381;">Objetivos</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2 — Ventas -->
+        <div class="card" style="padding:2rem;cursor:pointer;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+          <div style="display:flex;align-items:center;gap:1.2rem;margin-bottom:1.2rem;">
+            <div class="dept-icon" style="background:#de361820;">
+              <div class="dept-dot" style="background:#de3618;"></div>
+            </div>
+            <h3 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0;">Ventas</h3>
+          </div>
+          <div style="display:flex;gap:2rem;">
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">5</div>
+              <div style="font-size:1.2rem;color:#637381;">Miembros</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">8</div>
+              <div style="font-size:1.2rem;color:#637381;">KPIs</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">4</div>
+              <div style="font-size:1.2rem;color:#637381;">Objetivos</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3 — Producto -->
+        <div class="card" style="padding:2rem;cursor:pointer;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+          <div style="display:flex;align-items:center;gap:1.2rem;margin-bottom:1.2rem;">
+            <div class="dept-icon" style="background:#47c1bf20;">
+              <div class="dept-dot" style="background:#47c1bf;"></div>
+            </div>
+            <h3 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0;">Producto</h3>
+          </div>
+          <div style="display:flex;gap:2rem;">
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">3</div>
+              <div style="font-size:1.2rem;color:#637381;">Miembros</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">5</div>
+              <div style="font-size:1.2rem;color:#637381;">KPIs</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">2</div>
+              <div style="font-size:1.2rem;color:#637381;">Objetivos</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4 — Tecnología -->
+        <div class="card" style="padding:2rem;cursor:pointer;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+          <div style="display:flex;align-items:center;gap:1.2rem;margin-bottom:1.2rem;">
+            <div class="dept-icon" style="background:#50b83c20;">
+              <div class="dept-dot" style="background:#50b83c;"></div>
+            </div>
+            <h3 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0;">Tecnología</h3>
+          </div>
+          <div style="display:flex;gap:2rem;">
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">6</div>
+              <div style="font-size:1.2rem;color:#637381;">Miembros</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">4</div>
+              <div style="font-size:1.2rem;color:#637381;">KPIs</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">5</div>
+              <div style="font-size:1.2rem;color:#637381;">Objetivos</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 5 — Operaciones -->
+        <div class="card" style="padding:2rem;cursor:pointer;" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.boxShadow='none'">
+          <div style="display:flex;align-items:center;gap:1.2rem;margin-bottom:1.2rem;">
+            <div class="dept-icon" style="background:#f4934220;">
+              <div class="dept-dot" style="background:#f49342;"></div>
+            </div>
+            <h3 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0;">Operaciones</h3>
+          </div>
+          <div style="display:flex;gap:2rem;">
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">2</div>
+              <div style="font-size:1.2rem;color:#637381;">Miembros</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">3</div>
+              <div style="font-size:1.2rem;color:#637381;">KPIs</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:2rem;font-weight:700;color:#212b36;">1</div>
+              <div style="font-size:1.2rem;color:#637381;">Objetivos</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<hr class="view-separator">
+
+<!-- ============================================================
+     VISTA 3b — MODAL "Crear departamento"
+     ============================================================ -->
+<div class="view-label">Vista: /[workspace]/departamentos — Modal "Crear departamento"</div>
+<div class="app-shell">
+  <div class="app-topbar">
+    <div class="app-topbar-brand">
+      <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+      <span class="workspace-name">Kublau</span>
+    </div>
+    <div class="app-topbar-right">
+      <span class="period-badge">Q1 2026 — Activo</span>
+      <div class="avatar-circle">AL</div>
+    </div>
+  </div>
+  <div class="modal-backdrop">
+    <div class="modal-card" style="max-width:400px;">
+      <div class="modal-header">
+        <h2>Crear departamento</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:1.6rem;">
+        <div class="field">
+          <label>Nombre</label>
+          <input type="text" placeholder="Ej: Recursos Humanos" value="">
+        </div>
+        <div class="field">
+          <label>Color</label>
+          <div style="display:flex;align-items:center;gap:1.2rem;">
+            <input type="color" value="#6366f1" style="width:48px;height:48px;border:none;cursor:pointer;padding:0;border-radius:6px;">
+            <div style="display:flex;gap:0.8rem;flex-wrap:wrap;">
+              <div style="width:28px;height:28px;border-radius:6px;background:#5c6ac4;cursor:pointer;border:2px solid #4959bd;"></div>
+              <div style="width:28px;height:28px;border-radius:6px;background:#47c1bf;cursor:pointer;border:2px solid transparent;"></div>
+              <div style="width:28px;height:28px;border-radius:6px;background:#50b83c;cursor:pointer;border:2px solid transparent;"></div>
+              <div style="width:28px;height:28px;border-radius:6px;background:#f49342;cursor:pointer;border:2px solid transparent;"></div>
+              <div style="width:28px;height:28px;border-radius:6px;background:#de3618;cursor:pointer;border:2px solid transparent;"></div>
+              <div style="width:28px;height:28px;border-radius:6px;background:#9c6ade;cursor:pointer;border:2px solid transparent;"></div>
+              <div style="width:28px;height:28px;border-radius:6px;background:#006fbb;cursor:pointer;border:2px solid transparent;"></div>
+            </div>
+          </div>
+          <span class="hint">#5c6ac4</span>
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:1rem;">Crear departamento</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="view-separator">
+
+<!-- ============================================================
+     VISTA 4 — DEPARTAMENTO DETALLE (Marketing)
+     ============================================================ -->
+<div class="view-label">Vista: /[workspace]/departamentos/[id] — Departamento: Marketing</div>
+<div class="app-shell">
+  <div class="app-topbar">
+    <div class="app-topbar-brand">
+      <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+      <span class="workspace-name">Kublau</span>
+    </div>
+    <div class="app-topbar-right">
+      <span class="period-badge">Q1 2026 — Activo</span>
+      <div class="avatar-circle">AL</div>
+    </div>
+  </div>
+  <div class="app-layout">
+    <aside class="app-sidebar">
+      <div class="sidebar-section-label">Principal</div>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Mis OKRs
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        Tareas
+      </a>
+      <div class="sidebar-section-label" style="margin-top:1.2rem;">Admin</div>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        Equipo
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Periodos
+      </a>
+      <a class="sidebar-link active" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Departamentos
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>
+        Configuración
+      </a>
+    </aside>
+
+    <main class="app-main">
+      <!-- Breadcrumb -->
+      <div class="breadcrumb">
+        <a href="#">Departamentos</a>
+        <span class="breadcrumb-sep">/</span>
+        <span style="color:#212b36;font-weight:500;">Marketing</span>
+      </div>
+
+      <!-- Department header -->
+      <div style="display:flex;align-items:center;gap:1.6rem;margin-bottom:2.4rem;">
+        <div class="dept-icon" style="width:48px;height:48px;border-radius:12px;background:#5c6ac420;">
+          <div class="dept-dot" style="width:20px;height:20px;background:#5c6ac4;"></div>
+        </div>
+        <div>
+          <h1 style="font-size:2.4rem;font-weight:600;color:#212b36;margin:0 0 0.2rem;">Marketing</h1>
+          <p style="color:#637381;font-size:1.4rem;margin:0;">4 miembros &middot; 6 KPIs &middot; 3 objetivos</p>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab-btn active">Miembros</button>
+        <button class="tab-btn">KPIs vinculados</button>
+        <button class="tab-btn">Objetivos</button>
+      </div>
+
+      <!-- Tab content: grid of sections -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;">
+
+        <!-- Miembros -->
+        <div class="card" style="padding:2rem;">
+          <h2 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0 0 1.6rem;">Miembros</h2>
+          <ul style="list-style:none;padding:0;margin:0;">
+            <li style="display:flex;align-items:center;gap:1rem;padding:0.8rem 0;border-bottom:1px solid #f4f6f8;">
+              <div class="avatar-circle" style="background:#5c6ac4;width:32px;height:32px;font-size:1.2rem;">AL</div>
+              <div>
+                <div style="font-size:1.3rem;font-weight:500;color:#212b36;">Alberto López</div>
+                <div style="font-size:1.2rem;color:#637381;">alberto@kublau.com</div>
+              </div>
+              <span class="badge role-admin" style="margin-left:auto;">Admin</span>
+            </li>
+            <li style="display:flex;align-items:center;gap:1rem;padding:0.8rem 0;border-bottom:1px solid #f4f6f8;">
+              <div class="avatar-circle" style="background:#5c6ac4;width:32px;height:32px;font-size:1.2rem;">LM</div>
+              <div>
+                <div style="font-size:1.3rem;font-weight:500;color:#212b36;">Laura Martínez</div>
+                <div style="font-size:1.2rem;color:#637381;">laura.martinez@kublau.com</div>
+              </div>
+              <span class="badge role-manager" style="margin-left:auto;">Manager</span>
+            </li>
+            <li style="display:flex;align-items:center;gap:1rem;padding:0.8rem 0;border-bottom:1px solid #f4f6f8;">
+              <div class="avatar-circle" style="background:#de3618;width:32px;height:32px;font-size:1.2rem;">PT</div>
+              <div>
+                <div style="font-size:1.3rem;font-weight:500;color:#212b36;">Pablo Torres</div>
+                <div style="font-size:1.2rem;color:#637381;">pablo.torres@kublau.com</div>
+              </div>
+              <span class="badge role-member" style="margin-left:auto;">Miembro</span>
+            </li>
+            <li style="display:flex;align-items:center;gap:1rem;padding:0.8rem 0;">
+              <div class="avatar-circle" style="background:#006fbb;width:32px;height:32px;font-size:1.2rem;">ER</div>
+              <div>
+                <div style="font-size:1.3rem;font-weight:500;color:#212b36;">Elena Rodríguez</div>
+                <div style="font-size:1.2rem;color:#637381;">elena.rodriguez@kublau.com</div>
+              </div>
+              <span class="badge role-manager" style="margin-left:auto;">Manager</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- KPIs -->
+        <div class="card" style="padding:2rem;">
+          <h2 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0 0 1.6rem;">KPIs del departamento</h2>
+          <ul style="list-style:none;padding:0;margin:0;">
+            <li style="padding:1rem 0;border-bottom:1px solid #f4f6f8;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.6rem;">
+                <span style="font-size:1.3rem;font-weight:500;color:#212b36;">Leads generados</span>
+                <span style="font-size:1.2rem;color:#637381;">72 / 100</span>
+              </div>
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill" style="width:72%;background:#5c6ac4;"></div>
+              </div>
+            </li>
+            <li style="padding:1rem 0;border-bottom:1px solid #f4f6f8;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.6rem;">
+                <span style="font-size:1.3rem;font-weight:500;color:#212b36;">Tasa de conversión</span>
+                <span style="font-size:1.2rem;color:#637381;">3.2% / 5%</span>
+              </div>
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill warning" style="width:64%;"></div>
+              </div>
+            </li>
+            <li style="padding:1rem 0;border-bottom:1px solid #f4f6f8;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.6rem;">
+                <span style="font-size:1.3rem;font-weight:500;color:#212b36;">Tráfico orgánico</span>
+                <span style="font-size:1.2rem;color:#637381;">18 500 / 20 000</span>
+              </div>
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill success" style="width:92%;"></div>
+              </div>
+            </li>
+            <li style="padding:1rem 0;border-bottom:1px solid #f4f6f8;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.6rem;">
+                <span style="font-size:1.3rem;font-weight:500;color:#212b36;">CAC medio</span>
+                <span style="font-size:1.2rem;color:#637381;">€42 / €35</span>
+              </div>
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill" style="width:50%;background:#de3618;"></div>
+              </div>
+            </li>
+            <li style="padding:1rem 0;border-bottom:1px solid #f4f6f8;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.6rem;">
+                <span style="font-size:1.3rem;font-weight:500;color:#212b36;">NPS campaña Q1</span>
+                <span style="font-size:1.2rem;color:#637381;">58 / 70</span>
+              </div>
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill warning" style="width:83%;"></div>
+              </div>
+            </li>
+            <li style="padding:1rem 0;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.6rem;">
+                <span style="font-size:1.3rem;font-weight:500;color:#212b36;">Seguidores redes sociales</span>
+                <span style="font-size:1.2rem;color:#637381;">12 400 / 15 000</span>
+              </div>
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill" style="width:83%;background:#5c6ac4;"></div>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Objetivos — full width -->
+        <div class="card" style="padding:2rem;grid-column:1 / -1;">
+          <h2 style="font-size:1.6rem;font-weight:600;color:#212b36;margin:0 0 1.6rem;">Objetivos del departamento</h2>
+          <ul style="list-style:none;padding:0;margin:0;">
+            <li style="display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0;border-bottom:1px solid #f4f6f8;">
+              <div style="flex:1;">
+                <div style="font-size:1.3rem;font-weight:500;color:#212b36;margin-bottom:0.6rem;">Aumentar la generación de leads calificados en un 40%</div>
+                <div style="max-width:340px;">
+                  <div class="progress-bar-track">
+                    <div class="progress-bar-fill" style="width:68%;background:#5c6ac4;"></div>
+                  </div>
+                  <div style="font-size:1.2rem;color:#637381;margin-top:0.3rem;">68% completado</div>
+                </div>
+              </div>
+              <span class="badge badge-info" style="margin-left:2rem;">En progreso</span>
+            </li>
+            <li style="display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0;border-bottom:1px solid #f4f6f8;">
+              <div style="flex:1;">
+                <div style="font-size:1.3rem;font-weight:500;color:#212b36;margin-bottom:0.6rem;">Reducir el costo de adquisición de clientes a menos de €35</div>
+                <div style="max-width:340px;">
+                  <div class="progress-bar-track">
+                    <div class="progress-bar-fill warning" style="width:45%;"></div>
+                  </div>
+                  <div style="font-size:1.2rem;color:#637381;margin-top:0.3rem;">45% completado</div>
+                </div>
+              </div>
+              <span class="badge badge-warning" style="margin-left:2rem;">En riesgo</span>
+            </li>
+            <li style="display:flex;align-items:center;justify-content:space-between;padding:1.2rem 0;">
+              <div style="flex:1;">
+                <div style="font-size:1.3rem;font-weight:500;color:#212b36;margin-bottom:0.6rem;">Posicionar la marca en top 3 del sector en SEO orgánico</div>
+                <div style="max-width:340px;">
+                  <div class="progress-bar-track">
+                    <div class="progress-bar-fill success" style="width:91%;"></div>
+                  </div>
+                  <div style="font-size:1.2rem;color:#637381;margin-top:0.3rem;">91% completado</div>
+                </div>
+              </div>
+              <span class="badge badge-success" style="margin-left:2rem;">En camino</span>
+            </li>
+          </ul>
+        </div>
+
+      </div><!-- /grid -->
+    </main>
+  </div>
+</div><!-- /app-shell -->
+
+<hr class="view-separator">
+
+<!-- ============================================================
+     VISTA 5 — CONFIGURACIÓN del workspace
+     ============================================================ -->
+<div class="view-label">Vista: /[workspace]/configuracion</div>
+<div class="app-shell">
+  <div class="app-topbar">
+    <div class="app-topbar-brand">
+      <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+      <span class="workspace-name">Kublau</span>
+    </div>
+    <div class="app-topbar-right">
+      <span class="period-badge">Q1 2026 — Activo</span>
+      <div class="avatar-circle">AL</div>
+    </div>
+  </div>
+  <div class="app-layout">
+    <aside class="app-sidebar">
+      <div class="sidebar-section-label">Principal</div>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Mis OKRs
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        Tareas
+      </a>
+      <div class="sidebar-section-label" style="margin-top:1.2rem;">Admin</div>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        Equipo
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Periodos
+      </a>
+      <a class="sidebar-link" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Departamentos
+      </a>
+      <a class="sidebar-link active" href="#">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 005.64 5.64M4.93 19.07A10 10 0 0018.36 18.36M19.07 19.07A10 10 0 005.64 18.36M4.93 4.93A10 10 0 0018.36 5.64"/></svg>
+        Configuración
+      </a>
+    </aside>
+
+    <main class="app-main">
+      <div style="margin-bottom:2.4rem;">
+        <h1 style="font-size:2.4rem;font-weight:600;color:#212b36;margin:0 0 0.4rem;">Configuración del Workspace</h1>
+        <p style="color:#637381;font-size:1.4rem;margin:0;">Ajustes generales del workspace</p>
+      </div>
+
+      <!-- Saved confirmation banner -->
+      <div class="banner-success">
+        Configuración guardada exitosamente
+      </div>
+
+      <div class="card" style="padding:2.4rem;max-width:560px;">
+        <form onsubmit="return false;">
+          <div style="display:flex;flex-direction:column;gap:2rem;">
+
+            <div class="field">
+              <label>Nombre del workspace</label>
+              <input type="text" value="Kublau">
+              <span class="hint">Nombre visible en la plataforma y en los correos de invitación.</span>
+            </div>
+
+            <div class="field">
+              <label>Slug (URL)</label>
+              <div style="display:flex;align-items:center;border:1px solid #c4cdd5;border-radius:4px;overflow:hidden;background:white;">
+                <span style="padding:0.8rem 1rem;background:#f4f6f8;color:#637381;font-size:1.4rem;border-right:1px solid #c4cdd5;white-space:nowrap;">okrs.app/</span>
+                <input type="text" value="kublau" style="border:none;border-radius:0;flex:1;box-shadow:none;">
+              </div>
+              <span class="hint">URL de acceso: <strong style="color:#5c6ac4;">okrs.app/kublau</strong></span>
+            </div>
+
+            <div class="field">
+              <label>Logo del workspace</label>
+              <div style="display:flex;align-items:center;gap:1.6rem;">
+                <div style="width:64px;height:64px;border-radius:12px;background:#5c6ac4;display:flex;align-items:center;justify-content:center;">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm">Cambiar logo</button>
+              </div>
+              <span class="hint">Recomendado: 256×256 px, PNG o SVG.</span>
+            </div>
+
+            <div style="padding-top:0.8rem;border-top:1px solid #f4f6f8;">
+              <button type="submit" class="btn btn-primary">Guardar cambios</button>
+            </div>
+
+          </div>
+        </form>
+      </div>
+
+      <!-- Danger zone -->
+      <div style="margin-top:3.2rem;max-width:560px;">
+        <h2 style="font-size:1.6rem;font-weight:600;color:#de3618;margin:0 0 1.2rem;">Zona de peligro</h2>
+        <div class="card" style="padding:2rem;border-color:#e3b5af;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:2rem;">
+            <div>
+              <div style="font-size:1.4rem;font-weight:500;color:#212b36;">Eliminar workspace</div>
+              <div style="font-size:1.3rem;color:#637381;margin-top:0.2rem;">Esta acción es irreversible. Se eliminarán todos los datos del workspace.</div>
+            </div>
+            <button type="button" class="btn btn-sm" style="background:#fbeae5;color:#bf0711;border:1px solid #e3b5af;white-space:nowrap;flex-shrink:0;">Eliminar workspace</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div><!-- /app-shell -->
+
+</div><!-- /view-container -->
+</body>
+</html>

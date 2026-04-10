@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auditoría Visual — Dashboard</title>
+<link rel="stylesheet" href="../src/app/polaris.css">
+<style>
+  :root {
+    --color-primary: #5c6ac4; --color-success: #50b83c; --color-warning: #f49342;
+    --color-danger: #de3618; --color-info: #47c1bf; --color-bg: #f4f6f8;
+    --color-surface: #ffffff; --color-text: #212b36; --color-text-subdued: #637381;
+    --color-border: #dfe3e8; --color-sidebar: #1c2260; --color-sidebar-hover: #2e3477;
+    --color-topbar: #ffffff;
+    --font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', Roboto, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  }
+  html { font-size: 62.5%; }
+  body { font-family: var(--font-family); font-size: 1.4rem; line-height: 2rem; color: var(--color-text); background-color: var(--color-bg); margin: 0; padding: 0; }
+  *, *::before, *::after { box-sizing: border-box; }
+  @keyframes progressFill { from { width: 0; } }
+
+  .audit-nav {
+    position: sticky; top: 0; z-index: 999; background: #1c2260; padding: 1.2rem 2.4rem;
+    display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;
+  }
+  .audit-nav span { color: rgba(255,255,255,0.5); font-size: 1.2rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+  .audit-nav a { color: rgba(255,255,255,0.8); text-decoration: none; font-size: 1.3rem; padding: 0.4rem 1rem; border-radius: 4px; }
+  .audit-nav a:hover, .audit-nav a.active { color: white; background: rgba(255,255,255,0.15); }
+
+  .view-label {
+    background: #5c6ac4; color: white; display: inline-block; padding: 0.4rem 1.2rem;
+    border-radius: 4px; font-size: 1.2rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; margin: 2.4rem 0 1.6rem 0;
+  }
+  .card { background: white; border-radius: 8px; border: 1px solid var(--color-border); }
+
+  /* Layout */
+  .app-shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 240px; min-height: 100vh; background: var(--color-sidebar); color: white;
+    display: flex; flex-direction: column; flex-shrink: 0;
+  }
+  .sidebar-header {
+    padding: 2rem 1.6rem; border-bottom: 1px solid rgba(255,255,255,0.1);
+    display: flex; align-items: center; gap: 1rem;
+  }
+  .sidebar-logo {
+    width: 32px; height: 32px; border-radius: 8px; background: #5c6ac4;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.4rem;
+  }
+  .sidebar-name { font-weight: 600; font-size: 1.4rem; }
+  .sidebar-nav { padding: 1.2rem 0.8rem; flex: 1; }
+  .sidebar-nav ul { list-style: none; margin: 0; padding: 0; }
+  .sidebar-nav li a {
+    display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1.2rem;
+    border-radius: 6px; color: rgba(255,255,255,0.75); text-decoration: none;
+    font-size: 1.4rem; margin-bottom: 2px; transition: all 0.15s;
+  }
+  .sidebar-nav li a:hover { color: white; background: var(--color-sidebar-hover); }
+  .sidebar-nav li a.active { color: white; background: var(--color-sidebar-hover); font-weight: 600; }
+  .sidebar-section-label {
+    font-size: 1.1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.4); padding: 1.6rem 1.2rem 0.4rem; margin-top: 0.8rem;
+  }
+  .sidebar-badge { width: 8px; height: 8px; border-radius: 50%; background: #de3618; margin-left: auto; }
+
+  .main-area { flex: 1; display: flex; flex-direction: column; }
+  .topbar {
+    height: 56px; background: var(--color-topbar); border-bottom: 1px solid var(--color-border);
+    display: flex; align-items: center; justify-content: space-between; padding: 0 2.4rem;
+  }
+  .topbar-breadcrumbs { display: flex; align-items: center; gap: 0.4rem; font-size: 1.3rem; }
+  .topbar-breadcrumbs .sep { color: #919eab; }
+  .topbar-breadcrumbs .current { color: #212b36; font-weight: 500; }
+  .topbar-breadcrumbs .parent { color: #637381; text-decoration: none; }
+  .topbar-right { display: flex; align-items: center; gap: 1.2rem; }
+  .notif-btn {
+    position: relative; background: none; border: none; cursor: pointer; padding: 0.6rem; border-radius: 6px;
+  }
+  .notif-badge {
+    position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%;
+    background: #de3618; color: white; font-size: 1rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .user-pill {
+    display: flex; align-items: center; gap: 0.8rem; background: none; border: none; cursor: pointer; padding: 0.4rem;
+  }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; color: white; font-size: 1.1rem; font-weight: 600;
+  }
+  .main-content { flex: 1; padding: 2.4rem; }
+
+  /* Progress bar */
+  .progress-track { height: 8px; background: #dfe3e8; border-radius: 4px; overflow: hidden; }
+  .progress-track.lg { height: 12px; }
+  .progress-track.sm { height: 4px; }
+  .progress-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; animation: progressFill 0.6s ease-out; }
+
+  /* Status badges */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 10px; font-size: 1.2rem; font-weight: 500; }
+  .badge-progress { color: #006fbb; background: #ebf5fa; }
+  .badge-paused { color: #8c6e00; background: #fcf1cd; }
+  .badge-deprecated { color: #bf0711; background: #fbeae5; }
+  .badge-upcoming { color: #637381; background: #f4f6f8; }
+  .badge-completed { color: #108043; background: #e3f1df; }
+  .badge-blocked { color: #bf0711; background: #fbeae5; }
+  .badge-pending { color: #637381; background: #f4f6f8; }
+
+  /* Notification dropdown */
+  .notif-dropdown {
+    position: absolute; top: 100%; right: 0; width: 360px; max-height: 400px; overflow-y: auto;
+    background: white; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.15); margin-top: 4px;
+    border: 1px solid var(--color-border); z-index: 200;
+  }
+</style>
+</head>
+<body>
+
+<nav class="audit-nav">
+  <span>Auditoría Visual</span>
+  <a href="01-auth.html">Auth</a>
+  <a href="02-dashboard.html" class="active">Dashboard</a>
+  <a href="03-objetivos-kpis.html">Objetivos & KPIs</a>
+  <a href="04-tareas-revision.html">Tareas & Revisión</a>
+  <a href="05-admin.html">Admin</a>
+  <a href="06-trimestral.html">Trimestral</a>
+</nav>
+
+<!-- ==================== FULL DASHBOARD LAYOUT ==================== -->
+<div class="view-label" style="margin-left: 2.4rem;">Vista: /{workspace}/  — Dashboard completo con sidebar, topbar y notificaciones</div>
+
+<div class="app-shell">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">K</div>
+      <span class="sidebar-name">Kublau</span>
+    </div>
+    <nav class="sidebar-nav">
+      <ul>
+        <li><a href="#" class="active">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1"/></svg>
+          Dashboard
+        </a></li>
+        <li><a href="#">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Objetivos
+        </a></li>
+        <li><a href="#">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          KPIs
+        </a></li>
+        <li><a href="#">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          Mis Tareas
+        </a></li>
+        <li><a href="#">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <span style="flex:1">Revisión Mensual</span>
+          <span class="sidebar-badge"></span>
+        </a></li>
+        <li><a href="#">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/></svg>
+          Trimestral
+        </a></li>
+        <li><a href="#">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+          Departamentos
+        </a></li>
+      </ul>
+      <div class="sidebar-section-label">Administración</div>
+      <ul>
+        <li><a href="#">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          Equipo
+        </a></li>
+        <li><a href="#">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Periodos
+        </a></li>
+        <li><a href="#">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/></svg>
+          Configuración
+        </a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <!-- MAIN AREA -->
+  <div class="main-area">
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="topbar-breadcrumbs">
+        <a href="#" class="parent">Kublau</a>
+        <span class="sep">/</span>
+        <span class="current">Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <!-- Notification bell -->
+        <div style="position: relative;">
+          <button class="notif-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#637381" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+            </svg>
+            <span class="notif-badge">3</span>
+          </button>
+          <!-- Notification dropdown (visible for audit) -->
+          <div class="notif-dropdown">
+            <div style="padding: 1.2rem 1.6rem; border-bottom: 1px solid #dfe3e8; display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-weight: 600; font-size: 1.4rem; color: #212b36;">Notificaciones</span>
+              <span style="font-size: 1.2rem; color: #5c6ac4; font-weight: 500;">3 sin leer</span>
+            </div>
+            <ul style="list-style: none; margin: 0; padding: 0;">
+              <li style="padding: 1.2rem 1.6rem; border-bottom: 1px solid #f4f6f8; background: #f9fafb;">
+                <div style="display: flex; gap: 0.8rem; align-items: flex-start;">
+                  <span style="width: 8px; height: 8px; border-radius: 50%; background: #5c6ac4; margin-top: 5px; flex-shrink: 0;"></span>
+                  <div>
+                    <div style="font-weight: 500; font-size: 1.3rem; color: #212b36;">Revisión mensual pendiente</div>
+                    <div style="font-size: 1.2rem; color: #637381; margin-top: 2px;">Tu revisión mensual de abril está pendiente.</div>
+                    <div style="font-size: 1.1rem; color: #919eab; margin-top: 4px;">hace 2 horas</div>
+                  </div>
+                </div>
+              </li>
+              <li style="padding: 1.2rem 1.6rem; border-bottom: 1px solid #f4f6f8; background: #f9fafb;">
+                <div style="display: flex; gap: 0.8rem; align-items: flex-start;">
+                  <span style="width: 8px; height: 8px; border-radius: 50%; background: #5c6ac4; margin-top: 5px; flex-shrink: 0;"></span>
+                  <div>
+                    <div style="font-weight: 500; font-size: 1.3rem; color: #212b36;">Tarea asignada</div>
+                    <div style="font-size: 1.2rem; color: #637381; margin-top: 2px;">Se te asignó la tarea: Diseñar mockups.</div>
+                    <div style="font-size: 1.1rem; color: #919eab; margin-top: 4px;">hace 5 horas</div>
+                  </div>
+                </div>
+              </li>
+              <li style="padding: 1.2rem 1.6rem; border-bottom: 1px solid #f4f6f8;">
+                <div style="display: flex; gap: 0.8rem; align-items: flex-start;">
+                  <div>
+                    <div style="font-weight: 500; font-size: 1.3rem; color: #212b36;">Tarea bloqueada</div>
+                    <div style="font-size: 1.2rem; color: #637381; margin-top: 2px;">La tarea 'Implementar API' fue marcada como bloqueada.</div>
+                    <div style="font-size: 1.1rem; color: #919eab; margin-top: 4px;">hace 1 día</div>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <!-- User -->
+        <button class="user-pill">
+          <div class="avatar" style="background: #5c6ac4;">AL</div>
+          <span style="font-size: 1.3rem; color: #212b36; font-weight: 500;">Alberto López</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN CONTENT: DASHBOARD -->
+    <main class="main-content">
+      <div style="margin-bottom: 2.4rem;">
+        <h1 style="font-size: 2.4rem; font-weight: 600; color: #212b36;">Dashboard</h1>
+        <p style="color: #637381; font-size: 1.4rem; margin-top: 0.4rem;">Periodo activo: Q2 2026</p>
+      </div>
+
+      <!-- Stat cards -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.6rem; margin-bottom: 2.4rem;">
+        <div class="card" style="padding: 2rem;">
+          <div style="display: flex; align-items: center; gap: 1.2rem;">
+            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(92,106,196,0.1); display: flex; align-items: center; justify-content: center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5c6ac4" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6"/></svg>
+            </div>
+            <div>
+              <div style="font-size: 2rem; font-weight: 700; color: #212b36;">8</div>
+              <div style="font-size: 1.2rem; color: #637381;">KPIs</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="padding: 2rem;">
+          <div style="display: flex; align-items: center; gap: 1.2rem;">
+            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(71,193,191,0.1); display: flex; align-items: center; justify-content: center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#47c1bf" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div>
+              <div style="font-size: 2rem; font-weight: 700; color: #212b36;">14</div>
+              <div style="font-size: 1.2rem; color: #637381;">Objetivos</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="padding: 2rem;">
+          <div style="display: flex; align-items: center; gap: 1.2rem;">
+            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(80,184,60,0.1); display: flex; align-items: center; justify-content: center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#50b83c" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>
+            </div>
+            <div>
+              <div style="font-size: 2rem; font-weight: 700; color: #212b36;">23/42</div>
+              <div style="font-size: 1.2rem; color: #637381;">Tareas completadas</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="padding: 2rem;">
+          <div style="display: flex; align-items: center; gap: 1.2rem;">
+            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(222,54,24,0.1); display: flex; align-items: center; justify-content: center;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#de3618" stroke-width="2"><path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div>
+              <div style="font-size: 2rem; font-weight: 700; color: #212b36;">3</div>
+              <div style="font-size: 1.2rem; color: #637381;">Tareas bloqueadas</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress overview -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem; margin-bottom: 2.4rem;">
+        <div class="card" style="padding: 2rem;">
+          <h2 style="font-size: 1.6rem; font-weight: 600; color: #212b36; margin-bottom: 1.2rem;">Progreso promedio de KPIs</h2>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="progress-track lg" style="flex: 1;">
+              <div class="progress-fill" style="width: 62%; background: #f49342;"></div>
+            </div>
+            <span style="font-size: 1.2rem; color: #637381; min-width: 36px; text-align: right;">62%</span>
+          </div>
+        </div>
+        <div class="card" style="padding: 2rem;">
+          <h2 style="font-size: 1.6rem; font-weight: 600; color: #212b36; margin-bottom: 1.2rem;">Progreso promedio de Objetivos</h2>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="progress-track lg" style="flex: 1;">
+              <div class="progress-fill" style="width: 48%; background: #f49342;"></div>
+            </div>
+            <span style="font-size: 1.2rem; color: #637381; min-width: 36px; text-align: right;">48%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent objectives & tasks -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem;">
+        <div class="card" style="padding: 2rem;">
+          <h2 style="font-size: 1.6rem; font-weight: 600; color: #212b36; margin-bottom: 1.6rem;">Objetivos recientes</h2>
+          <ul style="list-style: none; padding: 0; margin: 0;">
+            <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #f4f6f8;">
+              <span style="font-size: 1.3rem; color: #212b36;">Lanzamiento plataforma v2.0</span>
+              <span class="badge badge-progress">&#9654; En progreso</span>
+            </li>
+            <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #f4f6f8;">
+              <span style="font-size: 1.3rem; color: #212b36;">Migración a nueva infraestructura</span>
+              <span class="badge badge-progress">&#9654; En progreso</span>
+            </li>
+            <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #f4f6f8;">
+              <span style="font-size: 1.3rem; color: #212b36;">Certificación ISO 27001</span>
+              <span class="badge badge-paused">&#9208; Pausado</span>
+            </li>
+            <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #f4f6f8;">
+              <span style="font-size: 1.3rem; color: #212b36;">Rediseño del onboarding</span>
+              <span class="badge badge-upcoming">&#9675; Próximo</span>
+            </li>
+            <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 0;">
+              <span style="font-size: 1.3rem; color: #212b36;">Automatización del pipeline CI/CD</span>
+              <span class="badge badge-completed">&#10003; Completado</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="card" style="padding: 2rem;">
+          <h2 style="font-size: 1.6rem; font-weight: 600; color: #212b36; margin-bottom: 1.6rem;">Tareas recientes</h2>
+          <ul style="list-style: none; padding: 0; margin: 0;">
+            <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #f4f6f8;">
+              <span style="font-size: 1.3rem; color: #212b36;">Diseñar mockups nueva landing</span>
+              <span class="badge badge-progress">&#9654; En progreso</span>
+            </li>
+            <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #f4f6f8;">
+              <span style="font-size: 1.3rem; color: #212b36;">Implementar API de pagos</span>
+              <span class="badge badge-blocked">&#9888; Bloqueada</span>
+            </li>
+            <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #f4f6f8;">
+              <span style="font-size: 1.3rem; color: #212b36;">Configurar monitoreo Grafana</span>
+              <span class="badge badge-completed">&#10003; Completada</span>
+            </li>
+            <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #f4f6f8;">
+              <span style="font-size: 1.3rem; color: #212b36;">Escribir documentación API v2</span>
+              <span class="badge badge-pending">&#9675; Pendiente</span>
+            </li>
+            <li style="display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 0;">
+              <span style="font-size: 1.3rem; color: #212b36;">Migrar base de datos staging</span>
+              <span class="badge badge-progress">&#9654; En progreso</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+</body>
+</html>

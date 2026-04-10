@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auditoría Visual — Trimestral</title>
+<link rel="stylesheet" href="../src/app/polaris.css">
+<style>
+  :root {
+    --color-primary: #5c6ac4;
+    --color-primary-dark: #4959bd;
+    --color-success: #50b83c;
+    --color-warning: #f49342;
+    --color-danger: #de3618;
+    --color-info: #47c1bf;
+    --color-bg: #f4f6f8;
+    --color-surface: #ffffff;
+    --color-text: #212b36;
+    --color-text-subdued: #637381;
+    --color-border: #dfe3e8;
+    --font-family: -apple-system, BlinkMacSystemFont, 'San Francisco', Roboto, 'Segoe UI', 'Helvetica Neue', sans-serif;
+    --sidebar: #f4f6f8;
+    --sidebar-hover: rgba(223, 227, 232, 0.3);
+    --topbar: #3B5BDB;
+  }
+  html { font-size: 62.5%; }
+  body { font-family: var(--font-family); font-size: 1.4rem; line-height: 2rem; color: var(--color-text); background-color: var(--color-bg); margin: 0; padding: 0; }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  /* ---- Audit nav ---- */
+  .audit-nav {
+    position: sticky; top: 0; z-index: 999; background: #3B5BDB; padding: 1.2rem 2.4rem;
+    display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap;
+  }
+  .audit-nav span { color: rgba(255,255,255,0.5); font-size: 1.2rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+  .audit-nav a { color: rgba(255,255,255,0.8); text-decoration: none; font-size: 1.3rem; padding: 0.4rem 1rem; border-radius: 4px; transition: all 0.15s; }
+  .audit-nav a:hover, .audit-nav a.active { color: white; background: rgba(255,255,255,0.15); }
+
+  /* ---- View labels & layout ---- */
+  .view-label {
+    background: #3B5BDB; color: white; display: inline-block; padding: 0.4rem 1.2rem;
+    border-radius: 4px; font-size: 1.2rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; margin: 3.2rem 0 1.6rem;
+  }
+  .view-container { max-width: 1280px; margin: 0 auto; padding: 0 2.4rem 4rem; }
+  .view-separator { border: none; border-top: 2px dashed #dfe3e8; margin: 4rem 0; }
+
+  /* ---- Shared card ---- */
+  .card {
+    background: white; border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border: 1px solid var(--color-border); padding: 2rem;
+  }
+
+  /* ---- Progress bar ---- */
+  .progress-track {
+    height: 8px; background: #dfe3e8; border-radius: 4px; overflow: hidden;
+  }
+  .progress-fill { height: 100%; border-radius: 4px; }
+  .progress-track.sm { height: 6px; }
+  .progress-track.lg { height: 12px; }
+
+  /* ---- Stat cards ---- */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.6rem; margin-bottom: 2.4rem; }
+  .stat-card {
+    background: white; border-radius: 3px; border: 1px solid var(--color-border);
+    padding: 2rem; display: flex; flex-direction: column; gap: 0.4rem;
+  }
+  .stat-card .stat-value { font-size: 3.2rem; font-weight: 700; line-height: 1; }
+  .stat-card .stat-label { font-size: 1.2rem; color: #637381; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat-card .stat-sub { font-size: 1.2rem; color: #919eab; margin-top: 0.2rem; }
+
+  /* ---- Two-column grid ---- */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
+
+  /* ---- Section title ---- */
+  .section-title { font-size: 1.6rem; font-weight: 600; color: #212b36; margin: 0 0 1.6rem; }
+
+  /* ---- KPI bar row ---- */
+  .kpi-row { margin-bottom: 1.4rem; }
+  .kpi-row-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .kpi-title { font-size: 1.3rem; font-weight: 500; color: #212b36; }
+  .kpi-pct { font-size: 1.3rem; font-weight: 700; }
+
+  /* ---- Dept row ---- */
+  .dept-row { margin-bottom: 1.2rem; }
+  .dept-header { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.5rem; }
+  .dept-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .dept-name { font-size: 1.3rem; font-weight: 500; color: #212b36; flex: 1; }
+  .dept-pct { font-size: 1.2rem; color: #637381; }
+
+  /* ---- Status badge ---- */
+  .badge {
+    display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.8rem;
+    border-radius: 100px; font-size: 1.2rem; font-weight: 600;
+  }
+  .badge-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .badge-success { background: #f1faf0; color: #108043; }
+  .badge-success .badge-dot { background: #50b83c; }
+  .badge-warning { background: #fdf6e4; color: #8a6116; }
+  .badge-warning .badge-dot { background: #f49342; }
+  .badge-danger { background: #fbeae5; color: #bf0711; }
+  .badge-danger .badge-dot { background: #de3618; }
+  .badge-info { background: #ebf9f9; color: #006b65; }
+  .badge-info .badge-dot { background: #47c1bf; }
+  .badge-neutral { background: #f4f6f8; color: #637381; }
+  .badge-neutral .badge-dot { background: #919eab; }
+
+  /* ---- Status block grid ---- */
+  .status-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem; }
+  .status-block {
+    border-radius: 8px; padding: 1.6rem; display: flex; align-items: center; gap: 1.2rem;
+  }
+  .status-block-count { font-size: 2.8rem; font-weight: 700; line-height: 1; }
+  .status-block-info { display: flex; flex-direction: column; gap: 0.2rem; }
+  .status-block-label { font-size: 1.3rem; font-weight: 600; }
+  .status-block-sub { font-size: 1.1rem; opacity: 0.7; }
+  .sb-green { background: #f1faf0; color: #108043; }
+  .sb-orange { background: #fdf6e4; color: #8a6116; }
+  .sb-red { background: #fbeae5; color: #bf0711; }
+  .sb-blue { background: #f4f5fc; color: #3b4182; }
+
+  /* ---- Table ---- */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 1.3rem; }
+  .data-table th { text-align: left; padding: 0.8rem 1.2rem; font-size: 1.1rem; font-weight: 600; color: #637381; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 2px solid #dfe3e8; background: #f9fafb; }
+  .data-table td { padding: 1rem 1.2rem; border-bottom: 1px solid #f4f6f8; color: #212b36; vertical-align: top; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: #fafbfc; }
+  .blocked-reason { font-size: 1.2rem; color: #bf0711; margin-top: 0.2rem; }
+
+  /* ---- Timeline ---- */
+  .timeline { display: flex; flex-direction: column; gap: 0; }
+  .timeline-item { display: flex; gap: 1.2rem; padding: 1rem 0; border-bottom: 1px solid #f4f6f8; }
+  .timeline-item:last-child { border-bottom: none; }
+  .timeline-avatar {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; font-weight: 700; color: white;
+  }
+  .timeline-content { flex: 1; }
+  .timeline-header { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .timeline-name { font-size: 1.3rem; font-weight: 600; color: #212b36; }
+  .timeline-action { font-size: 1.2rem; color: #637381; }
+  .timeline-time { font-size: 1.1rem; color: #919eab; margin-left: auto; }
+  .timeline-target { font-size: 1.2rem; color: #3B5BDB; margin-top: 0.2rem; font-weight: 500; }
+
+  /* ---- Buttons ---- */
+  .btn { min-height: 3.6rem; padding: 0.7rem 1.6rem; font-size: 1.5rem; font-weight: 600; border: none; border-radius: 3px; cursor: pointer; font-family: var(--font-family); }
+  .btn-primary { color: white; background: linear-gradient(to bottom, #6371c7, #5563c1); border: 1px solid #3f4eae; }
+  .btn-primary:hover { background: linear-gradient(to bottom, #5563c1, #4959bd); }
+  .btn-secondary { color: #3B5BDB; background: #f4f5fc; border: 1px solid #c8cff8; }
+  .btn-secondary:hover { background: #eceef9; }
+
+  /* ============================================================
+     PRESENTATION MODE
+     ============================================================ */
+  .pres-wrapper {
+    background: #1a2340; border-radius: 12px; overflow: hidden;
+    position: relative; min-height: 560px; padding: 4rem 5rem;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .pres-hint {
+    position: absolute; bottom: 2.4rem; left: 50%; transform: translateX(-50%);
+    font-size: 1.2rem; color: rgba(255,255,255,0.35); white-space: nowrap; letter-spacing: 0.05em;
+  }
+  .pres-dots {
+    position: absolute; bottom: 2.4rem; right: 3.2rem;
+    display: flex; gap: 0.6rem; align-items: center;
+  }
+  .pres-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.2); }
+  .pres-dot.active { background: #3B5BDB; width: 24px; border-radius: 4px; }
+  .pres-esc {
+    position: absolute; top: 2rem; right: 2.4rem;
+    font-size: 1.2rem; color: rgba(255,255,255,0.35); letter-spacing: 0.04em;
+  }
+  .pres-slide { width: 100%; max-width: 960px; }
+  .pres-title { font-size: 3.2rem; font-weight: 700; color: white; margin: 0 0 0.8rem; text-align: center; }
+  .pres-subtitle { font-size: 1.6rem; color: rgba(255,255,255,0.55); text-align: center; margin: 0 0 4rem; }
+  .pres-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
+  .pres-stat-card {
+    background: #252d6d; border-radius: 8px; padding: 2.4rem 2rem;
+    text-align: center; border: 1px solid rgba(255,255,255,0.08);
+  }
+  .pres-stat-value { font-size: 4.4rem; font-weight: 800; line-height: 1; }
+  .pres-stat-label { font-size: 1.2rem; color: rgba(255,255,255,0.5); margin-top: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .pres-nav-arrows {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 100%; display: flex; justify-content: space-between; padding: 0 1.6rem; pointer-events: none;
+  }
+  .pres-arrow {
+    width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.1);
+    display: flex; align-items: center; justify-content: center; pointer-events: all; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); font-size: 1.6rem; user-select: none;
+  }
+  .pres-arrow:hover { background: rgba(255,255,255,0.2); }
+
+  /* ============================================================
+     PDF PREVIEW
+     ============================================================ */
+  .pdf-preview-outer {
+    background: #e8e8e8; padding: 3.2rem; border-radius: 8px;
+    display: flex; justify-content: center;
+  }
+  .pdf-page {
+    background: white; width: 794px; min-height: 1123px; padding: 40px 48px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 10px; color: #212b36;
+    position: relative;
+  }
+  .pdf-header {
+    border-bottom: 3px solid #3B5BDB; padding-bottom: 16px; margin-bottom: 24px;
+    display: flex; justify-content: space-between; align-items: flex-end;
+  }
+  .pdf-company { font-size: 22px; font-weight: 700; color: #212b36; }
+  .pdf-report-title { font-size: 13px; color: #3B5BDB; font-weight: 600; margin-top: 4px; }
+  .pdf-period { font-size: 11px; color: #637381; }
+  .pdf-meta { text-align: right; font-size: 9px; color: #919eab; }
+  .pdf-section-title {
+    font-size: 13px; font-weight: 700; color: #212b36; margin: 20px 0 10px;
+    padding-bottom: 4px; border-bottom: 2px solid #3B5BDB;
+  }
+  .pdf-summary-row { display: flex; gap: 12px; margin-bottom: 20px; }
+  .pdf-summary-item {
+    flex: 1; background: #f9fafb; border-radius: 4px; padding: 12px 8px; text-align: center;
+  }
+  .pdf-summary-num { font-size: 24px; font-weight: 700; color: #3B5BDB; line-height: 1; }
+  .pdf-summary-lbl { font-size: 8px; color: #637381; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .pdf-table { width: 100%; border-collapse: collapse; font-size: 9px; }
+  .pdf-table th { text-align: left; padding: 7px 8px; background: #f4f6f8; color: #637381; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #dfe3e8; font-size: 8px; }
+  .pdf-table td { padding: 7px 8px; border-bottom: 1px solid #f4f6f8; vertical-align: middle; }
+  .pdf-table tr:last-child td { border-bottom: none; }
+  .pdf-pbar-track { height: 5px; background: #dfe3e8; border-radius: 2px; margin-top: 3px; }
+  .pdf-pbar-fill { height: 5px; border-radius: 2px; }
+  .pdf-blocked-item { background: #fef3f0; border-left: 3px solid #de3618; padding: 7px 10px; margin-bottom: 5px; border-radius: 2px; }
+  .pdf-blocked-title { font-size: 9px; font-weight: 700; color: #212b36; }
+  .pdf-blocked-reason { font-size: 8px; color: #bf0711; margin-top: 2px; }
+  .pdf-footer { position: absolute; bottom: 24px; left: 48px; right: 48px; display: flex; justify-content: space-between; font-size: 8px; color: #919eab; border-top: 1px solid #dfe3e8; padding-top: 8px; }
+  .pdf-watermark { color: #919eab; font-size: 9px; text-align: center; margin-top: 24px; }
+  .pdf-page-2 { margin-top: 2.4rem; }
+</style>
+</head>
+<body>
+
+<!-- ============================== AUDIT NAV ============================== -->
+<nav class="audit-nav">
+  <span>Auditoría Visual</span>
+  <a href="01-auth.html">Auth</a>
+  <a href="02-dashboard.html">Dashboard</a>
+  <a href="03-objetivos-kpis.html">Objetivos &amp; KPIs</a>
+  <a href="04-tareas-revision.html">Tareas &amp; Revisión</a>
+  <a href="05-admin.html">Admin</a>
+  <a href="06-trimestral.html" class="active">Trimestral</a>
+</nav>
+
+<div class="view-container">
+
+  <!-- ====================================================================
+       VIEW 1: TRIMESTRAL DASHBOARD — NORMAL VIEW
+       ==================================================================== -->
+  <div class="view-label">Vista: /[workspace-slug]/trimestral — Dashboard Normal</div>
+
+  <!-- Page header -->
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:2.4rem;">
+    <div>
+      <h1 style="font-size:2.4rem; font-weight:600; color:#212b36; margin:0 0 0.4rem;">Dashboard Trimestral — Q1 2026</h1>
+      <p style="color:#637381; font-size:1.4rem; margin:0;">Enero – Marzo 2026 &nbsp;·&nbsp; Kublau Inc.</p>
+    </div>
+    <div style="display:flex; gap:1rem; align-items:center;">
+      <button class="btn btn-secondary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px; vertical-align:-2px;"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        Presentación
+      </button>
+      <button class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" style="margin-right:6px; vertical-align:-2px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Exportar PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- 1. Resumen ejecutivo — 4 stat cards -->
+  <p style="font-size:1.2rem; font-weight:600; color:#637381; text-transform:uppercase; letter-spacing:0.06em; margin:0 0 1.2rem;">Resumen ejecutivo</p>
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">Progreso Global</div>
+      <div class="stat-value" style="color:#3B5BDB;">67%</div>
+      <div style="margin-top:0.8rem;">
+        <div class="progress-track">
+          <div class="progress-fill" style="width:67%; background:#3B5BDB;"></div>
+        </div>
+      </div>
+      <div class="stat-sub">+8% vs. Q4 2025</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">KPIs en meta</div>
+      <div class="stat-value" style="color:#50b83c;">3<span style="font-size:2rem; font-weight:400; color:#919eab;">/5</span></div>
+      <div style="margin-top:0.8rem; display:flex; gap:0.4rem;">
+        <div style="flex:1; height:4px; border-radius:2px; background:#50b83c;"></div>
+        <div style="flex:1; height:4px; border-radius:2px; background:#50b83c;"></div>
+        <div style="flex:1; height:4px; border-radius:2px; background:#50b83c;"></div>
+        <div style="flex:1; height:4px; border-radius:2px; background:#dfe3e8;"></div>
+        <div style="flex:1; height:4px; border-radius:2px; background:#dfe3e8;"></div>
+      </div>
+      <div class="stat-sub">60% cumplimiento</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Objetivos completados</div>
+      <div class="stat-value" style="color:#47c1bf;">4<span style="font-size:2rem; font-weight:400; color:#919eab;">/12</span></div>
+      <div style="margin-top:0.8rem;">
+        <div class="progress-track">
+          <div class="progress-fill" style="width:33%; background:#47c1bf;"></div>
+        </div>
+      </div>
+      <div class="stat-sub">33% completados</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Tareas bloqueadas</div>
+      <div class="stat-value" style="color:#de3618;">2</div>
+      <div style="margin-top:0.8rem; display:flex; gap:0.6rem; align-items:center;">
+        <span class="badge badge-danger"><span class="badge-dot"></span>Requieren atención</span>
+      </div>
+      <div class="stat-sub">desde hace &gt;3 días</div>
+    </div>
+  </div>
+
+  <!-- 2. Progreso por KPI -->
+  <div class="card" style="margin-bottom:2rem;">
+    <p class="section-title">Progreso por KPI</p>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.6rem 3.2rem;">
+
+      <div class="kpi-row">
+        <div class="kpi-row-header">
+          <span class="kpi-title">Ingresos recurrentes mensuales (MRR)</span>
+          <span class="kpi-pct" style="color:#50b83c;">82%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" style="width:82%; background:#50b83c;"></div>
+        </div>
+        <div style="font-size:1.1rem; color:#919eab; margin-top:0.3rem;">Meta: €120k &nbsp;·&nbsp; Actual: €98.4k</div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-row-header">
+          <span class="kpi-title">Satisfacción del cliente (NPS)</span>
+          <span class="kpi-pct" style="color:#50b83c;">76%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" style="width:76%; background:#50b83c;"></div>
+        </div>
+        <div style="font-size:1.1rem; color:#919eab; margin-top:0.3rem;">Meta: 50 puntos &nbsp;·&nbsp; Actual: 38</div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-row-header">
+          <span class="kpi-title">Tasa de conversión de leads</span>
+          <span class="kpi-pct" style="color:#f49342;">54%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" style="width:54%; background:#f49342;"></div>
+        </div>
+        <div style="font-size:1.1rem; color:#919eab; margin-top:0.3rem;">Meta: 8% &nbsp;·&nbsp; Actual: 4.3%</div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-row-header">
+          <span class="kpi-title">Tiempo medio de resolución (soporte)</span>
+          <span class="kpi-pct" style="color:#f49342;">61%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" style="width:61%; background:#f49342;"></div>
+        </div>
+        <div style="font-size:1.1rem; color:#919eab; margin-top:0.3rem;">Meta: 4h &nbsp;·&nbsp; Actual: 6.2h</div>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-row-header">
+          <span class="kpi-title">Cobertura de tests en codebase</span>
+          <span class="kpi-pct" style="color:#de3618;">38%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" style="width:38%; background:#de3618;"></div>
+        </div>
+        <div style="font-size:1.1rem; color:#919eab; margin-top:0.3rem;">Meta: 80% &nbsp;·&nbsp; Actual: 30%</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 3 & 4. Departamentos + Objetivos por estado -->
+  <div class="grid-2">
+
+    <!-- Progreso por departamento -->
+    <div class="card">
+      <p class="section-title">Progreso por Departamento</p>
+
+      <div class="dept-row">
+        <div class="dept-header">
+          <div class="dept-dot" style="background:#3B5BDB;"></div>
+          <span class="dept-name">Producto &amp; Tecnología</span>
+          <span class="dept-pct">71%</span>
+        </div>
+        <div class="progress-track sm">
+          <div class="progress-fill" style="width:71%; background:#3B5BDB;"></div>
+        </div>
+        <div style="font-size:1.1rem; color:#919eab; margin-top:0.3rem;">3 KPIs &nbsp;·&nbsp; 5 objetivos</div>
+      </div>
+
+      <div class="dept-row">
+        <div class="dept-header">
+          <div class="dept-dot" style="background:#47c1bf;"></div>
+          <span class="dept-name">Marketing &amp; Crecimiento</span>
+          <span class="dept-pct">58%</span>
+        </div>
+        <div class="progress-track sm">
+          <div class="progress-fill" style="width:58%; background:#47c1bf;"></div>
+        </div>
+        <div style="font-size:1.1rem; color:#919eab; margin-top:0.3rem;">1 KPI &nbsp;·&nbsp; 3 objetivos</div>
+      </div>
+
+      <div class="dept-row">
+        <div class="dept-header">
+          <div class="dept-dot" style="background:#50b83c;"></div>
+          <span class="dept-name">Ventas &amp; Revenue</span>
+          <span class="dept-pct">82%</span>
+        </div>
+        <div class="progress-track sm">
+          <div class="progress-fill" style="width:82%; background:#50b83c;"></div>
+        </div>
+        <div style="font-size:1.1rem; color:#919eab; margin-top:0.3rem;">2 KPIs &nbsp;·&nbsp; 2 objetivos</div>
+      </div>
+
+      <div class="dept-row">
+        <div class="dept-header">
+          <div class="dept-dot" style="background:#f49342;"></div>
+          <span class="dept-name">Atención al Cliente</span>
+          <span class="dept-pct">49%</span>
+        </div>
+        <div class="progress-track sm">
+          <div class="progress-fill" style="width:49%; background:#f49342;"></div>
+        </div>
+        <div style="font-size:1.1rem; color:#919eab; margin-top:0.3rem;">1 KPI &nbsp;·&nbsp; 2 objetivos</div>
+      </div>
+
+    </div>
+
+    <!-- Objetivos por estado -->
+    <div class="card">
+      <p class="section-title">Objetivos por Estado</p>
+      <div class="status-grid">
+
+        <div class="status-block sb-blue">
+          <div class="status-block-count" style="color:#3B5BDB;">5</div>
+          <div class="status-block-info">
+            <div class="status-block-label">En camino</div>
+            <div class="status-block-sub">Progreso normal</div>
+          </div>
+        </div>
+
+        <div class="status-block sb-orange">
+          <div class="status-block-count" style="color:#8a6116;">3</div>
+          <div class="status-block-info">
+            <div class="status-block-label">En riesgo</div>
+            <div class="status-block-sub">Requieren seguimiento</div>
+          </div>
+        </div>
+
+        <div class="status-block sb-red">
+          <div class="status-block-count" style="color:#bf0711;">2</div>
+          <div class="status-block-info">
+            <div class="status-block-label">Retrasado</div>
+            <div class="status-block-sub">Acción urgente</div>
+          </div>
+        </div>
+
+        <div class="status-block sb-green">
+          <div class="status-block-count" style="color:#108043;">4</div>
+          <div class="status-block-info">
+            <div class="status-block-label">Completado</div>
+            <div class="status-block-sub">Cerrados este trimestre</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Mini list -->
+      <div style="margin-top:1.6rem; border-top:1px solid #f4f6f8; padding-top:1.2rem;">
+        <div style="font-size:1.2rem; font-weight:600; color:#637381; margin-bottom:0.8rem; text-transform:uppercase; letter-spacing:0.04em;">Objetivos en riesgo</div>
+        <div style="display:flex; flex-direction:column; gap:0.4rem;">
+          <div style="font-size:1.2rem; color:#212b36; display:flex; gap:0.4rem; align-items:center;">
+            <span style="color:#f49342;">●</span> Reducir churn rate mensual al 2%
+          </div>
+          <div style="font-size:1.2rem; color:#212b36; display:flex; gap:0.4rem; align-items:center;">
+            <span style="color:#f49342;">●</span> Lanzar módulo de analíticas avanzadas
+          </div>
+          <div style="font-size:1.2rem; color:#212b36; display:flex; gap:0.4rem; align-items:center;">
+            <span style="color:#de3618;">●</span> Implementar SSO empresarial
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 5. Tareas bloqueadas -->
+  <div class="card" style="margin-bottom:2rem;">
+    <p class="section-title" style="display:flex; align-items:center; gap:0.8rem;">
+      Tareas bloqueadas
+      <span style="background:#fbeae5; color:#bf0711; font-size:1.1rem; font-weight:700; padding:0.2rem 0.7rem; border-radius:100px;">2</span>
+    </p>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Tarea</th>
+          <th>Objetivo vinculado</th>
+          <th>Asignado a</th>
+          <th>Motivo del bloqueo</th>
+          <th>Días bloqueado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div style="font-weight:600; color:#212b36;">Integrar API de Stripe v3</div>
+            <div class="blocked-reason">Esperando credenciales de producción</div>
+          </td>
+          <td style="color:#637381;">Lanzar pasarela de pagos self-service</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+              <div style="width:28px; height:28px; border-radius:50%; background:#3B5BDB; display:flex; align-items:center; justify-content:center; font-size:1.1rem; font-weight:700; color:white; flex-shrink:0;">MR</div>
+              <span>María Rodríguez</span>
+            </div>
+          </td>
+          <td><span class="badge badge-danger"><span class="badge-dot"></span>Dependencia externa</span></td>
+          <td style="font-weight:700; color:#de3618; text-align:center;">7</td>
+        </tr>
+        <tr>
+          <td>
+            <div style="font-weight:600; color:#212b36;">Migrar base de datos a PostgreSQL 16</div>
+            <div class="blocked-reason">Entorno de staging no disponible</div>
+          </td>
+          <td style="color:#637381;">Implementar SSO empresarial</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+              <div style="width:28px; height:28px; border-radius:50%; background:#47c1bf; display:flex; align-items:center; justify-content:center; font-size:1.1rem; font-weight:700; color:white; flex-shrink:0;">JL</div>
+              <span>Javier López</span>
+            </div>
+          </td>
+          <td><span class="badge badge-warning"><span class="badge-dot"></span>Infraestructura</span></td>
+          <td style="font-weight:700; color:#de3618; text-align:center;">4</td>
+        </tr>
+        <tr>
+          <td>
+            <div style="font-weight:600; color:#212b36;">Validar contratos con proveedor cloud</div>
+            <div class="blocked-reason">Revisión legal pendiente de firma</div>
+          </td>
+          <td style="color:#637381;">Reducir costes de infraestructura 15%</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+              <div style="width:28px; height:28px; border-radius:50%; background:#f49342; display:flex; align-items:center; justify-content:center; font-size:1.1rem; font-weight:700; color:white; flex-shrink:0;">AM</div>
+              <span>Ana Martínez</span>
+            </div>
+          </td>
+          <td><span class="badge badge-neutral"><span class="badge-dot"></span>Aprobación interna</span></td>
+          <td style="font-weight:700; color:#f49342; text-align:center;">3</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 6. Actividad reciente -->
+  <div class="card" style="margin-bottom:2rem;">
+    <p class="section-title">Actividad reciente</p>
+    <div class="timeline">
+
+      <div class="timeline-item">
+        <div class="timeline-avatar" style="background:#3B5BDB;">MR</div>
+        <div class="timeline-content">
+          <div class="timeline-header">
+            <span class="timeline-name">María Rodríguez</span>
+            <span class="timeline-action">actualizó el progreso al</span>
+            <span style="font-size:1.2rem; font-weight:700; color:#50b83c;">82%</span>
+            <span class="timeline-time">hace 12 min</span>
+          </div>
+          <div class="timeline-target">KPI: Ingresos recurrentes mensuales (MRR)</div>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-avatar" style="background:#47c1bf;">JL</div>
+        <div class="timeline-content">
+          <div class="timeline-header">
+            <span class="timeline-name">Javier López</span>
+            <span class="timeline-action">cambió el estado a</span>
+            <span class="badge badge-danger" style="font-size:1.1rem;"><span class="badge-dot"></span>Bloqueado</span>
+            <span class="timeline-time">hace 2 h</span>
+          </div>
+          <div class="timeline-target">Tarea: Migrar base de datos a PostgreSQL 16</div>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-avatar" style="background:#50b83c;">CP</div>
+        <div class="timeline-content">
+          <div class="timeline-header">
+            <span class="timeline-name">Carlos Pérez</span>
+            <span class="timeline-action">completó el objetivo</span>
+            <span class="timeline-time">hace 5 h</span>
+          </div>
+          <div class="timeline-target">Objetivo: Rediseñar onboarding de nuevos usuarios</div>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-avatar" style="background:#f49342;">AM</div>
+        <div class="timeline-content">
+          <div class="timeline-header">
+            <span class="timeline-name">Ana Martínez</span>
+            <span class="timeline-action">añadió un comentario</span>
+            <span class="timeline-time">ayer, 16:42</span>
+          </div>
+          <div style="font-size:1.2rem; color:#637381; margin-top:0.4rem; background:#f9fafb; padding:0.8rem; border-radius:4px; border-left:3px solid #dfe3e8;">
+            "Los contratos están en revisión del departamento legal, esperamos respuesta esta semana."
+          </div>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-avatar" style="background:#de3618;">RS</div>
+        <div class="timeline-content">
+          <div class="timeline-header">
+            <span class="timeline-name">Roberto Sánchez</span>
+            <span class="timeline-action">marcó como</span>
+            <span class="badge badge-warning" style="font-size:1.1rem;"><span class="badge-dot"></span>En riesgo</span>
+            <span class="timeline-time">hace 2 días</span>
+          </div>
+          <div class="timeline-target">Objetivo: Lanzar módulo de analíticas avanzadas</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <hr class="view-separator">
+
+  <!-- ====================================================================
+       VIEW 2: PRESENTATION / FULLSCREEN MODE
+       ==================================================================== -->
+  <div class="view-label">Vista: /[workspace-slug]/trimestral — Modo Presentación (dark)</div>
+
+  <div class="pres-wrapper">
+
+    <!-- Controls -->
+    <span class="pres-esc">ESC para salir</span>
+
+    <!-- Navigation arrows -->
+    <div class="pres-nav-arrows">
+      <div class="pres-arrow">&#8592;</div>
+      <div class="pres-arrow">&#8594;</div>
+    </div>
+
+    <!-- Slide: Resumen ejecutivo -->
+    <div class="pres-slide">
+      <h1 class="pres-title">Resumen Trimestral Q1 2026</h1>
+      <p class="pres-subtitle">Kublau Inc. &nbsp;·&nbsp; Enero – Marzo 2026</p>
+
+      <div class="pres-stat-grid">
+        <div class="pres-stat-card">
+          <div class="pres-stat-value" style="color:#3B5BDB;">67%</div>
+          <div class="pres-stat-label">Progreso Global</div>
+          <div style="margin-top:1.2rem; height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;">
+            <div style="width:67%; height:100%; background:#3B5BDB; border-radius:3px;"></div>
+          </div>
+        </div>
+        <div class="pres-stat-card">
+          <div class="pres-stat-value" style="color:#50b83c;">3<span style="font-size:2.4rem; font-weight:400; color:rgba(255,255,255,0.3);">/5</span></div>
+          <div class="pres-stat-label">KPIs en meta</div>
+          <div style="margin-top:1.2rem; display:flex; gap:0.4rem;">
+            <div style="flex:1; height:4px; border-radius:2px; background:#50b83c;"></div>
+            <div style="flex:1; height:4px; border-radius:2px; background:#50b83c;"></div>
+            <div style="flex:1; height:4px; border-radius:2px; background:#50b83c;"></div>
+            <div style="flex:1; height:4px; border-radius:2px; background:rgba(255,255,255,0.15);"></div>
+            <div style="flex:1; height:4px; border-radius:2px; background:rgba(255,255,255,0.15);"></div>
+          </div>
+        </div>
+        <div class="pres-stat-card">
+          <div class="pres-stat-value" style="color:#47c1bf;">4<span style="font-size:2.4rem; font-weight:400; color:rgba(255,255,255,0.3);">/12</span></div>
+          <div class="pres-stat-label">Objetivos completados</div>
+          <div style="margin-top:1.2rem; height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;">
+            <div style="width:33%; height:100%; background:#47c1bf; border-radius:3px;"></div>
+          </div>
+        </div>
+        <div class="pres-stat-card">
+          <div class="pres-stat-value" style="color:#de3618;">2</div>
+          <div class="pres-stat-label">Tareas bloqueadas</div>
+          <div style="margin-top:1.2rem; display:flex; justify-content:center;">
+            <span style="background:rgba(222,54,24,0.25); color:#ff6b6b; font-size:1.1rem; font-weight:600; padding:0.3rem 0.8rem; border-radius:100px; border:1px solid rgba(222,54,24,0.4);">Requieren atención</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Slide dots -->
+    <div class="pres-dots">
+      <div class="pres-dot active"></div>
+      <div class="pres-dot"></div>
+      <div class="pres-dot"></div>
+      <div class="pres-dot"></div>
+      <div class="pres-dot"></div>
+    </div>
+
+    <!-- Hint -->
+    <div class="pres-hint">&#8592; &#8594; para navegar &nbsp;|&nbsp; ESC para salir</div>
+
+  </div>
+
+  <!-- Second slide preview (KPIs) -->
+  <div style="margin-top:1.6rem; background:#1a2340; border-radius:12px; padding:4rem 5rem; min-height:420px; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative;">
+    <span style="position:absolute; top:1.6rem; left:2.4rem; font-size:1.2rem; color:rgba(255,255,255,0.3); font-weight:600; text-transform:uppercase; letter-spacing:0.08em;">Diapositiva 2 / 5</span>
+    <div style="width:100%; max-width:800px;">
+      <h2 style="font-size:2.8rem; font-weight:700; color:white; margin:0 0 2.4rem; text-align:center;">Progreso de KPIs</h2>
+      <div style="display:flex; flex-direction:column; gap:1.6rem;">
+        <div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.6rem;">
+            <span style="font-size:1.4rem; color:rgba(255,255,255,0.85);">Ingresos recurrentes mensuales (MRR)</span>
+            <span style="font-size:1.4rem; font-weight:700; color:#50b83c;">82%</span>
+          </div>
+          <div style="height:10px; background:rgba(255,255,255,0.1); border-radius:5px; overflow:hidden;">
+            <div style="width:82%; height:100%; background:#50b83c; border-radius:5px;"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.6rem;">
+            <span style="font-size:1.4rem; color:rgba(255,255,255,0.85);">Satisfacción del cliente (NPS)</span>
+            <span style="font-size:1.4rem; font-weight:700; color:#50b83c;">76%</span>
+          </div>
+          <div style="height:10px; background:rgba(255,255,255,0.1); border-radius:5px; overflow:hidden;">
+            <div style="width:76%; height:100%; background:#50b83c; border-radius:5px;"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.6rem;">
+            <span style="font-size:1.4rem; color:rgba(255,255,255,0.85);">Tasa de conversión de leads</span>
+            <span style="font-size:1.4rem; font-weight:700; color:#f49342;">54%</span>
+          </div>
+          <div style="height:10px; background:rgba(255,255,255,0.1); border-radius:5px; overflow:hidden;">
+            <div style="width:54%; height:100%; background:#f49342; border-radius:5px;"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.6rem;">
+            <span style="font-size:1.4rem; color:rgba(255,255,255,0.85);">Tiempo medio de resolución</span>
+            <span style="font-size:1.4rem; font-weight:700; color:#f49342;">61%</span>
+          </div>
+          <div style="height:10px; background:rgba(255,255,255,0.1); border-radius:5px; overflow:hidden;">
+            <div style="width:61%; height:100%; background:#f49342; border-radius:5px;"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.6rem;">
+            <span style="font-size:1.4rem; color:rgba(255,255,255,0.85);">Cobertura de tests en codebase</span>
+            <span style="font-size:1.4rem; font-weight:700; color:#de3618;">38%</span>
+          </div>
+          <div style="height:10px; background:rgba(255,255,255,0.1); border-radius:5px; overflow:hidden;">
+            <div style="width:38%; height:100%; background:#de3618; border-radius:5px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="position:absolute; bottom:2.4rem; right:3.2rem; display:flex; gap:0.6rem;">
+      <div style="width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.2);"></div>
+      <div style="width:24px; height:8px; border-radius:4px; background:#3B5BDB;"></div>
+      <div style="width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.2);"></div>
+      <div style="width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.2);"></div>
+      <div style="width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.2);"></div>
+    </div>
+    <div style="position:absolute; bottom:2.4rem; left:50%; transform:translateX(-50%); font-size:1.2rem; color:rgba(255,255,255,0.35); letter-spacing:0.05em;">&#8592; &#8594; para navegar &nbsp;|&nbsp; ESC para salir</div>
+  </div>
+
+  <hr class="view-separator">
+
+  <!-- ====================================================================
+       VIEW 3: PDF PREVIEW MOCK
+       ==================================================================== -->
+  <div class="view-label">Vista: Previsualización de PDF exportado</div>
+
+  <div class="pdf-preview-outer">
+    <!-- PAGE 1: Cover + Executive Summary + KPIs -->
+    <div class="pdf-page">
+
+      <!-- Header -->
+      <div class="pdf-header">
+        <div>
+          <div class="pdf-company">Kublau Inc.</div>
+          <div class="pdf-report-title">Reporte Trimestral — Q1 2026</div>
+          <div class="pdf-period">Enero – Marzo 2026</div>
+        </div>
+        <div class="pdf-meta">
+          <div>Generado el 7 de abril de 2026</div>
+          <div style="margin-top:3px;">Plataforma OKRs &nbsp;·&nbsp; Confidencial</div>
+        </div>
+      </div>
+
+      <!-- Executive Summary -->
+      <div class="pdf-section-title">Resumen Ejecutivo</div>
+      <div class="pdf-summary-row">
+        <div class="pdf-summary-item">
+          <div class="pdf-summary-num">67%</div>
+          <div class="pdf-summary-lbl">Progreso Global</div>
+        </div>
+        <div class="pdf-summary-item">
+          <div class="pdf-summary-num" style="color:#50b83c;">3/5</div>
+          <div class="pdf-summary-lbl">KPIs en Meta</div>
+        </div>
+        <div class="pdf-summary-item">
+          <div class="pdf-summary-num" style="color:#47c1bf;">4/12</div>
+          <div class="pdf-summary-lbl">Objetivos Completados</div>
+        </div>
+        <div class="pdf-summary-item">
+          <div class="pdf-summary-num" style="color:#de3618;">2</div>
+          <div class="pdf-summary-lbl">Tareas Bloqueadas</div>
+        </div>
+      </div>
+
+      <!-- KPI Table -->
+      <div class="pdf-section-title">KPIs del Trimestre</div>
+      <table class="pdf-table">
+        <thead>
+          <tr>
+            <th style="width:40%;">Indicador</th>
+            <th>Modo</th>
+            <th>Meta</th>
+            <th>Actual</th>
+            <th style="width:22%;">Progreso</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:600;">Ingresos recurrentes mensuales (MRR)</td>
+            <td>Manual</td>
+            <td>€120k</td>
+            <td>€98.4k</td>
+            <td>
+              <span style="font-weight:700; color:#50b83c;">82%</span>
+              <div class="pdf-pbar-track"><div class="pdf-pbar-fill" style="width:82%; background:#50b83c;"></div></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;">Satisfacción del cliente (NPS)</td>
+            <td>Manual</td>
+            <td>50 pts</td>
+            <td>38 pts</td>
+            <td>
+              <span style="font-weight:700; color:#50b83c;">76%</span>
+              <div class="pdf-pbar-track"><div class="pdf-pbar-fill" style="width:76%; background:#50b83c;"></div></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;">Tasa de conversión de leads</td>
+            <td>Manual</td>
+            <td>8%</td>
+            <td>4.3%</td>
+            <td>
+              <span style="font-weight:700; color:#f49342;">54%</span>
+              <div class="pdf-pbar-track"><div class="pdf-pbar-fill" style="width:54%; background:#f49342;"></div></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;">Tiempo medio de resolución (soporte)</td>
+            <td>Manual</td>
+            <td>4h</td>
+            <td>6.2h</td>
+            <td>
+              <span style="font-weight:700; color:#f49342;">61%</span>
+              <div class="pdf-pbar-track"><div class="pdf-pbar-fill" style="width:61%; background:#f49342;"></div></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;">Cobertura de tests en codebase</td>
+            <td>Manual</td>
+            <td>80%</td>
+            <td>30%</td>
+            <td>
+              <span style="font-weight:700; color:#de3618;">38%</span>
+              <div class="pdf-pbar-track"><div class="pdf-pbar-fill" style="width:38%; background:#de3618;"></div></div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Objectives Table -->
+      <div class="pdf-section-title">Objetivos</div>
+      <table class="pdf-table">
+        <thead>
+          <tr>
+            <th style="width:38%;">Título</th>
+            <th>Departamento</th>
+            <th>Estado</th>
+            <th style="width:22%;">Progreso</th>
+            <th>Tareas</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:600;">Rediseñar onboarding de nuevos usuarios</td>
+            <td>Producto</td>
+            <td><span style="color:#108043; font-weight:600;">Completado</span></td>
+            <td>
+              <span style="font-weight:700; color:#50b83c;">100%</span>
+              <div class="pdf-pbar-track"><div class="pdf-pbar-fill" style="width:100%; background:#50b83c;"></div></div>
+            </td>
+            <td style="text-align:center;">8/8</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;">Alcanzar €100k MRR</td>
+            <td>Ventas</td>
+            <td><span style="color:#3B5BDB; font-weight:600;">En camino</span></td>
+            <td>
+              <span style="font-weight:700; color:#50b83c;">82%</span>
+              <div class="pdf-pbar-track"><div class="pdf-pbar-fill" style="width:82%; background:#50b83c;"></div></div>
+            </td>
+            <td style="text-align:center;">5/7</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;">Lanzar módulo de analíticas avanzadas</td>
+            <td>Producto</td>
+            <td><span style="color:#8a6116; font-weight:600;">En riesgo</span></td>
+            <td>
+              <span style="font-weight:700; color:#f49342;">55%</span>
+              <div class="pdf-pbar-track"><div class="pdf-pbar-fill" style="width:55%; background:#f49342;"></div></div>
+            </td>
+            <td style="text-align:center;">4/9</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;">Implementar SSO empresarial</td>
+            <td>Tecnología</td>
+            <td><span style="color:#bf0711; font-weight:600;">Retrasado</span></td>
+            <td>
+              <span style="font-weight:700; color:#de3618;">28%</span>
+              <div class="pdf-pbar-track"><div class="pdf-pbar-fill" style="width:28%; background:#de3618;"></div></div>
+            </td>
+            <td style="text-align:center;">2/8</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;">Reducir churn rate mensual al 2%</td>
+            <td>Ventas</td>
+            <td><span style="color:#8a6116; font-weight:600;">En riesgo</span></td>
+            <td>
+              <span style="font-weight:700; color:#f49342;">48%</span>
+              <div class="pdf-pbar-track"><div class="pdf-pbar-fill" style="width:48%; background:#f49342;"></div></div>
+            </td>
+            <td style="text-align:center;">3/7</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Blocked tasks -->
+      <div class="pdf-section-title" style="margin-top:16px;">Tareas Bloqueadas</div>
+      <div class="pdf-blocked-item">
+        <div class="pdf-blocked-title">Integrar API de Stripe v3</div>
+        <div class="pdf-blocked-reason">Motivo: Esperando credenciales de producción &nbsp;·&nbsp; Asignado a: María Rodríguez &nbsp;·&nbsp; 7 días bloqueado</div>
+      </div>
+      <div class="pdf-blocked-item">
+        <div class="pdf-blocked-title">Migrar base de datos a PostgreSQL 16</div>
+        <div class="pdf-blocked-reason">Motivo: Entorno de staging no disponible &nbsp;·&nbsp; Asignado a: Javier López &nbsp;·&nbsp; 4 días bloqueado</div>
+      </div>
+
+      <!-- Footer -->
+      <div class="pdf-footer">
+        <div>Kublau Inc. &nbsp;·&nbsp; Reporte Trimestral Q1 2026</div>
+        <div>Página 1 de 1 &nbsp;·&nbsp; Generado con Plataforma OKRs</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="text-align:center; margin-top:1.6rem; margin-bottom:1.6rem;">
+    <span style="font-size:1.2rem; color:#919eab; background:#f4f6f8; padding:0.4rem 1.2rem; border-radius:4px; border:1px solid #dfe3e8;">
+      Vista previa de documento PDF exportado (A4, 794 × 1123 px a 96 dpi)
+    </span>
+  </div>
+
+</div><!-- /view-container -->
+
+</body>
+</html>

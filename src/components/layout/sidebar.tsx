@@ -50,7 +50,7 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
     display: 'flex',
     alignItems: 'center',
     gap: '1.2rem',
-    padding: '0.8rem 1.2rem',
+    padding: '0.4rem 1.2rem',
     margin: '0 0.8rem',
     borderRadius: '3px',
     color: active ? '#202e78' : '#212b36',
@@ -58,7 +58,7 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
     textDecoration: 'none',
     fontSize: '1.4rem',
     fontWeight: active ? 600 : 500,
-    lineHeight: '3.2rem',
+    lineHeight: '2.4rem',
     transition: 'background 0.15s ease',
     marginBottom: '1px',
   });
