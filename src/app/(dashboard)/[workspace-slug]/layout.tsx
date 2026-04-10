@@ -35,19 +35,20 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <Sidebar
-        workspaceSlug={workspaceSlug}
-        role={userWorkspace.role}
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <Topbar
+        profile={profile}
+        userId={profile.id}
+        workspaceId={currentWorkspace.id}
         workspaceName={currentWorkspace.name}
       />
-      <div style={{ flex: 1, marginLeft: '240px', display: 'flex', flexDirection: 'column' }}>
-        <Topbar
-          profile={profile}
-          userId={profile.id}
-          workspaceId={currentWorkspace.id}
+      <div style={{ display: 'flex', flex: 1 }}>
+        <Sidebar
+          workspaceSlug={workspaceSlug}
+          role={userWorkspace.role}
+          workspaceName={currentWorkspace.name}
         />
-        <main style={{ flex: 1, padding: '2.4rem' }}>
+        <main style={{ flex: 1, marginLeft: '240px', padding: '2.4rem' }}>
           {children}
         </main>
       </div>

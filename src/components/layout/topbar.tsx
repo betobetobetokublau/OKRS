@@ -11,10 +11,11 @@ interface TopbarProps {
   profile: Profile | null;
   userId: string;
   workspaceId: string;
+  workspaceName?: string;
   breadcrumbs?: Array<{ label: string; href?: string }>;
 }
 
-export function Topbar({ profile, userId, workspaceId, breadcrumbs }: TopbarProps) {
+export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumbs }: TopbarProps) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -41,39 +42,52 @@ export function Topbar({ profile, userId, workspaceId, breadcrumbs }: TopbarProp
       style={{
         height: '56px',
         backgroundColor: 'var(--color-topbar)',
-        borderBottom: '1px solid var(--color-border)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 2.4rem',
         position: 'sticky',
         top: 0,
-        zIndex: 50,
+        zIndex: 150,
+        width: '100%',
       }}
     >
-      {/* Breadcrumbs */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-        {breadcrumbs?.map((crumb, i) => (
-          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            {i > 0 && <span style={{ color: '#919eab', fontSize: '1.3rem' }}>/</span>}
-            {crumb.href ? (
-              <a
-                href={crumb.href}
-                style={{ color: '#637381', textDecoration: 'none', fontSize: '1.3rem' }}
-              >
-                {crumb.label}
-              </a>
-            ) : (
-              <span style={{ color: '#212b36', fontSize: '1.3rem', fontWeight: 500 }}>
-                {crumb.label}
+      {/* Left: Logo + workspace name */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        <span style={{ color: 'white', fontWeight: 700, fontSize: '1.6rem', letterSpacing: '-0.02em' }}>
+          {workspaceName || 'kublau'}
+        </span>
+
+        {/* Breadcrumbs */}
+        {breadcrumbs && breadcrumbs.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '1.2rem' }}>
+            {breadcrumbs.map((crumb, i) => (
+              <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                {i > 0 && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '1.3rem' }}>/</span>}
+                {crumb.href ? (
+                  <a href={crumb.href} style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', fontSize: '1.3rem' }}>
+                    {crumb.label}
+                  </a>
+                ) : (
+                  <span style={{ color: 'white', fontSize: '1.3rem', fontWeight: 500 }}>
+                    {crumb.label}
+                  </span>
+                )}
               </span>
-            )}
-          </span>
-        ))}
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Right side */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
+      {/* Right: Help + Notifications + User */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1.6rem' }}>
+        <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1.3rem', cursor: 'pointer' }}>
+          Ayuda
+        </span>
+
         <NotificationBell userId={userId} workspaceId={workspaceId} />
 
         {/* User menu */}
@@ -92,9 +106,14 @@ export function Topbar({ profile, userId, workspaceId, breadcrumbs }: TopbarProp
             }}
           >
             {profile && <UserAvatar user={profile} size="small" />}
-            <span style={{ fontSize: '1.3rem', color: '#212b36', fontWeight: 500 }}>
-              {profile?.full_name || ''}
-            </span>
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontSize: '1.3rem', color: 'white', fontWeight: 500, lineHeight: '1.4' }}>
+                {profile?.full_name || ''}
+              </div>
+              <div style={{ fontSize: '1.1rem', color: 'rgba(255,255,255,0.6)', lineHeight: '1.2' }}>
+                {profile?.email || ''}
+              </div>
+            </div>
           </button>
 
           {menuOpen && (

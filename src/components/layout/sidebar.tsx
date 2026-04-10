@@ -21,7 +21,7 @@ interface NavItem {
   managerOnly?: boolean;
 }
 
-export function Sidebar({ workspaceSlug, role, workspaceName, pendingReview }: SidebarProps) {
+export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
   const pathname = usePathname();
   const base = `/${workspaceSlug}`;
 
@@ -46,94 +46,68 @@ export function Sidebar({ workspaceSlug, role, workspaceName, pendingReview }: S
     return pathname.startsWith(href);
   }
 
+  const linkStyle = (active: boolean): React.CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1.2rem',
+    padding: '0.8rem 1.2rem',
+    margin: '0 0.8rem',
+    borderRadius: '3px',
+    color: active ? '#202e78' : '#212b36',
+    backgroundColor: active ? 'rgba(92, 106, 196, 0.12)' : 'transparent',
+    textDecoration: 'none',
+    fontSize: '1.4rem',
+    fontWeight: active ? 600 : 500,
+    lineHeight: '3.2rem',
+    transition: 'background 0.15s ease',
+    marginBottom: '1px',
+  });
+
+  const iconColor = (active: boolean): string => active ? '#5c6ac4' : '#919eab';
+
   return (
     <nav
       className="Polaris-Navigation"
       style={{
         width: '240px',
-        minHeight: '100vh',
-        backgroundColor: 'var(--color-sidebar)',
-        color: 'var(--color-sidebar-text)',
+        backgroundColor: '#f4f6f8',
+        borderRight: '1px solid #dfe3e8',
         display: 'flex',
         flexDirection: 'column',
-        padding: '0',
         position: 'fixed',
         left: 0,
-        top: 0,
+        top: '56px',
         bottom: 0,
         zIndex: 100,
         overflowY: 'auto',
       }}
     >
-      {/* Workspace name */}
-      <div
-        style={{
-          padding: '2rem 1.6rem',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem',
-        }}
-      >
-        <div
-          style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '8px',
-            backgroundColor: '#5c6ac4',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 700,
-            fontSize: '1.4rem',
-          }}
-        >
-          {workspaceName.charAt(0).toUpperCase()}
-        </div>
-        <span style={{ fontWeight: 600, fontSize: '1.4rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {workspaceName}
-        </span>
-      </div>
-
       {/* Main nav */}
-      <div style={{ padding: '1.2rem 0.8rem', flex: 1 }}>
+      <div style={{ padding: '1.2rem 0', flex: 1 }}>
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-          {navItems.map((item) => (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  padding: '0.8rem 1.2rem',
-                  borderRadius: '6px',
-                  color: isActive(item.href) ? '#ffffff' : 'rgba(255,255,255,0.75)',
-                  backgroundColor: isActive(item.href) ? 'var(--color-sidebar-hover)' : 'transparent',
-                  textDecoration: 'none',
-                  fontSize: '1.4rem',
-                  fontWeight: isActive(item.href) ? 600 : 400,
-                  transition: 'all 0.15s ease',
-                  marginBottom: '2px',
-                }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d={item.icon} />
-                </svg>
-                <span style={{ flex: 1 }}>{item.label}</span>
-                {item.badge && (
-                  <span
-                    style={{
-                      width: '8px',
-                      height: '8px',
-                      borderRadius: '50%',
-                      backgroundColor: '#de3618',
-                    }}
-                  />
-                )}
-              </Link>
-            </li>
-          ))}
+          {navItems.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <li key={item.href}>
+                <Link href={item.href} style={linkStyle(active)}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor(active)} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d={item.icon} />
+                  </svg>
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {item.badge && (
+                    <span
+                      style={{
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        backgroundColor: '#de3618',
+                      }}
+                    />
+                  )}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
 
         {/* Admin section */}
@@ -145,8 +119,8 @@ export function Sidebar({ workspaceSlug, role, workspaceName, pendingReview }: S
                 fontWeight: 600,
                 textTransform: 'uppercase',
                 letterSpacing: '0.1em',
-                color: 'rgba(255,255,255,0.4)',
-                padding: '1.6rem 1.2rem 0.4rem',
+                color: '#637381',
+                padding: '1.6rem 2rem 0.4rem',
                 marginTop: '0.8rem',
               }}
             >
@@ -155,26 +129,11 @@ export function Sidebar({ workspaceSlug, role, workspaceName, pendingReview }: S
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {adminItems.map((item) => {
                 if (item.adminOnly && !canManageTeam(role)) return null;
+                const active = isActive(item.href);
                 return (
                   <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '1rem',
-                        padding: '0.8rem 1.2rem',
-                        borderRadius: '6px',
-                        color: isActive(item.href) ? '#ffffff' : 'rgba(255,255,255,0.75)',
-                        backgroundColor: isActive(item.href) ? 'var(--color-sidebar-hover)' : 'transparent',
-                        textDecoration: 'none',
-                        fontSize: '1.4rem',
-                        fontWeight: isActive(item.href) ? 600 : 400,
-                        transition: 'all 0.15s ease',
-                        marginBottom: '2px',
-                      }}
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <Link href={item.href} style={linkStyle(active)}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor(active)} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d={item.icon} />
                       </svg>
                       <span>{item.label}</span>
