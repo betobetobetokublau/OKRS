@@ -10,7 +10,23 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { email, full_name, password, role, workspace_id, department_ids } = body;
+    const {
+      email,
+      full_name,
+      password,
+      role,
+      workspace_id,
+      department_ids,
+      must_change_password,
+    } = body as {
+      email: string;
+      full_name: string;
+      password: string;
+      role?: string;
+      workspace_id: string;
+      department_ids?: string[];
+      must_change_password?: boolean;
+    };
 
     // Verify current user is admin in workspace
     const { data: uw } = await supabase
@@ -37,12 +53,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: createError?.message || 'Error al crear usuario' }, { status: 400 });
     }
 
-    // Create profile
+    // Create profile — honor the caller's must_change_password flag; default true.
+    const shouldForceChange = must_change_password !== false;
     await adminClient.from('profiles').insert({
       id: newUser.user.id,
       email,
       full_name,
-      must_change_password: true,
+      must_change_password: shouldForceChange,
     });
 
     // Add to workspace

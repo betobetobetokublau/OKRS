@@ -29,7 +29,15 @@ export default function TrimestralPage() {
   const [sectionIndex, setSectionIndex] = useState(0);
 
   useEffect(() => {
-    if (!currentWorkspace?.id || !activePeriod?.id) return;
+    // If we don't yet have a workspace / period, don't sit in the "loading"
+    // state forever — flip loading off and render the empty state below. This
+    // used to leave the page stuck on "Cargando dashboard trimestral..." on
+    // workspaces without an active period.
+    if (!currentWorkspace?.id || !activePeriod?.id) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     loadData();
   }, [currentWorkspace?.id, activePeriod?.id]);
 
@@ -100,6 +108,22 @@ export default function TrimestralPage() {
   }
 
   if (loading) return <div style={{ padding: '4rem', textAlign: 'center', color: '#637381' }}>Cargando dashboard trimestral...</div>;
+
+  if (!activePeriod) {
+    return (
+      <div>
+        <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>Dashboard Trimestral</h1>
+        <div
+          className="Polaris-Card"
+          style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)', marginTop: '2.4rem' }}
+        >
+          <p style={{ color: '#637381', fontSize: '1.4rem' }}>
+            No hay un periodo activo. Un administrador debe crear y activar un periodo.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const avgKpiProgress = kpis.length > 0 ? Math.round(kpis.reduce((s, k) => s + k.manual_progress, 0) / kpis.length) : 0;
   const completedTasks = tasks.filter(t => t.status === 'completed').length;

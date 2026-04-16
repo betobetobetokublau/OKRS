@@ -87,16 +87,30 @@ export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTre
 
       // Spacing between the KPI ring and the first row of objectives, then
       // between each subsequent row, measured along the radial direction.
-      const KPI_RADIUS_BASE = 320; // minimum ring radius (for few KPIs)
-      const PER_KPI_SPREAD = 90;   // grows the ring when there are many KPIs
-      const OBJ_RADIAL_GAP = 60;   // gap between KPI and first objective row
-      const OBJ_ROW_STRIDE = OBJ_NODE_H + 40; // distance between objective rows
-      const OBJ_PAIR_OFFSET = (OBJ_NODE_W + 30) / 2; // perpendicular offset
+      const OBJ_RADIAL_GAP = 40;   // gap between KPI and first objective row
+      const OBJ_ROW_STRIDE = OBJ_NODE_H + 30; // distance between objective rows
+      const OBJ_PAIR_OFFSET = (OBJ_NODE_W + 20) / 2; // perpendicular offset
                                                     // between the two items in a "level"
 
-      // Scale the KPI ring radius with the number of KPIs so they don't
-      // crowd each other when there are many.
-      const KPI_RADIUS = Math.max(KPI_RADIUS_BASE, PER_KPI_SPREAD * kpis.length);
+      // Pack KPIs as close as possible on the ring. The constraint is that
+      // each KPI's tangential footprint (KPI node OR its 2-column objective
+      // cluster, whichever is wider) must fit inside its angular slice. Solve
+      // for the minimum radius that satisfies that, then add a small margin.
+      const KPI_TANGENTIAL_FOOTPRINT = Math.max(
+        KPI_NODE_W,
+        OBJ_NODE_W + 2 * OBJ_PAIR_OFFSET, // 2-col objective cluster width
+      );
+      const MARGIN = 40;
+      const CHORD = KPI_TANGENTIAL_FOOTPRINT + MARGIN;
+      // chord = 2 * R * sin(pi / N)  →  R = chord / (2 * sin(pi / N))
+      const kpiCount = Math.max(kpis.length, 1);
+      const KPI_RADIUS =
+        kpiCount === 1
+          ? 0 // single KPI sits at the origin
+          : Math.max(
+              200, // floor so very few KPIs still give breathing room
+              CHORD / (2 * Math.sin(Math.PI / kpiCount)),
+            );
 
       // Map KPI id -> index and color
       const kpiIndex = new Map<string, number>();
@@ -125,7 +139,6 @@ export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTre
       });
 
       // Place each KPI around the ring.
-      const kpiCount = Math.max(kpis.length, 1);
       kpis.forEach((kpi, i) => {
         const color = kpiColorMap.get(kpi.id)!;
         // Start at -PI/2 so the first KPI sits at the top of the ring.
