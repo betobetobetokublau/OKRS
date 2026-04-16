@@ -13,7 +13,7 @@ import type { KPI, Objective, ObjectiveStatus, Task } from '@/types';
 
 // ---------- Types ----------
 
-interface TaskRow extends Task {}
+type TaskRow = Task;
 
 interface ObjectiveWithTasks extends Objective {
   tasks: TaskRow[];
