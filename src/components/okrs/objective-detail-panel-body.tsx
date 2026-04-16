@@ -8,6 +8,7 @@ import { UserAvatar } from '@/components/common/user-avatar';
 import { CommentTimeline } from '@/components/timeline/comment-timeline';
 import { TaskRow } from '@/components/tasks/task-row';
 import { TaskForm } from '@/components/tasks/task-form';
+import { ObjectiveForm } from '@/components/objectives/objective-form';
 import { InlineTeamSelect } from './inline-team-select';
 import { InlineStatusSelect } from './inline-status-select';
 import type { Objective, Task, KPI, Department } from '@/types';
@@ -35,6 +36,8 @@ export function ObjectiveDetailPanelBody({
   const [linkedDepartments, setLinkedDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [showTaskForm, setShowTaskForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [savingManual, setSavingManual] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -66,10 +69,39 @@ export function ObjectiveDetailPanelBody({
     onChanged();
   }
 
+  async function saveManualProgress(value: number) {
+    setSavingManual(true);
+    const supabase = createClient();
+    await supabase.from('objectives').update({ manual_progress: value }).eq('id', objective!.id);
+    setSavingManual(false);
+    refresh();
+  }
+
+  const showManualControl = objective.progress_mode === 'manual' || objective.progress_mode === 'hybrid';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
       <div>
-        <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#212b36', lineHeight: 1.3, marginBottom: '0.8rem' }}>{objective.title}</h1>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.8rem' }}>
+          <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#212b36', lineHeight: 1.3, margin: 0 }}>{objective.title}</h1>
+          <button
+            type="button"
+            onClick={() => setShowEditForm(true)}
+            style={{
+              padding: '0.4rem 1.2rem',
+              fontSize: '1.3rem',
+              fontWeight: 500,
+              color: '#5c6ac4',
+              backgroundColor: '#f4f5fc',
+              border: '1px solid #e3e5f1',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            Editar
+          </button>
+        </div>
         <InlineStatusSelect
           entity="objective"
           id={objective.id}
@@ -93,6 +125,40 @@ export function ObjectiveDetailPanelBody({
           Modo: {objective.progress_mode === 'manual' ? 'Manual' : objective.progress_mode === 'auto' ? 'Automático' : 'Híbrido'}
           {tasks.length > 0 && ` — ${tasks.filter(t => t.status === 'completed').length}/${tasks.length} tareas completadas`}
         </p>
+
+        {showManualControl && (
+          <div style={{ marginTop: '1.6rem', paddingTop: '1.2rem', borderTop: '1px solid #f1f2f4' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+              <label style={{ fontSize: '1.2rem', color: '#637381' }}>
+                Progreso manual {objective.progress_mode === 'hybrid' && '(se promedia con las tareas)'}
+              </label>
+              <span style={{ fontSize: '1.3rem', fontWeight: 600, color: '#212b36' }}>
+                {objective.manual_progress}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={objective.manual_progress}
+              disabled={savingManual || !canEdit}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                // Local echo while dragging
+                setObjective({ ...objective, manual_progress: v });
+              }}
+              onMouseUp={(e) => saveManualProgress(Number((e.target as HTMLInputElement).value))}
+              onTouchEnd={(e) => saveManualProgress(Number((e.target as HTMLInputElement).value))}
+              onKeyUp={(e) => {
+                if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
+                  saveManualProgress(Number((e.target as HTMLInputElement).value));
+                }
+              }}
+              style={{ width: '100%', accentColor: '#5c6ac4' }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Tasks */}
@@ -182,6 +248,25 @@ export function ObjectiveDetailPanelBody({
           workspaceId={objective.workspace_id}
           onClose={() => setShowTaskForm(false)}
           onSaved={() => { setShowTaskForm(false); refresh(); }}
+        />
+      )}
+
+      {showEditForm && (
+        <ObjectiveForm
+          workspaceId={objective.workspace_id}
+          periodId={objective.period_id}
+          onClose={() => setShowEditForm(false)}
+          onSaved={() => { setShowEditForm(false); refresh(); }}
+          initialData={{
+            id: objective.id,
+            title: objective.title,
+            description: objective.description ?? '',
+            status: objective.status,
+            progress_mode: objective.progress_mode,
+            manual_progress: objective.manual_progress,
+            responsible_user_id: objective.responsible_user_id,
+            responsible_department_id: objective.responsible_department_id,
+          }}
         />
       )}
     </div>

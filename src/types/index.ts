@@ -80,6 +80,7 @@ export interface KPI {
   manual_progress: number;
   responsible_user_id: string | null;
   responsible_department_id: string | null;
+  sort_order: number;
   created_at: string;
   updated_at: string;
   // Computed / joined

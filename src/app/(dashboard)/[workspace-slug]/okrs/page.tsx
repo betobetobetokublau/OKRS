@@ -10,10 +10,11 @@ import type { Department } from '@/types';
 
 export default function OkrsPage() {
   const { currentWorkspace, activePeriod, userWorkspace } = useWorkspaceStore();
-  const { kpis, loading, refetch } = useOkrs(currentWorkspace?.id, activePeriod?.id);
+  const { kpis, loading, refetch, persistOrder } = useOkrs(currentWorkspace?.id, activePeriod?.id);
   const [departments, setDepartments] = useState<Department[]>([]);
 
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
+  const canReorder = canEdit;
 
   useEffect(() => {
     async function loadDepartments() {
@@ -58,7 +59,9 @@ export default function OkrsPage() {
           kpis={kpis}
           departments={departments}
           canEdit={canEdit}
+          canReorder={canReorder}
           onChanged={refetch}
+          onPersistOrder={persistOrder}
         />
       )}
     </div>

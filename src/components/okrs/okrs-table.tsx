@@ -6,6 +6,21 @@ import type { KPIWithObjectives, ObjectiveWithTasks } from '@/hooks/use-okrs';
 import { InlineTeamSelect } from './inline-team-select';
 import { InlineStatusSelect } from './inline-status-select';
 import { OkrDetailPanel, type PanelTarget } from './okr-detail-panel';
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 // ---------- Helpers ----------
 
@@ -84,8 +99,6 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-// ---------- Title button ----------
-
 function TitleButton({
   children,
   onClick,
@@ -125,7 +138,50 @@ function TitleButton({
   );
 }
 
-// ---------- Table rows ----------
+// ---------- Drag handle ----------
+
+const DRAG_GRIP = 'M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01';
+
+function DragHandle({
+  canDrag,
+  attributes,
+  listeners,
+}: {
+  canDrag: boolean;
+  attributes?: React.HTMLAttributes<HTMLButtonElement>;
+  listeners?: Record<string, (e: unknown) => void>;
+}) {
+  if (!canDrag) {
+    return <span style={{ display: 'inline-block', width: '1.6rem' }} />;
+  }
+  return (
+    <button
+      type="button"
+      aria-label="Arrastra para reordenar"
+      onClick={(e) => e.stopPropagation()}
+      {...attributes}
+      {...listeners}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '1.6rem',
+        height: '2rem',
+        border: 'none',
+        background: 'transparent',
+        cursor: 'grab',
+        color: '#919eab',
+        padding: 0,
+      }}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d={DRAG_GRIP} />
+      </svg>
+    </button>
+  );
+}
+
+// ---------- Chevron ----------
 
 const CHEVRON_RIGHT = 'M9 5l7 7-7 7';
 const CHEVRON_DOWN = 'M19 9l-7 7-7-7';
@@ -152,17 +208,32 @@ function Chevron({ expanded, visible }: { expanded: boolean; visible: boolean })
   );
 }
 
+// ---------- Main table ----------
+
 interface OkrsTableProps {
   kpis: KPIWithObjectives[];
   departments: Department[];
-  canEdit: boolean;
+  canEdit: boolean; // edits Equipo / Estado inline (manager/admin)
+  canReorder: boolean; // drag-to-reorder (manager/admin)
   onChanged: () => void;
+  onPersistOrder: (orderedIds: string[]) => Promise<void>;
 }
 
-export function OkrsTable({ kpis, departments, canEdit, onChanged }: OkrsTableProps) {
+export function OkrsTable({
+  kpis,
+  departments,
+  canEdit,
+  canReorder,
+  onChanged,
+  onPersistOrder,
+}: OkrsTableProps) {
   const [expandedKpis, setExpandedKpis] = useState<Set<string>>(new Set());
   const [expandedObjectives, setExpandedObjectives] = useState<Set<string>>(new Set());
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  );
 
   function toggleKpi(id: string) {
     setExpandedKpis((prev) => {
@@ -179,6 +250,16 @@ export function OkrsTable({ kpis, departments, canEdit, onChanged }: OkrsTablePr
       else next.add(id);
       return next;
     });
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = kpis.findIndex((k) => k.id === active.id);
+    const newIndex = kpis.findIndex((k) => k.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(kpis, oldIndex, newIndex).map((k) => k.id);
+    await onPersistOrder(reordered);
   }
 
   const cellBase: React.CSSProperties = {
@@ -201,6 +282,8 @@ export function OkrsTable({ kpis, departments, canEdit, onChanged }: OkrsTablePr
     backgroundColor: '#fafbfb',
   };
 
+  const ids = kpis.map((k) => k.id);
+
   return (
     <>
       <div
@@ -213,50 +296,48 @@ export function OkrsTable({ kpis, departments, canEdit, onChanged }: OkrsTablePr
         }}
       >
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ ...headerCell, width: '45%' }}>Nombre</th>
-                <th style={headerCell}>Tipo</th>
-                <th style={headerCell}>Equipo</th>
-                <th style={headerCell}>Progreso</th>
-                <th style={headerCell}>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {kpis.map((kpi) => {
-                const kpiExpanded = expandedKpis.has(kpi.id);
-                const kpiProgress = getKpiProgress(kpi);
-                const hasObjectives = (kpi.objectives || []).length > 0;
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...headerCell, width: '45%' }}>Nombre</th>
+                    <th style={headerCell}>Tipo</th>
+                    <th style={headerCell}>Equipo</th>
+                    <th style={headerCell}>Progreso</th>
+                    <th style={headerCell}>Estado</th>
+                  </tr>
+                </thead>
 
-                return (
-                  <KpiRowGroup
+                {kpis.map((kpi) => (
+                  <KpiGroupBody
                     key={kpi.id}
                     kpi={kpi}
-                    kpiExpanded={kpiExpanded}
-                    kpiProgress={kpiProgress}
-                    hasObjectives={hasObjectives}
+                    kpiExpanded={expandedKpis.has(kpi.id)}
                     onToggleKpi={() => toggleKpi(kpi.id)}
                     expandedObjectives={expandedObjectives}
                     onToggleObjective={toggleObjective}
                     cellBase={cellBase}
                     departments={departments}
                     canEdit={canEdit}
+                    canReorder={canReorder}
                     onChanged={onChanged}
                     onOpenPanel={setPanelTarget}
                   />
-                );
-              })}
+                ))}
 
-              {kpis.length === 0 && (
-                <tr>
-                  <td colSpan={5} style={{ ...cellBase, textAlign: 'center', color: '#637381', padding: '4rem' }}>
-                    No hay KPIs en este periodo.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                {kpis.length === 0 && (
+                  <tbody>
+                    <tr>
+                      <td colSpan={5} style={{ ...cellBase, textAlign: 'center', color: '#637381', padding: '4rem' }}>
+                        No hay KPIs en este periodo.
+                      </td>
+                    </tr>
+                  </tbody>
+                )}
+              </table>
+            </SortableContext>
+          </DndContext>
         </div>
       </div>
 
@@ -271,39 +352,50 @@ export function OkrsTable({ kpis, departments, canEdit, onChanged }: OkrsTablePr
   );
 }
 
-// ---------- Row groups ----------
+// ---------- Per-KPI sortable <tbody> ----------
 
-interface KpiRowGroupProps {
+interface KpiGroupBodyProps {
   kpi: KPIWithObjectives;
   kpiExpanded: boolean;
-  kpiProgress: number;
-  hasObjectives: boolean;
   onToggleKpi: () => void;
   expandedObjectives: Set<string>;
   onToggleObjective: (id: string) => void;
   cellBase: React.CSSProperties;
   departments: Department[];
   canEdit: boolean;
+  canReorder: boolean;
   onChanged: () => void;
   onOpenPanel: (t: PanelTarget) => void;
 }
 
-function KpiRowGroup({
+function KpiGroupBody({
   kpi,
   kpiExpanded,
-  kpiProgress,
-  hasObjectives,
   onToggleKpi,
   expandedObjectives,
   onToggleObjective,
   cellBase,
   departments,
   canEdit,
+  canReorder,
   onChanged,
   onOpenPanel,
-}: KpiRowGroupProps) {
+}: KpiGroupBodyProps) {
+  const sortable = useSortable({ id: kpi.id, disabled: !canReorder });
+  const { setNodeRef, transform, transition, isDragging, attributes, listeners } = sortable;
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    backgroundColor: isDragging ? '#f4f6f8' : undefined,
+  };
+
+  const hasObjectives = (kpi.objectives || []).length > 0;
+  const kpiProgress = getKpiProgress(kpi);
+
   return (
-    <>
+    <tbody ref={setNodeRef} style={style}>
       <tr
         onClick={hasObjectives ? onToggleKpi : undefined}
         style={{
@@ -312,7 +404,12 @@ function KpiRowGroup({
         }}
       >
         <td style={cellBase}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <DragHandle
+              canDrag={canReorder}
+              attributes={attributes as unknown as React.HTMLAttributes<HTMLButtonElement>}
+              listeners={listeners as unknown as Record<string, (e: unknown) => void>}
+            />
             <Chevron expanded={kpiExpanded} visible={hasObjectives} />
             <TitleButton onClick={() => onOpenPanel({ type: 'kpi', id: kpi.id })} strong>
               {kpi.title}
@@ -366,7 +463,7 @@ function KpiRowGroup({
             />
           );
         })}
-    </>
+    </tbody>
   );
 }
 
@@ -405,7 +502,7 @@ function ObjectiveRowGroup({
         }}
       >
         <td style={cellBase}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', paddingLeft: '3.2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', paddingLeft: '3.8rem' }}>
             <Chevron expanded={objExpanded} visible={hasTasks} />
             <TitleButton onClick={() => onOpenPanel({ type: 'objective', id: obj.id })}>
               {obj.title}
@@ -442,7 +539,7 @@ function ObjectiveRowGroup({
           return (
             <tr key={`${obj.id}-${t.id}`} style={{ backgroundColor: 'white' }}>
               <td style={cellBase}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', paddingLeft: '6.4rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', paddingLeft: '7rem' }}>
                   <Chevron expanded={false} visible={false} />
                   <TitleButton onClick={() => onOpenPanel({ type: 'task', id: t.id })} dimmed>
                     {t.title}

@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/common/status-badge';
 import { DepartmentTag } from '@/components/common/department-tag';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { CommentTimeline } from '@/components/timeline/comment-timeline';
+import { KPIForm } from '@/components/kpis/kpi-form';
 import { InlineTeamSelect } from './inline-team-select';
 import type { KPI, Objective, Department } from '@/types';
 
@@ -26,6 +27,7 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
   const [linkedObjectives, setLinkedObjectives] = useState<Objective[]>([]);
   const [linkedDepartments, setLinkedDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showEditForm, setShowEditForm] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -58,7 +60,26 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
       <div>
-        <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#212b36', lineHeight: 1.3 }}>{kpi.title}</h1>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+          <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#212b36', lineHeight: 1.3, margin: 0 }}>{kpi.title}</h1>
+          <button
+            type="button"
+            onClick={() => setShowEditForm(true)}
+            style={{
+              padding: '0.4rem 1.2rem',
+              fontSize: '1.3rem',
+              fontWeight: 500,
+              color: '#5c6ac4',
+              backgroundColor: '#f4f5fc',
+              border: '1px solid #e3e5f1',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            Editar
+          </button>
+        </div>
         {kpi.description && (
           <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.8rem', lineHeight: 1.6 }}>{kpi.description}</p>
         )}
@@ -142,6 +163,24 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
 
       {/* Timeline */}
       <CommentTimeline kpiId={kpiId} />
+
+      {showEditForm && (
+        <KPIForm
+          workspaceId={kpi.workspace_id}
+          periodId={kpi.period_id}
+          onClose={() => setShowEditForm(false)}
+          onSaved={() => { setShowEditForm(false); handleTeamChanged(); }}
+          initialData={{
+            id: kpi.id,
+            title: kpi.title,
+            description: kpi.description ?? '',
+            progress_mode: kpi.progress_mode,
+            manual_progress: kpi.manual_progress,
+            responsible_user_id: kpi.responsible_user_id,
+            responsible_department_id: kpi.responsible_department_id,
+          }}
+        />
+      )}
     </div>
   );
 }
