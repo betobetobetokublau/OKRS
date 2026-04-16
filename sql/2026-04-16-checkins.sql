@@ -2,7 +2,26 @@
 -- their team's objectives/tasks in bulk. A `checkin` is one session; each
 -- objective/task touched during the session becomes a `checkin_entry`.
 --
--- Run against Supabase; safe to re-run.
+-- Run against Supabase; safe to re-run. Self-contained — creates the
+-- `user_is_in_workspace` helper locally so it can be run in any order
+-- relative to 2026-04-16-workspace-visibility.sql.
+
+-- Helper: is the current auth.uid() a member of the given workspace?
+-- SECURITY DEFINER avoids recursing through user_workspaces RLS.
+CREATE OR REPLACE FUNCTION public.user_is_in_workspace(_workspace_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_workspaces
+    WHERE workspace_id = _workspace_id AND user_id = auth.uid()
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION public.user_is_in_workspace(uuid) TO authenticated;
 
 CREATE TABLE IF NOT EXISTS public.checkins (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
