@@ -1,26 +1,42 @@
 'use client';
 
-import { useState } from 'react';
-import { useWorkspaceStore } from '@/stores/workspace-store';
-import { useObjectives } from '@/hooks/use-objectives';
-import { ObjectiveCard } from '@/components/objectives/objective-card';
-import { ObjectiveForm } from '@/components/objectives/objective-form';
-import { canManageContent } from '@/lib/utils/permissions';
-import { useRouter, useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import type { ObjectiveStatus } from '@/types';
+import { useParams } from 'next/navigation';
+import { useWorkspaceStore } from '@/stores/workspace-store';
+import { useObjectivesTable } from '@/hooks/use-objectives-table';
+import { ObjectivesTable } from '@/components/objectives/objectives-table';
+import { ObjectiveForm } from '@/components/objectives/objective-form';
+import { createClient } from '@/lib/supabase/client';
+import { canManageContent } from '@/lib/utils/permissions';
+import type { Department, ObjectiveStatus } from '@/types';
 
 export default function ObjetivosPage() {
   const params = useParams();
   const slug = params['workspace-slug'] as string;
-  const router = useRouter();
   const { currentWorkspace, activePeriod, userWorkspace } = useWorkspaceStore();
-  const { objectives, loading, refetch } = useObjectives(currentWorkspace?.id, activePeriod?.id);
+  const { rows, loading, refetch } = useObjectivesTable(currentWorkspace?.id, activePeriod?.id);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [filterStatus, setFilterStatus] = useState<ObjectiveStatus | 'all'>('all');
 
-  const canEdit = userWorkspace && canManageContent(userWorkspace.role);
-  const filtered = filterStatus === 'all' ? objectives : objectives.filter(o => o.status === filterStatus);
+  const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
+
+  useEffect(() => {
+    async function loadDepartments() {
+      if (!currentWorkspace?.id) return;
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('departments')
+        .select('*')
+        .eq('workspace_id', currentWorkspace.id)
+        .order('name', { ascending: true });
+      if (data) setDepartments(data as Department[]);
+    }
+    loadDepartments();
+  }, [currentWorkspace?.id]);
+
+  const filtered = filterStatus === 'all' ? rows : rows.filter((o) => o.status === filterStatus);
 
   return (
     <div>
@@ -28,7 +44,9 @@ export default function ObjetivosPage() {
         <div>
           <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>Objetivos</h1>
           <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>
-            {activePeriod ? `Periodo: ${activePeriod.name}` : 'Sin periodo activo'}
+            {activePeriod
+              ? `Periodo ${activePeriod.name}. Haz clic en una fila para expandir las tareas.`
+              : 'Sin periodo activo'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
@@ -48,7 +66,10 @@ export default function ObjetivosPage() {
             Skill Tree
           </Link>
           {canEdit && activePeriod && (
-            <button onClick={() => setShowCreate(true)} style={{ padding: '0.8rem 1.6rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: '#5c6ac4', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+            <button
+              onClick={() => setShowCreate(true)}
+              style={{ padding: '0.8rem 1.6rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: '#5c6ac4', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+            >
               + Crear Objetivo
             </button>
           )}
@@ -86,18 +107,13 @@ export default function ObjetivosPage() {
         <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
           <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-          <p style={{ color: '#637381', fontSize: '1.4rem' }}>
-            {filterStatus === 'all' ? 'Aún no hay objetivos para este periodo. ¡Crea el primero!' : 'No hay objetivos con este filtro.'}
-          </p>
-        </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.6rem' }}>
-          {filtered.map((obj) => (
-            <ObjectiveCard key={obj.id} objective={obj} onClick={() => router.push(`/${slug}/objetivos/${obj.id}`)} />
-          ))}
-        </div>
+        <ObjectivesTable
+          rows={filtered}
+          departments={departments}
+          canEdit={canEdit}
+          onChanged={refetch}
+        />
       )}
 
       {showCreate && activePeriod && currentWorkspace && (

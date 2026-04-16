@@ -18,8 +18,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useSkillTreeStore } from '@/stores/skill-tree-store';
 import { KPINode } from './kpi-node';
 import { ObjectiveNode } from './objective-node';
-import { TaskNode } from './task-node';
-import type { KPI, Objective, Task } from '@/types';
+import type { KPI, Objective } from '@/types';
 
 interface SkillTreeCanvasProps {
   workspaceId: string;
@@ -30,7 +29,6 @@ interface SkillTreeCanvasProps {
 const nodeTypes: NodeTypes = {
   kpiNode: KPINode,
   objectiveNode: ObjectiveNode,
-  taskNode: TaskNode,
 };
 
 const DEPT_COLORS = ['#5c6ac4', '#47c1bf', '#f49342', '#50b83c', '#de3618', '#9c6ade', '#006fbb', '#eec200'];
@@ -45,17 +43,15 @@ export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTre
     async function loadTree() {
       const supabase = createClient();
 
-      const [kpisRes, objsRes, tasksRes, koRes, kdRes] = await Promise.all([
+      const [kpisRes, objsRes, koRes, kdRes] = await Promise.all([
         supabase.from('kpis').select('*').eq('workspace_id', workspaceId).eq('period_id', periodId),
         supabase.from('objectives').select('*').eq('workspace_id', workspaceId).eq('period_id', periodId),
-        supabase.from('tasks').select('*'),
         supabase.from('kpi_objectives').select('*'),
         supabase.from('kpi_departments').select('*'),
       ]);
 
       let kpis = (kpisRes.data || []) as KPI[];
       let objectives = (objsRes.data || []) as Objective[];
-      let allTasks = (tasksRes.data || []) as Task[];
       const kpiObjectives = (koRes.data || []) as { kpi_id: string; objective_id: string }[];
       const kpiDepartments = (kdRes.data || []) as { kpi_id: string; department_id: string }[];
 
@@ -72,94 +68,111 @@ export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTre
         objectives = objectives.filter(o => linkedObjIds.includes(o.id));
       }
 
-      // Filter tasks to only those belonging to visible objectives
-      const objIds = new Set(objectives.map(o => o.id));
-      allTasks = allTasks.filter(t => objIds.has(t.objective_id));
-
-      // Build nodes
+      // Build nodes / edges
       const newNodes: Node[] = [];
       const newEdges: Edge[] = [];
 
-      // Layout: KPIs on top row, objectives middle, tasks bottom
+      // Layout constants
+      // Objectives are arranged under each KPI in a 2-column grid.
+      // A KPI's horizontal footprint is sized to its 2 columns (with padding),
+      // so adjacent KPIs don't overlap no matter how many objectives they have.
       const KPI_Y = 0;
-      const OBJ_Y = 200;
-      const TASK_Y = 380;
-      const SPACING_X = 160;
+      const OBJ_Y_START = 200;
+      const OBJ_NODE_W = 200;
+      const OBJ_NODE_H = 90;
+      const OBJ_COL_GAP = 30;
+      const OBJ_ROW_GAP = 30;
+      const KPI_GAP = 80;
 
-      // Map KPI to color
+      const KPI_BLOCK_W = OBJ_NODE_W * 2 + OBJ_COL_GAP; // 2 columns wide
+      const KPI_STRIDE = KPI_BLOCK_W + KPI_GAP;
+
+      // Map KPI id -> index and color
+      const kpiIndex = new Map<string, number>();
       const kpiColorMap = new Map<string, string>();
       kpis.forEach((kpi, i) => {
-        const color = DEPT_COLORS[i % DEPT_COLORS.length];
-        kpiColorMap.set(kpi.id, color);
+        kpiIndex.set(kpi.id, i);
+        kpiColorMap.set(kpi.id, DEPT_COLORS[i % DEPT_COLORS.length]);
       });
 
-      // KPI nodes
+      // Group objectives by their first linked KPI so each objective is drawn
+      // exactly once, under the KPI it most strongly belongs to.
+      const objectivesByKpi = new Map<string, Objective[]>();
+      const orphanObjectives: Objective[] = [];
+
+      objectives.forEach((obj) => {
+        const link = kpiObjectives.find(
+          (ko) => ko.objective_id === obj.id && kpiIndex.has(ko.kpi_id),
+        );
+        if (!link) {
+          orphanObjectives.push(obj);
+          return;
+        }
+        const arr = objectivesByKpi.get(link.kpi_id) || [];
+        arr.push(obj);
+        objectivesByKpi.set(link.kpi_id, arr);
+      });
+
+      // Place KPIs horizontally, centered over their 2-column objective grid.
       kpis.forEach((kpi, i) => {
         const color = kpiColorMap.get(kpi.id)!;
+        const blockLeft = i * KPI_STRIDE;
+        // KPINode is ~220px wide visually — center it over the block.
+        const kpiX = blockLeft + (KPI_BLOCK_W - 220) / 2;
+
         newNodes.push({
           id: `kpi-${kpi.id}`,
           type: 'kpiNode',
-          position: { x: i * SPACING_X * 1.5, y: KPI_Y },
+          position: { x: kpiX, y: KPI_Y },
           data: { label: kpi.title, progress: kpi.manual_progress, color },
         });
-      });
 
-      // Objective nodes — position based on first linked KPI
-      const objPositionMap = new Map<string, number>();
-      let objIndex = 0;
-      objectives.forEach((obj) => {
-        const linkedKpi = kpiObjectives.find(ko => ko.objective_id === obj.id && kpis.some(k => k.id === ko.kpi_id));
-        const kpiIdx = linkedKpi ? kpis.findIndex(k => k.id === linkedKpi.kpi_id) : objIndex;
-        const color = linkedKpi ? kpiColorMap.get(linkedKpi.kpi_id)! : '#637381';
+        const linkedObjs = objectivesByKpi.get(kpi.id) || [];
+        linkedObjs.forEach((obj, idx) => {
+          const col = idx % 2; // 0 or 1 — max 2 per row
+          const row = Math.floor(idx / 2);
+          const objX = blockLeft + col * (OBJ_NODE_W + OBJ_COL_GAP);
+          const objY = OBJ_Y_START + row * (OBJ_NODE_H + OBJ_ROW_GAP);
 
-        newNodes.push({
-          id: `obj-${obj.id}`,
-          type: 'objectiveNode',
-          position: { x: kpiIdx * SPACING_X * 1.5 + objIndex * 30, y: OBJ_Y + (objIndex % 2) * 40 },
-          data: { label: obj.title, progress: obj.manual_progress, status: obj.status, color },
-        });
-
-        objPositionMap.set(obj.id, objIndex);
-        objIndex++;
-
-        // Edges from KPIs to this objective
-        kpiObjectives
-          .filter(ko => ko.objective_id === obj.id && kpis.some(k => k.id === ko.kpi_id))
-          .forEach(ko => {
-            newEdges.push({
-              id: `e-kpi-${ko.kpi_id}-obj-${obj.id}`,
-              source: `kpi-${ko.kpi_id}`,
-              target: `obj-${obj.id}`,
-              style: { stroke: kpiColorMap.get(ko.kpi_id) || '#637381', strokeWidth: 2 },
-              animated: false,
-            });
+          newNodes.push({
+            id: `obj-${obj.id}`,
+            type: 'objectiveNode',
+            position: { x: objX, y: objY },
+            data: { label: obj.title, progress: obj.manual_progress, status: obj.status, color },
           });
+
+          // Draw edges from every KPI this objective is linked to (not just the
+          // owning one) so multi-KPI objectives still render their full web.
+          kpiObjectives
+            .filter((ko) => ko.objective_id === obj.id && kpiIndex.has(ko.kpi_id))
+            .forEach((ko) => {
+              newEdges.push({
+                id: `e-kpi-${ko.kpi_id}-obj-${obj.id}`,
+                source: `kpi-${ko.kpi_id}`,
+                target: `obj-${obj.id}`,
+                style: { stroke: kpiColorMap.get(ko.kpi_id) || '#637381', strokeWidth: 2 },
+                animated: false,
+              });
+            });
+        });
       });
 
-      // Task nodes
-      let taskIndex = 0;
-      allTasks.forEach((task) => {
-        const objPos = objPositionMap.get(task.objective_id) || 0;
-        const linkedKpi = kpiObjectives.find(ko => ko.objective_id === task.objective_id);
-        const color = linkedKpi ? kpiColorMap.get(linkedKpi.kpi_id) || '#637381' : '#637381';
-
-        newNodes.push({
-          id: `task-${task.id}`,
-          type: 'taskNode',
-          position: { x: objPos * SPACING_X + taskIndex * 20, y: TASK_Y + (taskIndex % 3) * 30 },
-          data: { label: task.title, status: task.status, color },
+      // Orphans (no KPI link): lay them out on a row to the right of all KPIs.
+      if (orphanObjectives.length > 0) {
+        const orphanBlockLeft = kpis.length * KPI_STRIDE;
+        orphanObjectives.forEach((obj, idx) => {
+          const col = idx % 2;
+          const row = Math.floor(idx / 2);
+          const objX = orphanBlockLeft + col * (OBJ_NODE_W + OBJ_COL_GAP);
+          const objY = OBJ_Y_START + row * (OBJ_NODE_H + OBJ_ROW_GAP);
+          newNodes.push({
+            id: `obj-${obj.id}`,
+            type: 'objectiveNode',
+            position: { x: objX, y: objY },
+            data: { label: obj.title, progress: obj.manual_progress, status: obj.status, color: '#637381' },
+          });
         });
-
-        newEdges.push({
-          id: `e-obj-${task.objective_id}-task-${task.id}`,
-          source: `obj-${task.objective_id}`,
-          target: `task-${task.id}`,
-          style: { stroke: color + '80', strokeWidth: 1.5 },
-          animated: task.status === 'in_progress',
-        });
-
-        taskIndex++;
-      });
+      }
 
       setNodes(newNodes);
       setEdges(newEdges);

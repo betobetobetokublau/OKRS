@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { Department, Profile, Objective, ProgressMode } from '@/types';
+import type { Department, Profile, Objective, ProgressMode, KPIStatus } from '@/types';
 
 interface KPIFormProps {
   workspaceId: string;
@@ -15,6 +15,7 @@ interface KPIFormProps {
     description?: string;
     progress_mode?: ProgressMode;
     manual_progress?: number;
+    status?: KPIStatus;
     responsible_user_id?: string | null;
     responsible_department_id?: string | null;
   };
@@ -26,6 +27,7 @@ export function KPIForm({ workspaceId, periodId, onClose, onSaved, initialData }
     description: initialData?.description || '',
     progress_mode: initialData?.progress_mode || 'hybrid' as ProgressMode,
     manual_progress: initialData?.manual_progress || 0,
+    status: initialData?.status || 'on_track' as KPIStatus,
     responsible_user_id: initialData?.responsible_user_id || '',
     responsible_department_id: initialData?.responsible_department_id || '',
     department_ids: [] as string[],
@@ -73,6 +75,7 @@ export function KPIForm({ workspaceId, periodId, onClose, onSaved, initialData }
       description: form.description || null,
       progress_mode: form.progress_mode,
       manual_progress: form.manual_progress,
+      status: form.status,
       responsible_user_id: form.responsible_user_id || null,
       responsible_department_id: form.responsible_department_id || null,
       workspace_id: workspaceId,
@@ -135,6 +138,16 @@ export function KPIForm({ workspaceId, periodId, onClose, onSaved, initialData }
                 <option value="manual">Manual</option>
                 <option value="auto">Automático (basado en objetivos)</option>
                 <option value="hybrid">Híbrido (promedio manual + auto)</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Estado</label>
+              <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as KPIStatus }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+                <option value="on_track">On track</option>
+                <option value="at_risk">En riesgo</option>
+                <option value="off_track">Off track</option>
+                <option value="achieved">Logrado</option>
               </select>
             </div>
 

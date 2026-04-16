@@ -5,9 +5,10 @@ import { createClient } from '@/lib/supabase/client';
 import { BlockReasonDialog } from '@/components/tasks/block-reason-dialog';
 import {
   type StatusChip,
-  kpiStatusFromProgress,
+  kpiStatusChip,
   objectiveStatusChip,
   taskStatusChip,
+  KPI_STATUS_OPTIONS,
   OBJECTIVE_STATUS_OPTIONS,
   TASK_STATUS_OPTIONS,
 } from './status-chips';
@@ -17,8 +18,7 @@ type Entity = 'kpi' | 'objective' | 'task';
 interface InlineStatusSelectProps {
   entity: Entity;
   id: string;
-  currentStatus: string; // ignored for kpi
-  progress?: number; // required for kpi derived status
+  currentStatus: string;
   canEdit: boolean;
   onChanged: () => void;
 }
@@ -66,7 +66,6 @@ export function InlineStatusSelect({
   entity,
   id,
   currentStatus,
-  progress,
   canEdit,
   onChanged,
 }: InlineStatusSelectProps) {
@@ -74,25 +73,28 @@ export function InlineStatusSelect({
   const [value, setValue] = useState(currentStatus);
   const [showBlockDialog, setShowBlockDialog] = useState(false);
 
-  // KPI: always a static derived chip
-  if (entity === 'kpi') {
-    const chip = kpiStatusFromProgress(progress ?? 0);
-    return <StaticChip chip={chip} />;
-  }
-
   const chip =
-    entity === 'objective' ? objectiveStatusChip(value) : taskStatusChip(value);
+    entity === 'kpi'
+      ? kpiStatusChip(value)
+      : entity === 'objective'
+        ? objectiveStatusChip(value)
+        : taskStatusChip(value);
 
   if (!canEdit) {
     return <StaticChip chip={chip} />;
   }
 
-  const options = entity === 'objective' ? OBJECTIVE_STATUS_OPTIONS : TASK_STATUS_OPTIONS;
+  const options =
+    entity === 'kpi'
+      ? KPI_STATUS_OPTIONS
+      : entity === 'objective'
+        ? OBJECTIVE_STATUS_OPTIONS
+        : TASK_STATUS_OPTIONS;
 
   async function applyChange(newStatus: string, clearBlockReason: boolean) {
     setSaving(true);
     const supabase = createClient();
-    const table = entity === 'objective' ? 'objectives' : 'tasks';
+    const table = entity === 'kpi' ? 'kpis' : entity === 'objective' ? 'objectives' : 'tasks';
     const updates: Record<string, unknown> = { status: newStatus };
     if (clearBlockReason) updates.block_reason = null;
     await supabase.from(table).update(updates).eq('id', id);

@@ -11,6 +11,7 @@ import { TaskForm } from '@/components/tasks/task-form';
 import { ObjectiveForm } from '@/components/objectives/objective-form';
 import { InlineTeamSelect } from './inline-team-select';
 import { InlineStatusSelect } from './inline-status-select';
+import { calculateObjectiveProgress } from '@/lib/utils/progress';
 import type { Objective, Task, KPI, Department } from '@/types';
 
 interface ObjectiveDetailPanelBodyProps {
@@ -62,7 +63,9 @@ export function ObjectiveDetailPanelBody({
     return <div style={{ padding: '2rem', color: '#637381' }}>Cargando objetivo...</div>;
   }
 
-  const progress = objective.computed_progress ?? objective.manual_progress;
+  // Always compute client-side so the meter reacts to mode changes and task
+  // edits without relying on a persisted `computed_progress` column.
+  const progress = calculateObjectiveProgress(objective, tasks);
 
   function refresh() {
     load();

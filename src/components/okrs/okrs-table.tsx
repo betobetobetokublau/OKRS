@@ -433,8 +433,7 @@ function KpiGroupBody({
           <InlineStatusSelect
             entity="kpi"
             id={kpi.id}
-            currentStatus=""
-            progress={kpiProgress}
+            currentStatus={kpi.status}
             canEdit={canEdit}
             onChanged={onChanged}
           />

@@ -7,6 +7,7 @@ export type PeriodStatus = 'active' | 'upcoming' | 'archived';
 export type ProgressMode = 'manual' | 'auto' | 'hybrid';
 export type ObjectiveStatus = 'in_progress' | 'paused' | 'deprecated' | 'upcoming';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked';
+export type KPIStatus = 'on_track' | 'at_risk' | 'off_track' | 'achieved';
 export type NotificationType =
   | 'monthly_review_reminder'
   | 'quarterly_session'
@@ -78,6 +79,7 @@ export interface KPI {
   description: string | null;
   progress_mode: ProgressMode;
   manual_progress: number;
+  status: KPIStatus;
   responsible_user_id: string | null;
   responsible_department_id: string | null;
   sort_order: number;
