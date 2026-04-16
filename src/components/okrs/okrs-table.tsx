@@ -1,8 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import type { Task } from '@/types';
+import type { Task, Department } from '@/types';
 import type { KPIWithObjectives, ObjectiveWithTasks } from '@/hooks/use-okrs';
+import { InlineTeamSelect } from './inline-team-select';
+import { InlineStatusSelect } from './inline-status-select';
+import { OkrDetailPanel, type PanelTarget } from './okr-detail-panel';
 
 // ---------- Helpers ----------
 
@@ -16,50 +19,6 @@ function getObjectiveProgress(o: ObjectiveWithTasks): number {
 
 function getTaskProgress(t: Task): number {
   return t.status === 'completed' ? 100 : 0;
-}
-
-interface StatusChip {
-  label: string;
-  bg: string;
-  fg: string;
-  dot: string;
-}
-
-function kpiStatusFromProgress(progress: number): StatusChip {
-  if (progress >= 100) return { label: 'Logrado', bg: '#e3f1df', fg: '#108043', dot: '#108043' };
-  if (progress >= 70) return { label: 'On track', bg: '#e3f1df', fg: '#108043', dot: '#50b83c' };
-  if (progress >= 40) return { label: 'En progreso', bg: '#fcf1cd', fg: '#8a6116', dot: '#eec200' };
-  return { label: 'Off track', bg: '#fbeae5', fg: '#bf0711', dot: '#de3618' };
-}
-
-function objectiveStatus(status: string): StatusChip {
-  switch (status) {
-    case 'in_progress':
-      return { label: 'En progreso', bg: '#e3f1df', fg: '#108043', dot: '#50b83c' };
-    case 'paused':
-      return { label: 'En pausa', bg: '#fcf1cd', fg: '#8a6116', dot: '#eec200' };
-    case 'deprecated':
-      return { label: 'Deprecado', bg: '#fbeae5', fg: '#bf0711', dot: '#de3618' };
-    case 'upcoming':
-      return { label: 'Próximo', bg: '#e4e5e7', fg: '#454f5b', dot: '#919eab' };
-    default:
-      return { label: status, bg: '#e4e5e7', fg: '#454f5b', dot: '#919eab' };
-  }
-}
-
-function taskStatus(status: string): StatusChip {
-  switch (status) {
-    case 'completed':
-      return { label: 'Completada', bg: '#e3f1df', fg: '#108043', dot: '#108043' };
-    case 'in_progress':
-      return { label: 'En progreso', bg: '#e3f1df', fg: '#108043', dot: '#50b83c' };
-    case 'pending':
-      return { label: 'Pendiente', bg: '#e4e5e7', fg: '#454f5b', dot: '#919eab' };
-    case 'blocked':
-      return { label: 'Bloqueada', bg: '#fbeae5', fg: '#bf0711', dot: '#de3618' };
-    default:
-      return { label: status, bg: '#e4e5e7', fg: '#454f5b', dot: '#919eab' };
-  }
 }
 
 // ---------- Cell renderers ----------
@@ -87,35 +46,6 @@ function TypeBadge({ type }: { type: 'kpi' | 'objective' | 'task' }) {
     >
       <span aria-hidden>{map.icon}</span>
       {map.label}
-    </span>
-  );
-}
-
-function StatusBadge({ chip }: { chip: StatusChip }) {
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '0.6rem',
-        padding: '0.2rem 0.8rem',
-        borderRadius: '10rem',
-        backgroundColor: chip.bg,
-        color: chip.fg,
-        fontSize: '1.2rem',
-        fontWeight: 500,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      <span
-        style={{
-          width: '0.8rem',
-          height: '0.8rem',
-          borderRadius: '50%',
-          backgroundColor: chip.dot,
-        }}
-      />
-      {chip.label}
     </span>
   );
 }
@@ -154,33 +84,44 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-function TeamChip({ name, color }: { name: string; color?: string | null }) {
+// ---------- Title button ----------
+
+function TitleButton({
+  children,
+  onClick,
+  strong = false,
+  dimmed = false,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  strong?: boolean;
+  dimmed?: boolean;
+}) {
+  const [hover, setHover] = useState(false);
   return (
-    <span
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '0.4rem',
-        padding: '0.2rem 0.8rem',
-        borderRadius: '10rem',
-        backgroundColor: '#f4f6f8',
-        color: '#212b36',
-        fontSize: '1.2rem',
-        fontWeight: 500,
-        whiteSpace: 'nowrap',
-        border: '1px solid #dfe3e8',
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        margin: 0,
+        font: 'inherit',
+        color: dimmed ? '#454f5b' : '#212b36',
+        fontWeight: strong ? 600 : 500,
+        cursor: 'pointer',
+        textAlign: 'left',
+        textDecoration: hover ? 'underline' : 'none',
       }}
     >
-      <span
-        style={{
-          width: '0.8rem',
-          height: '0.8rem',
-          borderRadius: '50%',
-          backgroundColor: color || '#919eab',
-        }}
-      />
-      {name}
-    </span>
+      {children}
+    </button>
   );
 }
 
@@ -213,11 +154,15 @@ function Chevron({ expanded, visible }: { expanded: boolean; visible: boolean })
 
 interface OkrsTableProps {
   kpis: KPIWithObjectives[];
+  departments: Department[];
+  canEdit: boolean;
+  onChanged: () => void;
 }
 
-export function OkrsTable({ kpis }: OkrsTableProps) {
+export function OkrsTable({ kpis, departments, canEdit, onChanged }: OkrsTableProps) {
   const [expandedKpis, setExpandedKpis] = useState<Set<string>>(new Set());
   const [expandedObjectives, setExpandedObjectives] = useState<Set<string>>(new Set());
+  const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
 
   function toggleKpi(id: string) {
     setExpandedKpis((prev) => {
@@ -257,60 +202,72 @@ export function OkrsTable({ kpis }: OkrsTableProps) {
   };
 
   return (
-    <div
-      className="Polaris-Card"
-      style={{
-        borderRadius: '8px',
-        border: '1px solid var(--color-border)',
-        backgroundColor: 'white',
-        overflow: 'hidden',
-      }}
-    >
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={{ ...headerCell, width: '45%' }}>Nombre</th>
-              <th style={headerCell}>Tipo</th>
-              <th style={headerCell}>Equipo</th>
-              <th style={headerCell}>Progreso</th>
-              <th style={headerCell}>Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {kpis.map((kpi) => {
-              const kpiExpanded = expandedKpis.has(kpi.id);
-              const kpiProgress = getKpiProgress(kpi);
-              const kpiChip = kpiStatusFromProgress(kpiProgress);
-              const hasObjectives = (kpi.objectives || []).length > 0;
-
-              return (
-                <KpiRowGroup
-                  key={kpi.id}
-                  kpi={kpi}
-                  kpiExpanded={kpiExpanded}
-                  kpiProgress={kpiProgress}
-                  kpiChip={kpiChip}
-                  hasObjectives={hasObjectives}
-                  onToggleKpi={() => toggleKpi(kpi.id)}
-                  expandedObjectives={expandedObjectives}
-                  onToggleObjective={toggleObjective}
-                  cellBase={cellBase}
-                />
-              );
-            })}
-
-            {kpis.length === 0 && (
+    <>
+      <div
+        className="Polaris-Card"
+        style={{
+          borderRadius: '8px',
+          border: '1px solid var(--color-border)',
+          backgroundColor: 'white',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
               <tr>
-                <td colSpan={5} style={{ ...cellBase, textAlign: 'center', color: '#637381', padding: '4rem' }}>
-                  No hay KPIs en este periodo.
-                </td>
+                <th style={{ ...headerCell, width: '45%' }}>Nombre</th>
+                <th style={headerCell}>Tipo</th>
+                <th style={headerCell}>Equipo</th>
+                <th style={headerCell}>Progreso</th>
+                <th style={headerCell}>Estado</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {kpis.map((kpi) => {
+                const kpiExpanded = expandedKpis.has(kpi.id);
+                const kpiProgress = getKpiProgress(kpi);
+                const hasObjectives = (kpi.objectives || []).length > 0;
+
+                return (
+                  <KpiRowGroup
+                    key={kpi.id}
+                    kpi={kpi}
+                    kpiExpanded={kpiExpanded}
+                    kpiProgress={kpiProgress}
+                    hasObjectives={hasObjectives}
+                    onToggleKpi={() => toggleKpi(kpi.id)}
+                    expandedObjectives={expandedObjectives}
+                    onToggleObjective={toggleObjective}
+                    cellBase={cellBase}
+                    departments={departments}
+                    canEdit={canEdit}
+                    onChanged={onChanged}
+                    onOpenPanel={setPanelTarget}
+                  />
+                );
+              })}
+
+              {kpis.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ ...cellBase, textAlign: 'center', color: '#637381', padding: '4rem' }}>
+                    No hay KPIs en este periodo.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+
+      <OkrDetailPanel
+        target={panelTarget}
+        departments={departments}
+        canEdit={canEdit}
+        onClose={() => setPanelTarget(null)}
+        onChanged={onChanged}
+      />
+    </>
   );
 }
 
@@ -320,24 +277,30 @@ interface KpiRowGroupProps {
   kpi: KPIWithObjectives;
   kpiExpanded: boolean;
   kpiProgress: number;
-  kpiChip: StatusChip;
   hasObjectives: boolean;
   onToggleKpi: () => void;
   expandedObjectives: Set<string>;
   onToggleObjective: (id: string) => void;
   cellBase: React.CSSProperties;
+  departments: Department[];
+  canEdit: boolean;
+  onChanged: () => void;
+  onOpenPanel: (t: PanelTarget) => void;
 }
 
 function KpiRowGroup({
   kpi,
   kpiExpanded,
   kpiProgress,
-  kpiChip,
   hasObjectives,
   onToggleKpi,
   expandedObjectives,
   onToggleObjective,
   cellBase,
+  departments,
+  canEdit,
+  onChanged,
+  onOpenPanel,
 }: KpiRowGroupProps) {
   return (
     <>
@@ -351,26 +314,40 @@ function KpiRowGroup({
         <td style={cellBase}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
             <Chevron expanded={kpiExpanded} visible={hasObjectives} />
-            <span style={{ fontWeight: 600 }}>{kpi.title}</span>
+            <TitleButton onClick={() => onOpenPanel({ type: 'kpi', id: kpi.id })} strong>
+              {kpi.title}
+            </TitleButton>
           </div>
         </td>
         <td style={cellBase}><TypeBadge type="kpi" /></td>
         <td style={cellBase}>
-          {kpi.responsible_department ? (
-            <TeamChip name={kpi.responsible_department.name} color={kpi.responsible_department.color} />
-          ) : (
-            <span style={{ color: '#919eab' }}>—</span>
-          )}
+          <InlineTeamSelect
+            entity="kpi"
+            id={kpi.id}
+            currentDepartmentId={kpi.responsible_department_id}
+            currentDepartment={kpi.responsible_department}
+            departments={departments}
+            canEdit={canEdit}
+            onChanged={onChanged}
+          />
         </td>
         <td style={cellBase}><ProgressBar value={kpiProgress} /></td>
-        <td style={cellBase}><StatusBadge chip={kpiChip} /></td>
+        <td style={cellBase}>
+          <InlineStatusSelect
+            entity="kpi"
+            id={kpi.id}
+            currentStatus=""
+            progress={kpiProgress}
+            canEdit={canEdit}
+            onChanged={onChanged}
+          />
+        </td>
       </tr>
 
       {kpiExpanded &&
         kpi.objectives.map((obj) => {
           const objExpanded = expandedObjectives.has(obj.id);
           const objProgress = getObjectiveProgress(obj);
-          const objChip = objectiveStatus(obj.status);
           const hasTasks = (obj.tasks || []).length > 0;
 
           return (
@@ -379,10 +356,13 @@ function KpiRowGroup({
               obj={obj}
               objExpanded={objExpanded}
               objProgress={objProgress}
-              objChip={objChip}
               hasTasks={hasTasks}
               onToggle={() => onToggleObjective(obj.id)}
               cellBase={cellBase}
+              departments={departments}
+              canEdit={canEdit}
+              onChanged={onChanged}
+              onOpenPanel={onOpenPanel}
             />
           );
         })}
@@ -394,20 +374,26 @@ interface ObjectiveRowGroupProps {
   obj: ObjectiveWithTasks;
   objExpanded: boolean;
   objProgress: number;
-  objChip: StatusChip;
   hasTasks: boolean;
   onToggle: () => void;
   cellBase: React.CSSProperties;
+  departments: Department[];
+  canEdit: boolean;
+  onChanged: () => void;
+  onOpenPanel: (t: PanelTarget) => void;
 }
 
 function ObjectiveRowGroup({
   obj,
   objExpanded,
   objProgress,
-  objChip,
   hasTasks,
   onToggle,
   cellBase,
+  departments,
+  canEdit,
+  onChanged,
+  onOpenPanel,
 }: ObjectiveRowGroupProps) {
   return (
     <>
@@ -421,31 +407,46 @@ function ObjectiveRowGroup({
         <td style={cellBase}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', paddingLeft: '3.2rem' }}>
             <Chevron expanded={objExpanded} visible={hasTasks} />
-            <span style={{ fontWeight: 500 }}>{obj.title}</span>
+            <TitleButton onClick={() => onOpenPanel({ type: 'objective', id: obj.id })}>
+              {obj.title}
+            </TitleButton>
           </div>
         </td>
         <td style={cellBase}><TypeBadge type="objective" /></td>
         <td style={cellBase}>
-          {obj.responsible_department ? (
-            <TeamChip name={obj.responsible_department.name} color={obj.responsible_department.color} />
-          ) : (
-            <span style={{ color: '#919eab' }}>—</span>
-          )}
+          <InlineTeamSelect
+            entity="objective"
+            id={obj.id}
+            currentDepartmentId={obj.responsible_department_id}
+            currentDepartment={obj.responsible_department}
+            departments={departments}
+            canEdit={canEdit}
+            onChanged={onChanged}
+          />
         </td>
         <td style={cellBase}><ProgressBar value={objProgress} /></td>
-        <td style={cellBase}><StatusBadge chip={objChip} /></td>
+        <td style={cellBase}>
+          <InlineStatusSelect
+            entity="objective"
+            id={obj.id}
+            currentStatus={obj.status}
+            canEdit={canEdit}
+            onChanged={onChanged}
+          />
+        </td>
       </tr>
 
       {objExpanded &&
         obj.tasks.map((t) => {
-          const chip = taskStatus(t.status);
           const progress = getTaskProgress(t);
           return (
             <tr key={`${obj.id}-${t.id}`} style={{ backgroundColor: 'white' }}>
               <td style={cellBase}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', paddingLeft: '6.4rem' }}>
                   <Chevron expanded={false} visible={false} />
-                  <span style={{ color: '#454f5b' }}>{t.title}</span>
+                  <TitleButton onClick={() => onOpenPanel({ type: 'task', id: t.id })} dimmed>
+                    {t.title}
+                  </TitleButton>
                 </div>
               </td>
               <td style={cellBase}><TypeBadge type="task" /></td>
@@ -453,7 +454,15 @@ function ObjectiveRowGroup({
                 <span style={{ color: '#919eab' }}>—</span>
               </td>
               <td style={cellBase}><ProgressBar value={progress} /></td>
-              <td style={cellBase}><StatusBadge chip={chip} /></td>
+              <td style={cellBase}>
+                <InlineStatusSelect
+                  entity="task"
+                  id={t.id}
+                  currentStatus={t.status}
+                  canEdit={canEdit}
+                  onChanged={onChanged}
+                />
+              </td>
             </tr>
           );
         })}

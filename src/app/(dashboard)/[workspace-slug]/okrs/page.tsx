@@ -1,12 +1,33 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { useOkrs } from '@/hooks/use-okrs';
 import { OkrsTable } from '@/components/okrs/okrs-table';
+import { createClient } from '@/lib/supabase/client';
+import { canManageContent } from '@/lib/utils/permissions';
+import type { Department } from '@/types';
 
 export default function OkrsPage() {
-  const { currentWorkspace, activePeriod } = useWorkspaceStore();
-  const { kpis, loading } = useOkrs(currentWorkspace?.id, activePeriod?.id);
+  const { currentWorkspace, activePeriod, userWorkspace } = useWorkspaceStore();
+  const { kpis, loading, refetch } = useOkrs(currentWorkspace?.id, activePeriod?.id);
+  const [departments, setDepartments] = useState<Department[]>([]);
+
+  const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
+
+  useEffect(() => {
+    async function loadDepartments() {
+      if (!currentWorkspace?.id) return;
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('departments')
+        .select('*')
+        .eq('workspace_id', currentWorkspace.id)
+        .order('name', { ascending: true });
+      if (data) setDepartments(data as Department[]);
+    }
+    loadDepartments();
+  }, [currentWorkspace?.id]);
 
   return (
     <div>
@@ -33,7 +54,12 @@ export default function OkrsPage() {
           </p>
         </div>
       ) : (
-        <OkrsTable kpis={kpis} />
+        <OkrsTable
+          kpis={kpis}
+          departments={departments}
+          canEdit={canEdit}
+          onChanged={refetch}
+        />
       )}
     </div>
   );
