@@ -5,6 +5,7 @@ import type { Task, Department } from '@/types';
 import type { KPIWithObjectives, ObjectiveWithTasks } from '@/hooks/use-okrs';
 import { InlineTeamSelect } from './inline-team-select';
 import { InlineStatusSelect } from './inline-status-select';
+import { InlineUserSelect } from './inline-user-select';
 import { OkrDetailPanel, type PanelTarget } from './okr-detail-panel';
 import {
   DndContext,
@@ -453,6 +454,7 @@ function KpiGroupBody({
               objExpanded={objExpanded}
               objProgress={objProgress}
               hasTasks={hasTasks}
+              workspaceId={kpi.workspace_id}
               onToggle={() => onToggleObjective(obj.id)}
               cellBase={cellBase}
               departments={departments}
@@ -471,6 +473,7 @@ interface ObjectiveRowGroupProps {
   objExpanded: boolean;
   objProgress: number;
   hasTasks: boolean;
+  workspaceId: string;
   onToggle: () => void;
   cellBase: React.CSSProperties;
   departments: Department[];
@@ -484,6 +487,7 @@ function ObjectiveRowGroup({
   objExpanded,
   objProgress,
   hasTasks,
+  workspaceId,
   onToggle,
   cellBase,
   departments,
@@ -547,7 +551,15 @@ function ObjectiveRowGroup({
               </td>
               <td style={cellBase}><TypeBadge type="task" /></td>
               <td style={cellBase}>
-                <span style={{ color: '#919eab' }}>—</span>
+                <InlineUserSelect
+                  entity="task"
+                  id={t.id}
+                  workspaceId={workspaceId}
+                  currentUserId={t.assigned_user_id}
+                  currentUser={t.assigned_user}
+                  canEdit={canEdit}
+                  onChanged={onChanged}
+                />
               </td>
               <td style={cellBase}><ProgressBar value={progress} /></td>
               <td style={cellBase}>

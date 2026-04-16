@@ -72,20 +72,31 @@ export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTre
       const newNodes: Node[] = [];
       const newEdges: Edge[] = [];
 
-      // Layout constants
-      // Objectives are arranged under each KPI in a 2-column grid.
-      // A KPI's horizontal footprint is sized to its 2 columns (with padding),
-      // so adjacent KPIs don't overlap no matter how many objectives they have.
-      const KPI_Y = 0;
-      const OBJ_Y_START = 200;
+      // --- Layout ---
+      // KPIs sit evenly spaced around a circle centered at (0, 0). Each KPI's
+      // linked objectives radiate outward along the ray from the center to
+      // that KPI, arranged in 2-per-level rows (so objectives stay aligned
+      // with their KPI's angle and never overlap another KPI's stack).
+      //
+      // Node dimensions (visual; must stay roughly in sync with kpi-node /
+      // objective-node components).
+      const KPI_NODE_W = 220;
+      const KPI_NODE_H = 90;
       const OBJ_NODE_W = 200;
       const OBJ_NODE_H = 90;
-      const OBJ_COL_GAP = 30;
-      const OBJ_ROW_GAP = 30;
-      const KPI_GAP = 80;
 
-      const KPI_BLOCK_W = OBJ_NODE_W * 2 + OBJ_COL_GAP; // 2 columns wide
-      const KPI_STRIDE = KPI_BLOCK_W + KPI_GAP;
+      // Spacing between the KPI ring and the first row of objectives, then
+      // between each subsequent row, measured along the radial direction.
+      const KPI_RADIUS_BASE = 320; // minimum ring radius (for few KPIs)
+      const PER_KPI_SPREAD = 90;   // grows the ring when there are many KPIs
+      const OBJ_RADIAL_GAP = 60;   // gap between KPI and first objective row
+      const OBJ_ROW_STRIDE = OBJ_NODE_H + 40; // distance between objective rows
+      const OBJ_PAIR_OFFSET = (OBJ_NODE_W + 30) / 2; // perpendicular offset
+                                                    // between the two items in a "level"
+
+      // Scale the KPI ring radius with the number of KPIs so they don't
+      // crowd each other when there are many.
+      const KPI_RADIUS = Math.max(KPI_RADIUS_BASE, PER_KPI_SPREAD * kpis.length);
 
       // Map KPI id -> index and color
       const kpiIndex = new Map<string, number>();
@@ -113,36 +124,54 @@ export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTre
         objectivesByKpi.set(link.kpi_id, arr);
       });
 
-      // Place KPIs horizontally, centered over their 2-column objective grid.
+      // Place each KPI around the ring.
+      const kpiCount = Math.max(kpis.length, 1);
       kpis.forEach((kpi, i) => {
         const color = kpiColorMap.get(kpi.id)!;
-        const blockLeft = i * KPI_STRIDE;
-        // KPINode is ~220px wide visually — center it over the block.
-        const kpiX = blockLeft + (KPI_BLOCK_W - 220) / 2;
+        // Start at -PI/2 so the first KPI sits at the top of the ring.
+        const angle = -Math.PI / 2 + (i / kpiCount) * Math.PI * 2;
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
 
+        const kpiCenterX = cosA * KPI_RADIUS;
+        const kpiCenterY = sinA * KPI_RADIUS;
+        // React Flow positions by top-left corner; offset by half size to center.
         newNodes.push({
           id: `kpi-${kpi.id}`,
           type: 'kpiNode',
-          position: { x: kpiX, y: KPI_Y },
+          position: { x: kpiCenterX - KPI_NODE_W / 2, y: kpiCenterY - KPI_NODE_H / 2 },
           data: { label: kpi.title, progress: kpi.manual_progress, color },
         });
 
         const linkedObjs = objectivesByKpi.get(kpi.id) || [];
+        // Unit vector pointing outward from the center along this KPI's ray,
+        // and its perpendicular (used to offset the two objectives per level).
+        const outX = cosA;
+        const outY = sinA;
+        const perpX = -sinA;
+        const perpY = cosA;
+
         linkedObjs.forEach((obj, idx) => {
-          const col = idx % 2; // 0 or 1 — max 2 per row
-          const row = Math.floor(idx / 2);
-          const objX = blockLeft + col * (OBJ_NODE_W + OBJ_COL_GAP);
-          const objY = OBJ_Y_START + row * (OBJ_NODE_H + OBJ_ROW_GAP);
+          const level = Math.floor(idx / 2); // 0, 1, 2, ...
+          const side = idx % 2 === 0 ? -1 : 1; // left or right of the ray
+
+          // Distance from the KPI's center, measured along the outward ray.
+          // First level starts just past the KPI node; subsequent levels step
+          // further out.
+          const radialDist = KPI_NODE_H / 2 + OBJ_RADIAL_GAP + level * OBJ_ROW_STRIDE + OBJ_NODE_H / 2;
+
+          const objCenterX = kpiCenterX + outX * radialDist + perpX * OBJ_PAIR_OFFSET * side;
+          const objCenterY = kpiCenterY + outY * radialDist + perpY * OBJ_PAIR_OFFSET * side;
 
           newNodes.push({
             id: `obj-${obj.id}`,
             type: 'objectiveNode',
-            position: { x: objX, y: objY },
+            position: { x: objCenterX - OBJ_NODE_W / 2, y: objCenterY - OBJ_NODE_H / 2 },
             data: { label: obj.title, progress: obj.manual_progress, status: obj.status, color },
           });
 
-          // Draw edges from every KPI this objective is linked to (not just the
-          // owning one) so multi-KPI objectives still render their full web.
+          // Draw edges from every KPI this objective is linked to (not just
+          // the owning one), colored by the source KPI.
           kpiObjectives
             .filter((ko) => ko.objective_id === obj.id && kpiIndex.has(ko.kpi_id))
             .forEach((ko) => {
@@ -157,14 +186,16 @@ export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTre
         });
       });
 
-      // Orphans (no KPI link): lay them out on a row to the right of all KPIs.
+      // Orphan objectives (no KPI link) — stack to the far right, outside the
+      // ring, in a simple 2-column grid. They have no edges.
       if (orphanObjectives.length > 0) {
-        const orphanBlockLeft = kpis.length * KPI_STRIDE;
+        const orphanLeft = KPI_RADIUS + 500;
+        const orphanTop = -KPI_RADIUS;
         orphanObjectives.forEach((obj, idx) => {
           const col = idx % 2;
           const row = Math.floor(idx / 2);
-          const objX = orphanBlockLeft + col * (OBJ_NODE_W + OBJ_COL_GAP);
-          const objY = OBJ_Y_START + row * (OBJ_NODE_H + OBJ_ROW_GAP);
+          const objX = orphanLeft + col * (OBJ_NODE_W + 30);
+          const objY = orphanTop + row * OBJ_ROW_STRIDE;
           newNodes.push({
             id: `obj-${obj.id}`,
             type: 'objectiveNode',

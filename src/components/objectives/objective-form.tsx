@@ -18,6 +18,8 @@ interface ObjectiveFormProps {
     manual_progress?: number;
     responsible_user_id?: string | null;
     responsible_department_id?: string | null;
+    /** Pre-selected KPI links (used when creating from a KPI panel). */
+    kpi_ids?: string[];
   };
 }
 
@@ -31,7 +33,7 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
     responsible_user_id: initialData?.responsible_user_id || '',
     responsible_department_id: initialData?.responsible_department_id || '',
     department_ids: [] as string[],
-    kpi_ids: [] as string[],
+    kpi_ids: (initialData?.kpi_ids ?? []) as string[],
   });
   const [users, setUsers] = useState<Profile[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);

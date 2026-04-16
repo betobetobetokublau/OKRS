@@ -1,42 +1,118 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { useObjectivesTable } from '@/hooks/use-objectives-table';
 import { ObjectivesTable } from '@/components/objectives/objectives-table';
 import { ObjectiveForm } from '@/components/objectives/objective-form';
+import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
 import { createClient } from '@/lib/supabase/client';
 import { canManageContent } from '@/lib/utils/permissions';
-import type { Department, ObjectiveStatus } from '@/types';
+import type { Department, KPI, ObjectiveStatus } from '@/types';
 
+const ARROW_UP = 'M5 15l7-7 7 7';
+const ARROW_DOWN = 'M19 9l-7 7-7-7';
+
+/**
+ * Objetivos view: one ObjectivesTable per KPI (plus a bucket for orphan
+ * objectives that aren't linked to any KPI). KPI sections can be reordered
+ * via up/down buttons; the new order persists to `kpis.sort_order` (shared
+ * with the OKRs view). A single OkrDetailPanel backs every sub-table.
+ */
 export default function ObjetivosPage() {
   const params = useParams();
   const slug = params['workspace-slug'] as string;
   const { currentWorkspace, activePeriod, userWorkspace } = useWorkspaceStore();
   const { rows, loading, refetch } = useObjectivesTable(currentWorkspace?.id, activePeriod?.id);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [kpis, setKpis] = useState<KPI[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [filterStatus, setFilterStatus] = useState<ObjectiveStatus | 'all'>('all');
+  const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
 
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
+  const canReorder = canEdit;
 
   useEffect(() => {
-    async function loadDepartments() {
-      if (!currentWorkspace?.id) return;
+    async function loadMeta() {
+      if (!currentWorkspace?.id || !activePeriod?.id) return;
       const supabase = createClient();
-      const { data } = await supabase
-        .from('departments')
-        .select('*')
-        .eq('workspace_id', currentWorkspace.id)
-        .order('name', { ascending: true });
-      if (data) setDepartments(data as Department[]);
+      const [deptRes, kpiRes] = await Promise.all([
+        supabase
+          .from('departments')
+          .select('*')
+          .eq('workspace_id', currentWorkspace.id)
+          .order('name', { ascending: true }),
+        supabase
+          .from('kpis')
+          .select('*')
+          .eq('workspace_id', currentWorkspace.id)
+          .eq('period_id', activePeriod.id)
+          .order('sort_order', { ascending: true })
+          .order('created_at', { ascending: true }),
+      ]);
+      if (deptRes.data) setDepartments(deptRes.data as Department[]);
+      if (kpiRes.data) setKpis(kpiRes.data as KPI[]);
     }
-    loadDepartments();
-  }, [currentWorkspace?.id]);
+    loadMeta();
+  }, [currentWorkspace?.id, activePeriod?.id]);
 
-  const filtered = filterStatus === 'all' ? rows : rows.filter((o) => o.status === filterStatus);
+  // Apply the status filter once, then group by KPI.
+  const filteredRows = filterStatus === 'all' ? rows : rows.filter((o) => o.status === filterStatus);
+
+  const rowsByKpi = useMemo(() => {
+    const map = new Map<string, typeof filteredRows>();
+    const orphans: typeof filteredRows = [];
+    filteredRows.forEach((obj) => {
+      if (!obj.linked_kpis || obj.linked_kpis.length === 0) {
+        orphans.push(obj);
+        return;
+      }
+      obj.linked_kpis.forEach((k) => {
+        const arr = map.get(k.id) || [];
+        arr.push(obj);
+        map.set(k.id, arr);
+      });
+    });
+    return { map, orphans };
+  }, [filteredRows]);
+
+  async function moveKpi(kpiId: string, direction: -1 | 1) {
+    const idx = kpis.findIndex((k) => k.id === kpiId);
+    const target = idx + direction;
+    if (idx === -1 || target < 0 || target >= kpis.length) return;
+    const reordered = [...kpis];
+    const [item] = reordered.splice(idx, 1);
+    reordered.splice(target, 0, item);
+    // Local echo
+    setKpis(reordered.map((k, i) => ({ ...k, sort_order: i })));
+    // Persist
+    const supabase = createClient();
+    await Promise.all(
+      reordered.map((k, i) => supabase.from('kpis').update({ sort_order: i }).eq('id', k.id)),
+    );
+  }
+
+  async function refreshAll() {
+    // Reload both objectives and the kpi ordering (in case we're showing a
+    // freshly-reordered list and a mutation reran).
+    if (!currentWorkspace?.id || !activePeriod?.id) {
+      refetch();
+      return;
+    }
+    const supabase = createClient();
+    const kpiRes = await supabase
+      .from('kpis')
+      .select('*')
+      .eq('workspace_id', currentWorkspace.id)
+      .eq('period_id', activePeriod.id)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+    if (kpiRes.data) setKpis(kpiRes.data as KPI[]);
+    refetch();
+  }
 
   return (
     <div>
@@ -45,7 +121,7 @@ export default function ObjetivosPage() {
           <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>Objetivos</h1>
           <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>
             {activePeriod
-              ? `Periodo ${activePeriod.name}. Haz clic en una fila para expandir las tareas.`
+              ? `Periodo ${activePeriod.name}. Los objetivos se agrupan por KPI.`
               : 'Sin periodo activo'}
           </p>
         </div>
@@ -107,13 +183,43 @@ export default function ObjetivosPage() {
         <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
           <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
         </div>
+      ) : kpis.length === 0 && rowsByKpi.orphans.length === 0 ? (
+        <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+          <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay KPIs ni objetivos en este periodo.</p>
+        </div>
       ) : (
-        <ObjectivesTable
-          rows={filtered}
-          departments={departments}
-          canEdit={canEdit}
-          onChanged={refetch}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2.4rem' }}>
+          {kpis.map((kpi, idx) => {
+            const kpiRows = rowsByKpi.map.get(kpi.id) || [];
+            return (
+              <KpiSection
+                key={kpi.id}
+                kpi={kpi}
+                rows={kpiRows}
+                isFirst={idx === 0}
+                isLast={idx === kpis.length - 1}
+                canReorder={canReorder}
+                onMoveUp={() => moveKpi(kpi.id, -1)}
+                onMoveDown={() => moveKpi(kpi.id, 1)}
+                departments={departments}
+                canEdit={canEdit}
+                onChanged={refreshAll}
+                onOpenPanel={setPanelTarget}
+              />
+            );
+          })}
+
+          {rowsByKpi.orphans.length > 0 && (
+            <OrphanSection
+              rows={rowsByKpi.orphans}
+              departments={departments}
+              workspaceId={currentWorkspace!.id}
+              canEdit={canEdit}
+              onChanged={refreshAll}
+              onOpenPanel={setPanelTarget}
+            />
+          )}
+        </div>
       )}
 
       {showCreate && activePeriod && currentWorkspace && (
@@ -124,6 +230,192 @@ export default function ObjetivosPage() {
           onSaved={() => { setShowCreate(false); refetch(); }}
         />
       )}
+
+      <OkrDetailPanel
+        target={panelTarget}
+        departments={departments}
+        canEdit={canEdit}
+        onClose={() => setPanelTarget(null)}
+        onChanged={refreshAll}
+      />
+    </div>
+  );
+}
+
+// ---------- Per-KPI section ----------
+
+interface KpiSectionProps {
+  kpi: KPI;
+  rows: ReturnType<typeof useObjectivesTable>['rows'];
+  isFirst: boolean;
+  isLast: boolean;
+  canReorder: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  departments: Department[];
+  canEdit: boolean;
+  onChanged: () => void;
+  onOpenPanel: (t: PanelTarget) => void;
+}
+
+function KpiSection({
+  kpi,
+  rows,
+  isFirst,
+  isLast,
+  canReorder,
+  onMoveUp,
+  onMoveDown,
+  departments,
+  canEdit,
+  onChanged,
+  onOpenPanel,
+}: KpiSectionProps) {
+  return (
+    <div
+      className="Polaris-Card"
+      style={{
+        borderRadius: '8px',
+        border: '1px solid var(--color-border)',
+        backgroundColor: 'white',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Subtitle row with title on one side and up/down on the opposite corner */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1rem',
+          padding: '1.2rem 1.6rem',
+          borderBottom: '1px solid #f1f2f4',
+          backgroundColor: '#fafbfb',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => onOpenPanel({ type: 'kpi', id: kpi.id })}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            margin: 0,
+            font: 'inherit',
+            fontSize: '1.6rem',
+            fontWeight: 600,
+            color: '#212b36',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          {kpi.title}
+        </button>
+
+        {canReorder && (
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            <ReorderButton direction="up" disabled={isFirst} onClick={onMoveUp} />
+            <ReorderButton direction="down" disabled={isLast} onClick={onMoveDown} />
+          </div>
+        )}
+      </div>
+
+      <ObjectivesTable
+        rows={rows}
+        departments={departments}
+        workspaceId={kpi.workspace_id}
+        canEdit={canEdit}
+        onChanged={onChanged}
+        onOpenPanel={onOpenPanel}
+        emptyLabel="No hay objetivos vinculados a este KPI."
+      />
+    </div>
+  );
+}
+
+function ReorderButton({
+  direction,
+  disabled,
+  onClick,
+}: {
+  direction: 'up' | 'down';
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={direction === 'up' ? 'Mover arriba' : 'Mover abajo'}
+      style={{
+        width: '2.8rem',
+        height: '2.8rem',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 0,
+        border: '1px solid #dfe3e8',
+        borderRadius: '4px',
+        backgroundColor: disabled ? '#f4f6f8' : 'white',
+        color: disabled ? '#c4cdd5' : '#637381',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d={direction === 'up' ? ARROW_UP : ARROW_DOWN} />
+      </svg>
+    </button>
+  );
+}
+
+// ---------- Orphan section (objectives not linked to any KPI) ----------
+
+function OrphanSection({
+  rows,
+  departments,
+  workspaceId,
+  canEdit,
+  onChanged,
+  onOpenPanel,
+}: {
+  rows: ReturnType<typeof useObjectivesTable>['rows'];
+  departments: Department[];
+  workspaceId: string;
+  canEdit: boolean;
+  onChanged: () => void;
+  onOpenPanel: (t: PanelTarget) => void;
+}) {
+  return (
+    <div
+      className="Polaris-Card"
+      style={{
+        borderRadius: '8px',
+        border: '1px solid var(--color-border)',
+        backgroundColor: 'white',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          padding: '1.2rem 1.6rem',
+          borderBottom: '1px solid #f1f2f4',
+          backgroundColor: '#fafbfb',
+          fontSize: '1.6rem',
+          fontWeight: 600,
+          color: '#637381',
+        }}
+      >
+        Sin KPI asignado
+      </div>
+      <ObjectivesTable
+        rows={rows}
+        departments={departments}
+        workspaceId={workspaceId}
+        canEdit={canEdit}
+        onChanged={onChanged}
+        onOpenPanel={onOpenPanel}
+      />
     </div>
   );
 }

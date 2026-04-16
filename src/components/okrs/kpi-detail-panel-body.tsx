@@ -8,6 +8,7 @@ import { DepartmentTag } from '@/components/common/department-tag';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { CommentTimeline } from '@/components/timeline/comment-timeline';
 import { KPIForm } from '@/components/kpis/kpi-form';
+import { ObjectiveForm } from '@/components/objectives/objective-form';
 import { InlineTeamSelect } from './inline-team-select';
 import { InlineStatusSelect } from './inline-status-select';
 import { calculateKpiProgress, calculateObjectiveProgress } from '@/lib/utils/progress';
@@ -30,6 +31,7 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
   const [linkedDepartments, setLinkedDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [showObjectiveForm, setShowObjectiveForm] = useState(false);
   const [savingManual, setSavingManual] = useState(false);
 
   const load = useCallback(async () => {
@@ -153,9 +155,29 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
 
       {/* Linked objectives */}
       <div className="Polaris-Card" style={{ padding: '1.6rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-        <h2 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#212b36', marginBottom: '1.2rem' }}>
-          Objetivos vinculados ({linkedObjectives.length})
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#212b36' }}>
+            Objetivos vinculados ({linkedObjectives.length})
+          </h2>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setShowObjectiveForm(true)}
+              style={{
+                padding: '0.4rem 1.2rem',
+                fontSize: '1.3rem',
+                fontWeight: 500,
+                color: '#5c6ac4',
+                backgroundColor: '#f4f5fc',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              + Agregar objetivo
+            </button>
+          )}
+        </div>
         {linkedObjectives.length === 0 ? (
           <p style={{ color: '#637381', fontSize: '1.3rem' }}>No hay objetivos vinculados a este KPI</p>
         ) : (
@@ -228,6 +250,16 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
 
       {/* Timeline */}
       <CommentTimeline kpiId={kpiId} />
+
+      {showObjectiveForm && (
+        <ObjectiveForm
+          workspaceId={kpi.workspace_id}
+          periodId={kpi.period_id}
+          onClose={() => setShowObjectiveForm(false)}
+          onSaved={() => { setShowObjectiveForm(false); handleTeamChanged(); }}
+          initialData={{ kpi_ids: [kpi.id] }}
+        />
+      )}
 
       {showEditForm && (
         <KPIForm

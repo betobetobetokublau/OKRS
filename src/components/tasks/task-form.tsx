@@ -9,10 +9,22 @@ interface TaskFormProps {
   workspaceId: string;
   onClose: () => void;
   onSaved: () => void;
+  initialData?: {
+    id?: string;
+    title?: string;
+    description?: string;
+    assigned_user_id?: string | null;
+    due_date?: string | null;
+  };
 }
 
-export function TaskForm({ objectiveId, workspaceId, onClose, onSaved }: TaskFormProps) {
-  const [form, setForm] = useState({ title: '', description: '', assigned_user_id: '', due_date: '' });
+export function TaskForm({ objectiveId, workspaceId, onClose, onSaved, initialData }: TaskFormProps) {
+  const [form, setForm] = useState({
+    title: initialData?.title || '',
+    description: initialData?.description || '',
+    assigned_user_id: initialData?.assigned_user_id || '',
+    due_date: initialData?.due_date || '',
+  });
   const [users, setUsers] = useState<Profile[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -29,14 +41,23 @@ export function TaskForm({ objectiveId, workspaceId, onClose, onSaved }: TaskFor
     e.preventDefault();
     setSaving(true);
     const supabase = createClient();
-    await supabase.from('tasks').insert({
-      objective_id: objectiveId,
+
+    const payload = {
       title: form.title,
       description: form.description || null,
       assigned_user_id: form.assigned_user_id || null,
       due_date: form.due_date || null,
-      status: 'pending',
-    });
+    };
+
+    if (initialData?.id) {
+      await supabase.from('tasks').update(payload).eq('id', initialData.id);
+    } else {
+      await supabase.from('tasks').insert({
+        ...payload,
+        objective_id: objectiveId,
+        status: 'pending',
+      });
+    }
     setSaving(false);
     onSaved();
   }
@@ -46,7 +67,7 @@ export function TaskForm({ objectiveId, workspaceId, onClose, onSaved }: TaskFor
       <div className="Polaris-Card" style={{ width: '460px', padding: '2.4rem', borderRadius: '12px' }}>
         <form onSubmit={handleSubmit}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-            <h2 style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36' }}>Nueva tarea</h2>
+            <h2 style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36' }}>{initialData?.id ? 'Editar tarea' : 'Nueva tarea'}</h2>
             <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '2rem', color: '#637381' }}>&times;</button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
@@ -70,7 +91,7 @@ export function TaskForm({ objectiveId, workspaceId, onClose, onSaved }: TaskFor
               <input type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }} />
             </div>
             <button type="submit" disabled={saving} style={{ width: '100%', padding: '1rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: saving ? '#8c92c4' : '#5c6ac4', border: 'none', borderRadius: '4px', cursor: saving ? 'not-allowed' : 'pointer' }}>
-              {saving ? 'Creando...' : 'Crear tarea'}
+              {saving ? 'Guardando...' : initialData?.id ? 'Guardar cambios' : 'Crear tarea'}
             </button>
           </div>
         </form>

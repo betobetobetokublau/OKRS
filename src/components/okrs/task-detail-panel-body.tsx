@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { formatDate, isOverdue } from '@/lib/utils/dates';
 import { InlineStatusSelect } from './inline-status-select';
+import { TaskForm } from '@/components/tasks/task-form';
 import type { Task, Objective } from '@/types';
 
 interface TaskDetailPanelBodyProps {
@@ -22,6 +23,8 @@ export function TaskDetailPanelBody({ taskId, canEdit, onChanged }: TaskDetailPa
   const [task, setTask] = useState<Task | null>(null);
   const [objective, setObjective] = useState<Objective | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState<string>('');
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -38,7 +41,10 @@ export function TaskDetailPanelBody({ taskId, canEdit, onChanged }: TaskDetailPa
         .select('*')
         .eq('id', (t as Task).objective_id)
         .single();
-      if (o) setObjective(o as Objective);
+      if (o) {
+        setObjective(o as Objective);
+        setWorkspaceId((o as Objective).workspace_id);
+      }
     }
     setLoading(false);
   }, [taskId]);
@@ -61,9 +67,30 @@ export function TaskDetailPanelBody({ taskId, canEdit, onChanged }: TaskDetailPa
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
       <div>
-        <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#212b36', lineHeight: 1.3, marginBottom: '0.8rem' }}>
-          {task.title}
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.8rem' }}>
+          <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#212b36', lineHeight: 1.3, margin: 0 }}>
+            {task.title}
+          </h1>
+          {canEdit && workspaceId && (
+            <button
+              type="button"
+              onClick={() => setShowEditForm(true)}
+              style={{
+                padding: '0.4rem 1.2rem',
+                fontSize: '1.3rem',
+                fontWeight: 500,
+                color: '#5c6ac4',
+                backgroundColor: '#f4f5fc',
+                border: '1px solid #e3e5f1',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              Editar
+            </button>
+          )}
+        </div>
         <InlineStatusSelect
           entity="task"
           id={task.id}
@@ -117,6 +144,22 @@ export function TaskDetailPanelBody({ taskId, canEdit, onChanged }: TaskDetailPa
           </div>
         )}
       </div>
+
+      {showEditForm && workspaceId && (
+        <TaskForm
+          objectiveId={task.objective_id}
+          workspaceId={workspaceId}
+          onClose={() => setShowEditForm(false)}
+          onSaved={() => { setShowEditForm(false); refresh(); }}
+          initialData={{
+            id: task.id,
+            title: task.title,
+            description: task.description ?? '',
+            assigned_user_id: task.assigned_user_id,
+            due_date: task.due_date,
+          }}
+        />
+      )}
     </div>
   );
 }

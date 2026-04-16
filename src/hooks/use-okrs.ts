@@ -67,7 +67,7 @@ export function useOkrs(workspaceId: string | undefined, periodId: string | unde
         *,
         responsible_user:profiles!objectives_responsible_user_id_fkey(*),
         responsible_department:departments!objectives_responsible_department_id_fkey(*),
-        tasks(*)
+        tasks(*, assigned_user:profiles!tasks_assigned_user_id_fkey(*))
       `)
       .eq('workspace_id', workspaceId)
       .eq('period_id', periodId)

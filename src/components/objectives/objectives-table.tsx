@@ -5,7 +5,8 @@ import type { Task, Department } from '@/types';
 import type { ObjectiveRow } from '@/hooks/use-objectives-table';
 import { InlineTeamSelect } from '@/components/okrs/inline-team-select';
 import { InlineStatusSelect } from '@/components/okrs/inline-status-select';
-import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
+import { InlineUserSelect } from '@/components/okrs/inline-user-select';
+import type { PanelTarget } from '@/components/okrs/okr-detail-panel';
 
 // ---------- Small cell helpers ----------
 
@@ -108,13 +109,29 @@ function Chevron({ expanded, visible }: { expanded: boolean; visible: boolean })
 interface ObjectivesTableProps {
   rows: ObjectiveRow[];
   departments: Department[];
+  workspaceId: string;
   canEdit: boolean;
   onChanged: () => void;
+  onOpenPanel: (t: PanelTarget) => void;
+  emptyLabel?: string;
 }
 
-export function ObjectivesTable({ rows, departments, canEdit, onChanged }: ObjectivesTableProps) {
+/**
+ * Presentational table of objectives with expandable task rows. Used as a
+ * sub-table (one per KPI) in the Objetivos view; the enclosing panel state
+ * is owned by the parent page so that a single OkrDetailPanel can back every
+ * sub-table at once.
+ */
+export function ObjectivesTable({
+  rows,
+  departments,
+  workspaceId,
+  canEdit,
+  onChanged,
+  onOpenPanel,
+  emptyLabel = 'No hay objetivos.',
+}: ObjectivesTableProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -146,66 +163,51 @@ export function ObjectivesTable({ rows, departments, canEdit, onChanged }: Objec
   };
 
   return (
-    <>
-      <div
-        className="Polaris-Card"
-        style={{ borderRadius: '8px', border: '1px solid var(--color-border)', backgroundColor: 'white', overflow: 'hidden' }}
-      >
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ ...headerCell, width: '35%' }}>Nombre</th>
-                <th style={headerCell}>Tipo</th>
-                <th style={headerCell}>KPI</th>
-                <th style={headerCell}>Equipo</th>
-                <th style={headerCell}>Progreso</th>
-                <th style={headerCell}>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={6} style={{ ...cellBase, textAlign: 'center', color: '#637381', padding: '4rem' }}>
-                    No hay objetivos en este periodo.
-                  </td>
-                </tr>
-              )}
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={{ ...headerCell, width: '40%' }}>Nombre</th>
+            <th style={headerCell}>Tipo</th>
+            <th style={headerCell}>Equipo</th>
+            <th style={headerCell}>Progreso</th>
+            <th style={headerCell}>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={5} style={{ ...cellBase, textAlign: 'center', color: '#637381', padding: '3rem' }}>
+                {emptyLabel}
+              </td>
+            </tr>
+          )}
 
-              {rows.map((obj) => {
-                const isExpanded = expanded.has(obj.id);
-                const hasTasks = (obj.tasks || []).length > 0;
-                const progress = obj.computed_progress ?? obj.manual_progress ?? 0;
+          {rows.map((obj) => {
+            const isExpanded = expanded.has(obj.id);
+            const hasTasks = (obj.tasks || []).length > 0;
+            const progress = obj.computed_progress ?? obj.manual_progress ?? 0;
 
-                return (
-                  <ObjectiveRowGroup
-                    key={obj.id}
-                    obj={obj}
-                    expanded={isExpanded}
-                    hasTasks={hasTasks}
-                    progress={progress}
-                    onToggle={() => toggle(obj.id)}
-                    cellBase={cellBase}
-                    departments={departments}
-                    canEdit={canEdit}
-                    onChanged={onChanged}
-                    onOpenPanel={setPanelTarget}
-                  />
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <OkrDetailPanel
-        target={panelTarget}
-        departments={departments}
-        canEdit={canEdit}
-        onClose={() => setPanelTarget(null)}
-        onChanged={onChanged}
-      />
-    </>
+            return (
+              <ObjectiveRowGroup
+                key={obj.id}
+                obj={obj}
+                expanded={isExpanded}
+                hasTasks={hasTasks}
+                progress={progress}
+                workspaceId={workspaceId}
+                onToggle={() => toggle(obj.id)}
+                cellBase={cellBase}
+                departments={departments}
+                canEdit={canEdit}
+                onChanged={onChanged}
+                onOpenPanel={onOpenPanel}
+              />
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -216,6 +218,7 @@ interface ObjectiveRowGroupProps {
   expanded: boolean;
   hasTasks: boolean;
   progress: number;
+  workspaceId: string;
   onToggle: () => void;
   cellBase: React.CSSProperties;
   departments: Department[];
@@ -229,6 +232,7 @@ function ObjectiveRowGroup({
   expanded,
   hasTasks,
   progress,
+  workspaceId,
   onToggle,
   cellBase,
   departments,
@@ -251,37 +255,6 @@ function ObjectiveRowGroup({
           </div>
         </td>
         <td style={cellBase}><TypeBadge type="objective" /></td>
-        <td style={cellBase}>
-          {obj.linked_kpis.length === 0 ? (
-            <span style={{ color: '#919eab', fontSize: '1.2rem' }}>—</span>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-              {obj.linked_kpis.map((k) => (
-                <button
-                  key={k.id}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenPanel({ type: 'kpi', id: k.id });
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    margin: 0,
-                    font: 'inherit',
-                    color: '#5c6ac4',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    fontSize: '1.3rem',
-                  }}
-                >
-                  {k.title}
-                </button>
-              ))}
-            </div>
-          )}
-        </td>
         <td style={cellBase}>
           <InlineTeamSelect
             entity="objective"
@@ -319,8 +292,17 @@ function ObjectiveRowGroup({
                 </div>
               </td>
               <td style={cellBase}><TypeBadge type="task" /></td>
-              <td style={cellBase}><span style={{ color: '#919eab' }}>—</span></td>
-              <td style={cellBase}><span style={{ color: '#919eab' }}>—</span></td>
+              <td style={cellBase}>
+                <InlineUserSelect
+                  entity="task"
+                  id={t.id}
+                  workspaceId={workspaceId}
+                  currentUserId={t.assigned_user_id}
+                  currentUser={t.assigned_user}
+                  canEdit={canEdit}
+                  onChanged={onChanged}
+                />
+              </td>
               <td style={cellBase}><ProgressBar value={taskProgress} /></td>
               <td style={cellBase}>
                 <InlineStatusSelect
