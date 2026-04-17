@@ -6,6 +6,7 @@ import { useObjectivesTable } from '@/hooks/use-objectives-table';
 import { ObjectivesTable } from '@/components/objectives/objectives-table';
 import { ObjectiveForm } from '@/components/objectives/objective-form';
 import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
+import { ObjectivesGantt } from '@/components/objectives/objectives-gantt';
 import { SkillTreeCanvas } from '@/components/skill-tree/skill-tree-canvas';
 import { createClient } from '@/lib/supabase/client';
 import { canManageContent } from '@/lib/utils/permissions';
@@ -55,7 +56,7 @@ export default function ObjetivosPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [filterStatus, setFilterStatus] = useState<ObjectiveStatus | 'all'>('all');
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
-  const [activeTab, setActiveTab] = useState<'listado' | 'metricas' | 'tree'>('listado');
+  const [activeTab, setActiveTab] = useState<'listado' | 'gantt' | 'metricas' | 'tree'>('listado');
 
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
   const canReorder = canEdit;
@@ -211,6 +212,9 @@ export default function ObjetivosPage() {
         <TabButton active={activeTab === 'listado'} onClick={() => setActiveTab('listado')}>
           Listado
         </TabButton>
+        <TabButton active={activeTab === 'gantt'} onClick={() => setActiveTab('gantt')}>
+          Gantt
+        </TabButton>
         <TabButton active={activeTab === 'metricas'} onClick={() => setActiveTab('metricas')}>
           Métricas
         </TabButton>
@@ -218,6 +222,25 @@ export default function ObjetivosPage() {
           Skill Tree
         </TabButton>
       </div>
+
+      {activeTab === 'gantt' && (
+        <>
+          {!activePeriod ? (
+            <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+              <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
+            </div>
+          ) : loading ? (
+            <p style={{ color: '#637381', textAlign: 'center', padding: '4rem' }}>Cargando objetivos...</p>
+          ) : (
+            <ObjectivesGantt
+              rows={rows}
+              departments={departments}
+              activePeriod={activePeriod}
+              onOpenPanel={setPanelTarget}
+            />
+          )}
+        </>
+      )}
 
       {activeTab === 'tree' && (
         <>
