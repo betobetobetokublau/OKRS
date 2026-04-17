@@ -24,6 +24,8 @@ interface SkillTreeCanvasProps {
   workspaceId: string;
   periodId: string;
   onNodeClick: (type: string, id: string) => void;
+  /** CSS height for the canvas wrapper. Defaults to 600px. */
+  height?: string | number;
 }
 
 const nodeTypes: NodeTypes = {
@@ -33,7 +35,7 @@ const nodeTypes: NodeTypes = {
 
 const DEPT_COLORS = ['#5c6ac4', '#47c1bf', '#f49342', '#50b83c', '#de3618', '#9c6ade', '#006fbb', '#eec200'];
 
-export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTreeCanvasProps) {
+export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick, height = '600px' }: SkillTreeCanvasProps) {
   const { filterDepartmentId, filterKpiId, filterObjectiveId } = useSkillTreeStore();
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
@@ -87,10 +89,12 @@ export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTre
 
       // Spacing between the KPI ring and the first row of objectives, then
       // between each subsequent row, measured along the radial direction.
-      const OBJ_RADIAL_GAP = 40;   // gap between KPI and first objective row
-      const OBJ_ROW_STRIDE = OBJ_NODE_H + 30; // distance between objective rows
-      const OBJ_PAIR_OFFSET = (OBJ_NODE_W + 20) / 2; // perpendicular offset
-                                                    // between the two items in a "level"
+      // Tight values on purpose so the first row of objectives sits almost
+      // flush against the KPI ring.
+      const OBJ_RADIAL_GAP = 4;    // near-zero gap: first obj row kisses the KPI
+      const OBJ_ROW_STRIDE = OBJ_NODE_H + 18; // distance between objective rows
+      const OBJ_PAIR_OFFSET = (OBJ_NODE_W + 6) / 2; // perpendicular offset
+                                                   // between the two items in a "level"
 
       // Pack KPIs as close as possible on the ring. The constraint is that
       // each KPI's tangential footprint (KPI node OR its 2-column objective
@@ -100,7 +104,7 @@ export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTre
         KPI_NODE_W,
         OBJ_NODE_W + 2 * OBJ_PAIR_OFFSET, // 2-col objective cluster width
       );
-      const MARGIN = 40;
+      const MARGIN = 6; // tiny buffer so neighbors don't literally touch
       const CHORD = KPI_TANGENTIAL_FOOTPRINT + MARGIN;
       // chord = 2 * R * sin(pi / N)  →  R = chord / (2 * sin(pi / N))
       const kpiCount = Math.max(kpis.length, 1);
@@ -108,7 +112,7 @@ export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTre
         kpiCount === 1
           ? 0 // single KPI sits at the origin
           : Math.max(
-              200, // floor so very few KPIs still give breathing room
+              130, // smaller floor — lets a few KPIs cluster very tightly
               CHORD / (2 * Math.sin(Math.PI / kpiCount)),
             );
 
@@ -234,14 +238,14 @@ export function SkillTreeCanvas({ workspaceId, periodId, onNodeClick }: SkillTre
 
   if (loading) {
     return (
-      <div style={{ height: '600px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0d1117', borderRadius: '12px' }}>
+      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0d1117', borderRadius: '12px' }}>
         <span style={{ color: '#637381' }}>Cargando skill tree...</span>
       </div>
     );
   }
 
   return (
-    <div style={{ height: '600px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--color-border)' }}>
+    <div style={{ height, borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--color-border)' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}

@@ -1,13 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useParams } from 'next/navigation';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { useObjectivesTable } from '@/hooks/use-objectives-table';
 import { ObjectivesTable } from '@/components/objectives/objectives-table';
 import { ObjectiveForm } from '@/components/objectives/objective-form';
 import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
+import { SkillTreeCanvas } from '@/components/skill-tree/skill-tree-canvas';
 import { createClient } from '@/lib/supabase/client';
 import { canManageContent } from '@/lib/utils/permissions';
 import type { Department, KPI, ObjectiveStatus } from '@/types';
@@ -49,8 +48,6 @@ function isBehindSchedule(o: ObjectiveRow, now: Date = new Date()): boolean {
  * with the OKRs view). A single OkrDetailPanel backs every sub-table.
  */
 export default function ObjetivosPage() {
-  const params = useParams();
-  const slug = params['workspace-slug'] as string;
   const { currentWorkspace, activePeriod, userWorkspace } = useWorkspaceStore();
   const { rows, loading, refetch } = useObjectivesTable(currentWorkspace?.id, activePeriod?.id);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -58,7 +55,7 @@ export default function ObjetivosPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [filterStatus, setFilterStatus] = useState<ObjectiveStatus | 'all'>('all');
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
-  const [activeTab, setActiveTab] = useState<'listado' | 'metricas'>('listado');
+  const [activeTab, setActiveTab] = useState<'listado' | 'metricas' | 'tree'>('listado');
 
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
   const canReorder = canEdit;
@@ -190,21 +187,6 @@ export default function ObjetivosPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
-          <Link
-            href={`/${slug}/objetivos/skill-tree`}
-            style={{
-              padding: '0.8rem 1.6rem',
-              fontSize: '1.4rem',
-              fontWeight: 500,
-              color: '#5c6ac4',
-              backgroundColor: '#f4f5fc',
-              border: 'none',
-              borderRadius: '4px',
-              textDecoration: 'none',
-            }}
-          >
-            Skill Tree
-          </Link>
           {canEdit && activePeriod && (
             <button
               onClick={() => setShowCreate(true)}
@@ -232,7 +214,36 @@ export default function ObjetivosPage() {
         <TabButton active={activeTab === 'metricas'} onClick={() => setActiveTab('metricas')}>
           Métricas
         </TabButton>
+        <TabButton active={activeTab === 'tree'} onClick={() => setActiveTab('tree')}>
+          Skill Tree
+        </TabButton>
       </div>
+
+      {activeTab === 'tree' && (
+        <>
+          {!activePeriod ? (
+            <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+              <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
+            </div>
+          ) : !currentWorkspace ? null : (
+            // Fills the viewport below the topbar + tab header. 150px is the
+            // measured combined height of the 56px topbar + the page header
+            // and tablist above this container.
+            <div style={{ height: 'calc(100vh - 200px)', minHeight: '480px' }}>
+              <SkillTreeCanvas
+                workspaceId={currentWorkspace.id}
+                periodId={activePeriod.id}
+                height="100%"
+                onNodeClick={(type, id) => {
+                  if (type === 'kpi') setPanelTarget({ type: 'kpi', id });
+                  else if (type === 'obj') setPanelTarget({ type: 'objective', id });
+                  else if (type === 'task') setPanelTarget({ type: 'task', id });
+                }}
+              />
+            </div>
+          )}
+        </>
+      )}
 
       {activeTab === 'metricas' && (
         <>
@@ -576,6 +587,11 @@ function StatCard({
         flexDirection: 'column',
         gap: '0.4rem',
         boxSizing: 'border-box',
+        // polaris.css adds `margin-top: 2rem` to any .Polaris-Card that
+        // follows another .Polaris-Card via an adjacent-sibling rule. In a
+        // grid layout that pushes the second card down and misaligns it with
+        // its row-mate. Inline margin beats the class rule.
+        marginTop: 0,
       }}
     >
       <span style={{ fontSize: '1.2rem', color: '#637381', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -660,6 +676,10 @@ function LeaderboardCard({ rows }: { rows: LeaderboardRow[] }) {
         // Span only one of the two columns — i.e. half the container, matching
         // the surrounding stat cards.
         gridColumn: 'span 1',
+        // See note on StatCard: neutralize the .Polaris-Card adjacent-sibling
+        // margin from polaris.css so the leaderboard doesn't sit 2rem below
+        // its grid row.
+        marginTop: 0,
       }}
     >
       <div
