@@ -166,7 +166,16 @@ export default function CheckinPage() {
       .select('*, objective:objectives!tasks_objective_id_fkey(*)')
       .eq('assigned_user_id', profile.id)
       .order('created_at', { ascending: true });
-    const filtered = ((myTasks || []) as Array<Task & { objective: Objective | null }>).filter(
+    // Supabase typings can flatten the nested `objective` into an array in some
+    // versions; normalize to a single object before filtering so we don't
+    // silently drop tasks (and so the subtitle reliably renders).
+    const normalized = ((myTasks || []) as Array<
+      Task & { objective: Objective | Objective[] | null }
+    >).map((t) => ({
+      ...t,
+      objective: Array.isArray(t.objective) ? t.objective[0] ?? null : t.objective,
+    })) as Array<Task & { objective: Objective | null }>;
+    const filtered = normalized.filter(
       (t) =>
         t.objective?.workspace_id === currentWorkspace.id &&
         t.objective?.period_id === activePeriod.id,
@@ -646,13 +655,16 @@ function MyTasksColumn({
                   >
                     {t.title}
                   </button>
-                  {t.objective && (
+                  {t.objective ? (
                     <button
                       type="button"
                       onClick={() => onOpenObjective(t.objective!.id)}
+                      title={`Abrir objetivo: ${t.objective.title}`}
                       style={{
-                        display: 'block',
-                        marginTop: '0.2rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        marginTop: '0.3rem',
                         background: 'none',
                         border: 'none',
                         padding: 0,
@@ -661,10 +673,47 @@ function MyTasksColumn({
                         color: '#637381',
                         cursor: 'pointer',
                         textAlign: 'left',
+                        maxWidth: '100%',
                       }}
                     >
-                      {t.objective.title}
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ flexShrink: 0 }}
+                        aria-hidden
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <circle cx="12" cy="12" r="6" />
+                        <circle cx="12" cy="12" r="2" />
+                      </svg>
+                      <span
+                        style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Objetivo: <span style={{ color: '#454f5b' }}>{t.objective.title}</span>
+                      </span>
                     </button>
+                  ) : (
+                    <span
+                      style={{
+                        display: 'block',
+                        marginTop: '0.3rem',
+                        fontSize: '1.1rem',
+                        color: '#919eab',
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      Sin objetivo
+                    </span>
                   )}
                   <div style={{ marginTop: '0.4rem' }}>
                     <StaticChip chip={chip} />
