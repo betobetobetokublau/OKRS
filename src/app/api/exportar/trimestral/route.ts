@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import ReactPDF from '@react-pdf/renderer';
 import { QuarterlyPDFReport } from '@/components/quarterly/pdf-report';
 import { requireAuth, requireWorkspaceRole } from '@/lib/api/require-auth';
+import { parseJsonBody } from '@/lib/api/parse-body';
+import { exportQuarterlyApiSchema } from '@/lib/validators/export';
 import type { KPI, Objective, Task, Department } from '@/types';
 
 export async function POST(request: Request) {
@@ -10,12 +12,9 @@ export async function POST(request: Request) {
     if (authed instanceof NextResponse) return authed;
     const { user, supabase } = authed;
 
-    const body = (await request.json()) as { workspace_id?: unknown; period_id?: unknown };
-    const workspace_id = typeof body.workspace_id === 'string' ? body.workspace_id : '';
-    const period_id = typeof body.period_id === 'string' ? body.period_id : '';
-    if (!workspace_id || !period_id) {
-      return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
-    }
+    const parsed = await parseJsonBody(request, exportQuarterlyApiSchema);
+    if (parsed instanceof NextResponse) return parsed;
+    const { workspace_id, period_id } = parsed;
 
     // Caller must be manager+ in the target workspace (matches the old
     // `role !== 'member'` check but via the shared helper).

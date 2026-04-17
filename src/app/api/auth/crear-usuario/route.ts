@@ -2,12 +2,8 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { requireAuth, requireWorkspaceRole } from '@/lib/api/require-auth';
 import { checkRateLimit } from '@/lib/api/rate-limit';
-
-// RFC-ish email check. Supabase validates too, but rejecting early gives
-// a cleaner 400 than letting the admin API bubble.
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ALLOWED_ROLES = new Set(['member', 'manager', 'admin']);
-const MIN_PASSWORD_LEN = 6;
+import { parseJsonBody } from '@/lib/api/parse-body';
+import { createUserApiSchema } from '@/lib/validators/user';
 
 export async function POST(request: Request) {
   try {
@@ -25,42 +21,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as {
-      email?: unknown;
-      full_name?: unknown;
-      password?: unknown;
-      role?: unknown;
-      workspace_id?: unknown;
-      department_ids?: unknown;
-      must_change_password?: unknown;
-    };
-    const email = typeof body.email === 'string' ? body.email.trim() : '';
-    const full_name = typeof body.full_name === 'string' ? body.full_name.trim() : '';
-    const password = typeof body.password === 'string' ? body.password : '';
-    const role = typeof body.role === 'string' ? body.role : 'member';
-    const workspace_id = typeof body.workspace_id === 'string' ? body.workspace_id : '';
-    const department_ids = Array.isArray(body.department_ids)
-      ? body.department_ids.filter((x): x is string => typeof x === 'string')
-      : [];
-    const must_change_password =
-      typeof body.must_change_password === 'boolean' ? body.must_change_password : true;
-
-    // --- Input validation ---
-    if (!email || !EMAIL_RE.test(email)) {
-      return NextResponse.json({ error: 'Email inválido' }, { status: 400 });
-    }
-    if (!full_name) {
-      return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 });
-    }
-    if (!password || password.length < MIN_PASSWORD_LEN) {
-      return NextResponse.json(
-        { error: `La contraseña debe tener al menos ${MIN_PASSWORD_LEN} caracteres` },
-        { status: 400 },
-      );
-    }
-    if (!ALLOWED_ROLES.has(role)) {
-      return NextResponse.json({ error: 'Rol inválido' }, { status: 400 });
-    }
+    const parsed = await parseJsonBody(request, createUserApiSchema);
+    if (parsed instanceof NextResponse) return parsed;
+    const {
+      email: rawEmail,
+      full_name: rawFullName,
+      password,
+      role,
+      workspace_id,
+      department_ids,
+      must_change_password,
+    } = parsed;
+    const email = rawEmail.trim();
+    const full_name = rawFullName.trim();
 
     // Caller must be admin in target workspace.
     const roleResult = await requireWorkspaceRole(supabase, currentUser.id, workspace_id, 'admin');
@@ -95,7 +68,7 @@ export async function POST(request: Request) {
       workspace_id,
       role,
     });
-    if (department_ids.length > 0) {
+    if (department_ids && department_ids.length > 0) {
       await adminClient.from('user_departments').insert(
         department_ids.map((did) => ({ user_id: newUser.user!.id, department_id: did })),
       );
