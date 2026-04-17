@@ -19,6 +19,8 @@ interface ObjectiveFormProps {
     manual_progress?: number;
     responsible_user_id?: string | null;
     responsible_department_id?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
     /** Pre-selected KPI links (used when creating from a KPI panel). */
     kpi_ids?: string[];
   };
@@ -33,6 +35,8 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
     manual_progress: initialData?.manual_progress || 0,
     responsible_user_id: initialData?.responsible_user_id || '',
     responsible_department_id: initialData?.responsible_department_id || '',
+    start_date: initialData?.start_date || '',
+    end_date: initialData?.end_date || '',
     department_ids: [] as string[],
     kpi_ids: (initialData?.kpi_ids ?? []) as string[],
   });
@@ -81,6 +85,8 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
       manual_progress: form.manual_progress,
       responsible_user_id: form.responsible_user_id || null,
       responsible_department_id: form.responsible_department_id || null,
+      start_date: form.start_date || null,
+      end_date: form.end_date || null,
       workspace_id: workspaceId,
       period_id: periodId,
     };
@@ -153,6 +159,28 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
                 <input type="range" min={0} max={100} value={form.manual_progress} onChange={e => setForm(p => ({ ...p, manual_progress: Number(e.target.value) }))} style={{ width: '100%' }} />
               </div>
             )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Fecha de inicio (opcional)</label>
+                <input
+                  type="date"
+                  value={form.start_date}
+                  onChange={(e) => setForm((p) => ({ ...p, start_date: e.target.value }))}
+                  style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Fecha de fin (opcional)</label>
+                <input
+                  type="date"
+                  value={form.end_date}
+                  onChange={(e) => setForm((p) => ({ ...p, end_date: e.target.value }))}
+                  min={form.start_date || undefined}
+                  style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}
+                />
+              </div>
+            </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (usuario)</label>

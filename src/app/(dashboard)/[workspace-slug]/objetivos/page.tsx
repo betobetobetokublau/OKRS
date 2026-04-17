@@ -11,9 +11,36 @@ import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-p
 import { createClient } from '@/lib/supabase/client';
 import { canManageContent } from '@/lib/utils/permissions';
 import type { Department, KPI, ObjectiveStatus } from '@/types';
+import type { ObjectiveRow } from '@/hooks/use-objectives-table';
 
 const ARROW_UP = 'M5 15l7-7 7 7';
 const ARROW_DOWN = 'M19 9l-7 7-7-7';
+
+// ---------- Metric helpers ----------
+
+function getProgress(o: ObjectiveRow): number {
+  return o.computed_progress ?? o.manual_progress ?? 0;
+}
+
+/** Objective is "finished" when its computed progress is at least 100%. */
+function isFinished(o: ObjectiveRow): boolean {
+  return getProgress(o) >= 100;
+}
+
+/**
+ * "Behind schedule": a planning window is set on both ends AND the window
+ * has elapsed past the halfway point AND progress is still below 50%.
+ * Objectives without start/end dates are not counted (we can't assess them).
+ */
+function isBehindSchedule(o: ObjectiveRow, now: Date = new Date()): boolean {
+  if (!o.start_date || !o.end_date) return false;
+  const start = new Date(o.start_date).getTime();
+  const end = new Date(o.end_date).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return false;
+  const elapsedFrac = (now.getTime() - start) / (end - start);
+  if (elapsedFrac <= 0.5) return false;
+  return getProgress(o) < 50;
+}
 
 /**
  * Objetivos view: one ObjectivesTable per KPI (plus a bucket for orphan
@@ -58,6 +85,42 @@ export default function ObjetivosPage() {
     }
     loadMeta();
   }, [currentWorkspace?.id, activePeriod?.id]);
+
+  // Metrics are always computed over the FULL objective list (not the
+  // filtered one) so the status chips don't warp the counts.
+  const metrics = useMemo(() => {
+    const finishedCount = rows.filter(isFinished).length;
+    const behindCount = rows.filter((o) => isBehindSchedule(o)).length;
+    const deptStats = new Map<
+      string,
+      { department: Department; total: number; finished: number; progressSum: number }
+    >();
+    rows.forEach((o) => {
+      const deptId = o.responsible_department_id;
+      if (!deptId) return;
+      const dept = departments.find((d) => d.id === deptId);
+      if (!dept) return;
+      const bucket = deptStats.get(deptId) ?? {
+        department: dept,
+        total: 0,
+        finished: 0,
+        progressSum: 0,
+      };
+      bucket.total += 1;
+      if (isFinished(o)) bucket.finished += 1;
+      bucket.progressSum += getProgress(o);
+      deptStats.set(deptId, bucket);
+    });
+    const leaderboard = Array.from(deptStats.values())
+      .map((b) => ({
+        department: b.department,
+        total: b.total,
+        finished: b.finished,
+        avg: Math.round(b.progressSum / Math.max(b.total, 1)),
+      }))
+      .sort((a, b) => b.finished - a.finished || b.avg - a.avg);
+    return { finishedCount, behindCount, leaderboard };
+  }, [rows, departments]);
 
   // Apply the status filter once, then group by KPI.
   const filteredRows = filterStatus === 'all' ? rows : rows.filter((o) => o.status === filterStatus);
@@ -151,6 +214,32 @@ export default function ObjetivosPage() {
           )}
         </div>
       </div>
+
+      {/* Metrics */}
+      {activePeriod && !loading && rows.length > 0 && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: '1.6rem',
+            marginBottom: '2rem',
+          }}
+        >
+          <StatCard
+            label="Objetivos finalizados"
+            value={metrics.finishedCount}
+            subtext={`de ${rows.length} totales`}
+            accent="#108043"
+          />
+          <StatCard
+            label="Objetivos atrasados"
+            value={metrics.behindCount}
+            subtext="< 50% de progreso y > 50% del tiempo"
+            accent="#bf0711"
+          />
+          <LeaderboardCard rows={metrics.leaderboard} />
+        </div>
+      )}
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '2rem' }}>
@@ -416,6 +505,137 @@ function OrphanSection({
         onChanged={onChanged}
         onOpenPanel={onOpenPanel}
       />
+    </div>
+  );
+}
+
+// ---------- Metric cards ----------
+
+function StatCard({
+  label,
+  value,
+  subtext,
+  accent,
+}: {
+  label: string;
+  value: number;
+  subtext: string;
+  accent: string;
+}) {
+  return (
+    <div
+      className="Polaris-Card"
+      style={{
+        borderRadius: '8px',
+        border: '1px solid var(--color-border)',
+        backgroundColor: 'white',
+        padding: '1.6rem 2rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.4rem',
+      }}
+    >
+      <span style={{ fontSize: '1.2rem', color: '#637381', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+      </span>
+      <span style={{ fontSize: '3.6rem', fontWeight: 700, color: accent, lineHeight: 1 }}>
+        {value}
+      </span>
+      <span style={{ fontSize: '1.2rem', color: '#919eab' }}>{subtext}</span>
+    </div>
+  );
+}
+
+interface LeaderboardRow {
+  department: Department;
+  total: number;
+  finished: number;
+  avg: number;
+}
+
+function LeaderboardCard({ rows }: { rows: LeaderboardRow[] }) {
+  const headerCell: React.CSSProperties = {
+    padding: '0.8rem 1.2rem',
+    textAlign: 'left',
+    fontSize: '1.1rem',
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    color: '#637381',
+    borderBottom: '1px solid #dfe3e8',
+  };
+  const cellBase: React.CSSProperties = {
+    padding: '0.8rem 1.2rem',
+    borderBottom: '1px solid #f1f2f4',
+    fontSize: '1.3rem',
+    color: '#212b36',
+  };
+  return (
+    <div
+      className="Polaris-Card"
+      style={{
+        borderRadius: '8px',
+        border: '1px solid var(--color-border)',
+        backgroundColor: 'white',
+        overflow: 'hidden',
+        // Span only one of the two columns — i.e. half the container, matching
+        // the surrounding stat cards.
+        gridColumn: 'span 1',
+      }}
+    >
+      <div
+        style={{
+          padding: '1.2rem 1.6rem',
+          borderBottom: '1px solid #f1f2f4',
+          backgroundColor: '#fafbfb',
+        }}
+      >
+        <h3 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#212b36' }}>
+          Leaderboard de departamentos
+        </h3>
+        <p style={{ fontSize: '1.2rem', color: '#637381', marginTop: '0.2rem' }}>
+          Ordenado por objetivos finalizados
+        </p>
+      </div>
+      {rows.length === 0 ? (
+        <p style={{ padding: '2rem', textAlign: 'center', color: '#637381', fontSize: '1.3rem' }}>
+          Aún no hay objetivos asignados a un departamento responsable.
+        </p>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={headerCell}>Departamento</th>
+              <th style={{ ...headerCell, textAlign: 'right' }}>Objetivos</th>
+              <th style={{ ...headerCell, textAlign: 'right' }}>Progreso prom.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.department.id}>
+                <td style={cellBase}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <span
+                      style={{
+                        width: '0.8rem',
+                        height: '0.8rem',
+                        borderRadius: '50%',
+                        backgroundColor: r.department.color || '#919eab',
+                      }}
+                    />
+                    <span style={{ fontWeight: 500 }}>{r.department.name}</span>
+                  </span>
+                </td>
+                <td style={{ ...cellBase, textAlign: 'right' }}>
+                  <span style={{ fontWeight: 600, color: '#108043' }}>{r.finished}</span>
+                  <span style={{ color: '#919eab' }}> / {r.total}</span>
+                </td>
+                <td style={{ ...cellBase, textAlign: 'right', fontWeight: 600 }}>{r.avg}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

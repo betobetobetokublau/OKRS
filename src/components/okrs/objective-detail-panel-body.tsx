@@ -269,6 +269,8 @@ export function ObjectiveDetailPanelBody({
             manual_progress: objective.manual_progress,
             responsible_user_id: objective.responsible_user_id,
             responsible_department_id: objective.responsible_department_id,
+            start_date: objective.start_date,
+            end_date: objective.end_date,
           }}
         />
       )}

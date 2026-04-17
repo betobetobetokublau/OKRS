@@ -104,6 +104,9 @@ export interface Objective {
   manual_progress: number;
   responsible_user_id: string | null;
   responsible_department_id: string | null;
+  /** Optional planning window; used by the "behind schedule" metric. */
+  start_date: string | null;
+  end_date: string | null;
   created_at: string;
   updated_at: string;
   // Computed / joined
