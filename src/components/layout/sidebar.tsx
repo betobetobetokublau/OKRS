@@ -81,11 +81,11 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
           so there's no double-rendering. */}
       {!showDrawer && (
         <nav
-          className="Polaris-Navigation"
           onMouseEnter={() => setHovered(true)}
           aria-label="Barra lateral (contraída)"
           style={{
             width: `${SIDEBAR_COLLAPSED_WIDTH}px`,
+            minWidth: `${SIDEBAR_COLLAPSED_WIDTH}px`,
             backgroundColor: '#f4f6f8',
             borderRight: '1px solid #dfe3e8',
             display: 'flex',
@@ -137,11 +137,11 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
           overlaying the main content. */}
       {showDrawer && (
         <nav
-          className="Polaris-Navigation"
           onMouseLeave={() => setHovered(false)}
           aria-label="Barra lateral"
           style={{
             width: `${SIDEBAR_EXPANDED_WIDTH}px`,
+            minWidth: `${SIDEBAR_EXPANDED_WIDTH}px`,
             backgroundColor: '#f4f6f8',
             borderRight: '1px solid #dfe3e8',
             display: 'flex',
