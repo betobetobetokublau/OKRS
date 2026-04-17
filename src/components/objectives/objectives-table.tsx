@@ -243,6 +243,7 @@ function ObjectiveRowGroup({
   return (
     <>
       <tr
+        className="anim-row-in"
         onClick={hasTasks ? onToggle : undefined}
         style={{ cursor: hasTasks ? 'pointer' : 'default', backgroundColor: expanded ? '#f9fafb' : 'white' }}
       >
@@ -282,7 +283,7 @@ function ObjectiveRowGroup({
         obj.tasks.map((t: Task) => {
           const taskProgress = t.status === 'completed' ? 100 : 0;
           return (
-            <tr key={`${obj.id}-${t.id}`} style={{ backgroundColor: 'white' }}>
+            <tr key={`${obj.id}-${t.id}`} className="anim-row-in" style={{ backgroundColor: 'white' }}>
               <td style={cellBase}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', paddingLeft: '3rem' }}>
                   <Chevron expanded={false} visible={false} />

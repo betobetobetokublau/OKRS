@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/stores/workspace-store';
+import { canManageContent } from '@/lib/utils/permissions';
 import { calculateObjectiveProgress } from '@/lib/utils/progress';
 import {
   objectiveStatusChip,
   taskStatusChip,
   OBJECTIVE_STATUS_OPTIONS,
 } from '@/components/okrs/status-chips';
-import type { KPI, Objective, ObjectiveStatus, Task } from '@/types';
+import { AnimatedModal } from '@/components/common/animated-modal';
+import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
+import { TaskForm } from '@/components/tasks/task-form';
+import type { Department, KPI, Objective, ObjectiveStatus, Task } from '@/types';
 
 // ---------- Types ----------
 
@@ -42,7 +46,7 @@ function formatCheckinTitle(d: Date): string {
 // ---------- Page ----------
 
 export default function CheckinPage() {
-  const { currentWorkspace, activePeriod, profile } = useWorkspaceStore();
+  const { currentWorkspace, activePeriod, profile, userWorkspace } = useWorkspaceStore();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,7 +54,11 @@ export default function CheckinPage() {
   const [savedToastId, setSavedToastId] = useState(0);
 
   const [kpis, setKpis] = useState<KPI[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [objectives, setObjectives] = useState<ObjectiveWithTasks[]>([]);
+  const [myAssignedTasks, setMyAssignedTasks] = useState<
+    Array<Task & { objective: Objective | null }>
+  >([]);
 
   // Pending edits. Keyed by objective id / task id.
   const [objectiveEdits, setObjectiveEdits] = useState<Map<string, PendingObjectiveUpdate>>(
@@ -63,6 +71,12 @@ export default function CheckinPage() {
 
   // Modal state
   const [editingObjective, setEditingObjective] = useState<ObjectiveWithTasks | null>(null);
+  const [addingTaskFor, setAddingTaskFor] = useState<{ objectiveId: string | null } | null>(null);
+
+  // Side panel state
+  const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
+
+  const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
 
   const load = useCallback(async () => {
     if (!currentWorkspace?.id || !activePeriod?.id || !profile?.id) return;
@@ -75,7 +89,9 @@ export default function CheckinPage() {
       .from('user_departments')
       .select('department_id')
       .eq('user_id', profile.id);
-    const myDeptIds = new Set((udData || []).map((r: { department_id: string }) => r.department_id));
+    const myDeptIds = new Set(
+      (udData || []).map((r: { department_id: string }) => r.department_id),
+    );
 
     // 2) KPIs for the period in persisted order.
     const { data: kpiRows } = await supabase
@@ -87,7 +103,14 @@ export default function CheckinPage() {
       .order('created_at', { ascending: true });
     setKpis((kpiRows || []) as KPI[]);
 
-    // 3) All objectives for the period + their tasks + department links + kpi links.
+    // 3) Departments list (for the side panel's Detalles card).
+    const { data: deptRows } = await supabase
+      .from('departments')
+      .select('*')
+      .eq('workspace_id', currentWorkspace.id);
+    setDepartments((deptRows || []) as Department[]);
+
+    // 4) All objectives for the period + tasks + junctions.
     const [objRes, objDeptRes, kpiObjRes] = await Promise.all([
       supabase
         .from('objectives')
@@ -116,9 +139,7 @@ export default function CheckinPage() {
       kpisByObjective.set(r.objective_id, arr);
     });
 
-    // 4) Filter to objectives the user is responsible for OR linked to one of
-    // the user's departments. Two users in the same group can each see (and
-    // update) the shared objective.
+    // 5) Filter to objectives the user owns OR linked to one of their departments.
     const visible: ObjectiveWithTasks[] = [];
     for (const o of allObjectives) {
       const isMine = o.responsible_user_id === profile.id;
@@ -137,8 +158,21 @@ export default function CheckinPage() {
         });
       }
     }
-
     setObjectives(visible);
+
+    // 6) Tasks directly assigned to the user (for the left column).
+    const { data: myTasks } = await supabase
+      .from('tasks')
+      .select('*, objective:objectives!tasks_objective_id_fkey(*)')
+      .eq('assigned_user_id', profile.id)
+      .order('created_at', { ascending: true });
+    const filtered = ((myTasks || []) as Array<Task & { objective: Objective | null }>).filter(
+      (t) =>
+        t.objective?.workspace_id === currentWorkspace.id &&
+        t.objective?.period_id === activePeriod.id,
+    );
+    setMyAssignedTasks(filtered);
+
     setLoading(false);
   }, [currentWorkspace?.id, activePeriod?.id, profile?.id]);
 
@@ -188,7 +222,6 @@ export default function CheckinPage() {
       const next = new Map(prev);
       const existing = next.get(objId) || {};
       const merged = { ...existing, ...patch };
-      // If all fields are cleared, remove the entry.
       const isEmpty =
         merged.new_progress === undefined &&
         merged.new_status === undefined &&
@@ -205,7 +238,6 @@ export default function CheckinPage() {
     setSaveError('');
     const supabase = createClient();
 
-    // 1) Create the checkin row.
     const { data: checkinData, error: checkinErr } = await supabase
       .from('checkins')
       .insert({
@@ -223,8 +255,6 @@ export default function CheckinPage() {
     }
     const checkinId = checkinData.id as string;
 
-    // 2) For each objective edit: apply to the objective, record a
-    // checkin_entry, and post to the timeline via progress_logs / comments.
     const timelineInserts: Array<Promise<unknown>> = [];
     const checkinEntryInserts: Array<Record<string, unknown>> = [];
 
@@ -250,9 +280,6 @@ export default function CheckinPage() {
         note: edit.comment?.trim() || null,
       });
 
-      // Timeline: one progress_log if progress changed, and one comment
-      // summarising the update so status/comment-only updates are still
-      // visible in the timeline.
       if (edit.new_progress !== undefined && edit.new_progress !== obj.manual_progress) {
         timelineInserts.push(
           Promise.resolve(
@@ -271,13 +298,6 @@ export default function CheckinPage() {
       if (edit.new_status !== undefined && edit.new_status !== obj.status) {
         parts.push(`cambió estado a "${objectiveStatusChip(edit.new_status).label}"`);
       }
-      if (
-        edit.new_progress !== undefined &&
-        edit.new_progress !== obj.manual_progress &&
-        !(edit.new_status !== undefined && edit.new_status !== obj.status)
-      ) {
-        // already captured by progress_logs; keep the comment focused on context.
-      }
       if (edit.comment?.trim()) {
         parts.push(`— ${edit.comment.trim()}`);
       }
@@ -294,11 +314,15 @@ export default function CheckinPage() {
       }
     }
 
-    // 3) Tasks to mark complete.
     const taskIds = Array.from(tasksToComplete);
     for (const taskId of taskIds) {
-      const parentObj = objectives.find((o) => o.tasks.some((t) => t.id === taskId));
-      const task = parentObj?.tasks.find((t) => t.id === taskId);
+      // Task could live either in the team objectives OR in myAssignedTasks;
+      // look up previous status from whichever source has it.
+      const fromObj = objectives
+        .flatMap((o) => o.tasks)
+        .find((t) => t.id === taskId);
+      const fromMine = myAssignedTasks.find((t) => t.id === taskId);
+      const task = fromObj || fromMine;
       if (!task) continue;
       if (task.status === 'completed') continue;
 
@@ -317,7 +341,6 @@ export default function CheckinPage() {
     }
     await Promise.all(timelineInserts);
 
-    // Reset local state, reload fresh data.
     setObjectiveEdits(new Map());
     setTasksToComplete(new Set());
     setSavedToastId((n) => n + 1);
@@ -326,6 +349,12 @@ export default function CheckinPage() {
   }
 
   const title = formatCheckinTitle(new Date());
+
+  // Task list for the "new task" picker — any visible team objective.
+  const pickableObjectives: Objective[] = useMemo(
+    () => objectives.map((o) => o as Objective),
+    [objectives],
+  );
 
   if (!currentWorkspace) {
     return <div style={{ padding: '4rem', color: '#637381' }}>Cargando workspace...</div>;
@@ -369,6 +398,7 @@ export default function CheckinPage() {
       {savedToastId > 0 && (
         <div
           key={savedToastId}
+          className="anim-fade-in"
           style={{ padding: '1rem 1.2rem', backgroundColor: '#e3f1df', color: '#108043', borderRadius: '4px', marginBottom: '1.6rem', fontSize: '1.3rem' }}
         >
           Check-in guardado.
@@ -381,44 +411,74 @@ export default function CheckinPage() {
         <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
           <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
         </div>
-      ) : objectives.length === 0 ? (
-        <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-          <p style={{ color: '#637381', fontSize: '1.4rem' }}>
-            No tienes objetivos ni tareas asignadas para este periodo.
-          </p>
-        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2.4rem' }}>
-          {kpis.map((kpi) => {
-            const rows = grouped.map.get(kpi.id) || [];
-            if (rows.length === 0) return null;
-            return (
-              <CheckinKpiTable
-                key={kpi.id}
-                kpiTitle={kpi.title}
-                rows={rows}
-                expanded={expanded}
-                onToggle={toggle}
-                objectiveEdits={objectiveEdits}
-                tasksToComplete={tasksToComplete}
-                onUpdateObjective={setEditingObjective}
-                onToggleTaskComplete={toggleTaskCompletion}
-              />
-            );
-          })}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(260px, 30%) 1fr',
+            gap: '2rem',
+            alignItems: 'flex-start',
+          }}
+        >
+          {/* Left column: Mis Tareas */}
+          <MyTasksColumn
+            tasks={myAssignedTasks}
+            tasksToComplete={tasksToComplete}
+            onToggleComplete={toggleTaskCompletion}
+            onOpenTask={(t) => setPanelTarget({ type: 'task', id: t.id })}
+            onOpenObjective={(oid) => setPanelTarget({ type: 'objective', id: oid })}
+            onAddTask={() => setAddingTaskFor({ objectiveId: null })}
+          />
 
-          {grouped.orphans.length > 0 && (
-            <CheckinKpiTable
-              kpiTitle="Sin KPI asignado"
-              rows={grouped.orphans}
-              expanded={expanded}
-              onToggle={toggle}
-              objectiveEdits={objectiveEdits}
-              tasksToComplete={tasksToComplete}
-              onUpdateObjective={setEditingObjective}
-              onToggleTaskComplete={toggleTaskCompletion}
-            />
-          )}
+          {/* Right column: per-KPI tables */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {objectives.length === 0 ? (
+              <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                <p style={{ color: '#637381', fontSize: '1.4rem' }}>
+                  No tienes objetivos asignados en este periodo.
+                </p>
+              </div>
+            ) : (
+              <>
+                {kpis.map((kpi) => {
+                  const rows = grouped.map.get(kpi.id) || [];
+                  if (rows.length === 0) return null;
+                  return (
+                    <CheckinKpiTable
+                      key={kpi.id}
+                      kpiId={kpi.id}
+                      kpiTitle={kpi.title}
+                      rows={rows}
+                      expanded={expanded}
+                      onToggle={toggle}
+                      objectiveEdits={objectiveEdits}
+                      tasksToComplete={tasksToComplete}
+                      onUpdateObjective={setEditingObjective}
+                      onToggleTaskComplete={toggleTaskCompletion}
+                      onOpenPanel={setPanelTarget}
+                      onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
+                    />
+                  );
+                })}
+
+                {grouped.orphans.length > 0 && (
+                  <CheckinKpiTable
+                    kpiId={null}
+                    kpiTitle="Sin KPI asignado"
+                    rows={grouped.orphans}
+                    expanded={expanded}
+                    onToggle={toggle}
+                    objectiveEdits={objectiveEdits}
+                    tasksToComplete={tasksToComplete}
+                    onUpdateObjective={setEditingObjective}
+                    onToggleTaskComplete={toggleTaskCompletion}
+                    onOpenPanel={setPanelTarget}
+                    onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
+                  />
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -441,6 +501,180 @@ export default function CheckinPage() {
           }}
         />
       )}
+
+      {addingTaskFor && currentWorkspace && activePeriod && (
+        <TaskForm
+          objectiveId={addingTaskFor.objectiveId ?? undefined}
+          allowObjectivePicker={addingTaskFor.objectiveId === null}
+          pickableObjectives={pickableObjectives}
+          workspaceId={currentWorkspace.id}
+          periodId={activePeriod.id}
+          onClose={() => setAddingTaskFor(null)}
+          onSaved={() => {
+            setAddingTaskFor(null);
+            load();
+          }}
+        />
+      )}
+
+      <OkrDetailPanel
+        target={panelTarget}
+        departments={departments}
+        canEdit={canEdit}
+        onClose={() => setPanelTarget(null)}
+        onChanged={load}
+      />
+    </div>
+  );
+}
+
+// ---------- Left column ----------
+
+interface MyTasksColumnProps {
+  tasks: Array<Task & { objective: Objective | null }>;
+  tasksToComplete: Set<string>;
+  onToggleComplete: (t: Task) => void;
+  onOpenTask: (t: Task) => void;
+  onOpenObjective: (objectiveId: string) => void;
+  onAddTask: () => void;
+}
+
+function MyTasksColumn({
+  tasks,
+  tasksToComplete,
+  onToggleComplete,
+  onOpenTask,
+  onOpenObjective,
+  onAddTask,
+}: MyTasksColumnProps) {
+  return (
+    <div
+      className="Polaris-Card"
+      style={{
+        borderRadius: '8px',
+        border: '1px solid var(--color-border)',
+        backgroundColor: 'white',
+        position: 'sticky',
+        top: '1.6rem',
+        maxHeight: 'calc(100vh - 8rem)',
+        overflowY: 'auto',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '1.2rem 1.6rem',
+          borderBottom: '1px solid #f1f2f4',
+          backgroundColor: '#fafbfb',
+          position: 'sticky',
+          top: 0,
+        }}
+      >
+        <div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#212b36' }}>Mis tareas</h2>
+          <p style={{ fontSize: '1.1rem', color: '#637381', marginTop: '0.2rem' }}>
+            {tasks.length} asignadas
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onAddTask}
+          style={{
+            padding: '0.4rem 1rem',
+            fontSize: '1.2rem',
+            fontWeight: 500,
+            color: '#5c6ac4',
+            backgroundColor: '#f4f5fc',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+          }}
+        >
+          + Nueva tarea
+        </button>
+      </div>
+
+      {tasks.length === 0 ? (
+        <p style={{ padding: '2rem', color: '#637381', fontSize: '1.3rem', textAlign: 'center' }}>
+          No tienes tareas asignadas.
+        </p>
+      ) : (
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          {tasks.map((t) => {
+            const queued = tasksToComplete.has(t.id);
+            const isDone = t.status === 'completed';
+            const chip = taskStatusChip(queued ? 'completed' : t.status);
+            return (
+              <li
+                key={t.id}
+                className="anim-row-in"
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.8rem',
+                  padding: '1rem 1.6rem',
+                  borderBottom: '1px solid #f4f6f8',
+                  backgroundColor: queued ? '#f4f5fc' : 'white',
+                }}
+              >
+                <CheckButton
+                  checked={queued || isDone}
+                  disabled={isDone}
+                  onClick={() => onToggleComplete(t)}
+                  compact
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenTask(t)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      margin: 0,
+                      font: 'inherit',
+                      textAlign: 'left',
+                      fontSize: '1.3rem',
+                      fontWeight: 500,
+                      color: isDone ? '#919eab' : '#212b36',
+                      textDecoration: isDone ? 'line-through' : 'none',
+                      cursor: 'pointer',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {t.title}
+                  </button>
+                  {t.objective && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenObjective(t.objective!.id)}
+                      style={{
+                        display: 'block',
+                        marginTop: '0.2rem',
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        font: 'inherit',
+                        fontSize: '1.1rem',
+                        color: '#637381',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                    >
+                      {t.objective.title}
+                    </button>
+                  )}
+                  <div style={{ marginTop: '0.4rem' }}>
+                    <StaticChip chip={chip} />
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
@@ -448,6 +682,7 @@ export default function CheckinPage() {
 // ---------- Per-KPI table ----------
 
 interface CheckinKpiTableProps {
+  kpiId: string | null;
   kpiTitle: string;
   rows: ObjectiveWithTasks[];
   expanded: Set<string>;
@@ -456,9 +691,12 @@ interface CheckinKpiTableProps {
   tasksToComplete: Set<string>;
   onUpdateObjective: (obj: ObjectiveWithTasks) => void;
   onToggleTaskComplete: (t: TaskRow) => void;
+  onOpenPanel: (t: PanelTarget) => void;
+  onAddTaskForObjective: (objectiveId: string) => void;
 }
 
 function CheckinKpiTable({
+  kpiId,
   kpiTitle,
   rows,
   expanded,
@@ -467,6 +705,8 @@ function CheckinKpiTable({
   tasksToComplete,
   onUpdateObjective,
   onToggleTaskComplete,
+  onOpenPanel,
+  onAddTaskForObjective,
 }: CheckinKpiTableProps) {
   const headerCell: React.CSSProperties = {
     padding: '1rem 1.6rem',
@@ -492,8 +732,29 @@ function CheckinKpiTable({
       className="Polaris-Card"
       style={{ borderRadius: '8px', border: '1px solid var(--color-border)', backgroundColor: 'white', overflow: 'hidden' }}
     >
-      <div style={{ padding: '1.2rem 1.6rem', borderBottom: '1px solid #f1f2f4', backgroundColor: '#fafbfb', fontSize: '1.6rem', fontWeight: 600, color: '#212b36' }}>
-        {kpiTitle}
+      <div style={{ padding: '1.2rem 1.6rem', borderBottom: '1px solid #f1f2f4', backgroundColor: '#fafbfb' }}>
+        {kpiId ? (
+          <button
+            type="button"
+            onClick={() => onOpenPanel({ type: 'kpi', id: kpiId })}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              margin: 0,
+              font: 'inherit',
+              fontSize: '1.6rem',
+              fontWeight: 600,
+              color: '#212b36',
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            {kpiTitle}
+          </button>
+        ) : (
+          <span style={{ fontSize: '1.6rem', fontWeight: 600, color: '#637381' }}>{kpiTitle}</span>
+        )}
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
@@ -501,7 +762,7 @@ function CheckinKpiTable({
             <th style={{ ...headerCell, width: '45%' }}>Nombre</th>
             <th style={headerCell}>Estado</th>
             <th style={headerCell}>Progreso</th>
-            <th style={{ ...headerCell, width: '130px' }}></th>
+            <th style={{ ...headerCell, width: '170px' }}></th>
           </tr>
         </thead>
         <tbody>
@@ -518,6 +779,7 @@ function CheckinKpiTable({
             return (
               <ObjectiveRowGroup key={obj.id}>
                 <tr
+                  className="anim-row-in"
                   onClick={hasTasks ? () => onToggle(obj.id) : undefined}
                   style={{
                     cursor: hasTasks ? 'pointer' : 'default',
@@ -527,7 +789,27 @@ function CheckinKpiTable({
                   <td style={cellBase}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                       <Chevron expanded={isExpanded} visible={hasTasks} />
-                      <span style={{ fontWeight: 600 }}>{obj.title}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenPanel({ type: 'objective', id: obj.id });
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          margin: 0,
+                          font: 'inherit',
+                          fontSize: '1.4rem',
+                          fontWeight: 600,
+                          color: '#212b36',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {obj.title}
+                      </button>
                       {hasPending && (
                         <span style={{ fontSize: '1.1rem', color: '#5c6ac4', backgroundColor: '#ede7ff', padding: '2px 8px', borderRadius: '10rem' }}>
                           Pendiente de guardar
@@ -542,24 +824,45 @@ function CheckinKpiTable({
                     <MiniProgress value={effectiveProgress} />
                   </td>
                   <td style={cellBase}>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onUpdateObjective(obj);
-                      }}
-                      style={{
-                        padding: '0.3rem 0.9rem',
-                        fontSize: '1.2rem',
-                        color: '#637381',
-                        backgroundColor: 'transparent',
-                        border: '1px solid #dfe3e8',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Actualizar
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddTaskForObjective(obj.id);
+                        }}
+                        aria-label="Agregar tarea"
+                        style={{
+                          padding: '0.3rem 0.7rem',
+                          fontSize: '1.2rem',
+                          color: '#637381',
+                          backgroundColor: 'transparent',
+                          border: '1px solid #dfe3e8',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        + Tarea
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUpdateObjective(obj);
+                        }}
+                        style={{
+                          padding: '0.3rem 0.9rem',
+                          fontSize: '1.2rem',
+                          color: '#637381',
+                          backgroundColor: 'transparent',
+                          border: '1px solid #dfe3e8',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Actualizar
+                      </button>
+                    </div>
                   </td>
                 </tr>
 
@@ -569,11 +872,33 @@ function CheckinKpiTable({
                     const isDone = t.status === 'completed';
                     const chip = taskStatusChip(queued ? 'completed' : t.status);
                     return (
-                      <tr key={t.id} style={{ backgroundColor: queued ? '#f4f5fc' : 'white' }}>
+                      <tr
+                        key={t.id}
+                        className="anim-row-in"
+                        style={{ backgroundColor: queued ? '#f4f5fc' : 'white' }}
+                      >
                         <td style={cellBase}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', paddingLeft: '2.6rem' }}>
                             <span style={{ fontSize: '1.1rem', color: '#919eab' }}>↳</span>
-                            <span style={{ color: '#454f5b' }}>{t.title}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenPanel({ type: 'task', id: t.id });
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                padding: 0,
+                                margin: 0,
+                                font: 'inherit',
+                                textAlign: 'left',
+                                color: '#454f5b',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {t.title}
+                            </button>
                             {queued && (
                               <span style={{ fontSize: '1.1rem', color: '#5c6ac4', backgroundColor: '#ede7ff', padding: '2px 8px', borderRadius: '10rem' }}>
                                 Se marcará completada
@@ -588,11 +913,13 @@ function CheckinKpiTable({
                           <span style={{ color: '#919eab', fontSize: '1.2rem' }}>—</span>
                         </td>
                         <td style={cellBase}>
-                          <CheckButton
-                            checked={queued || isDone}
-                            disabled={isDone}
-                            onClick={() => onToggleTaskComplete(t)}
-                          />
+                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <CheckButton
+                              checked={queued || isDone}
+                              disabled={isDone}
+                              onClick={() => onToggleTaskComplete(t)}
+                            />
+                          </div>
                         </td>
                       </tr>
                     );
@@ -606,15 +933,12 @@ function CheckinKpiTable({
   );
 }
 
-/**
- * Fragment wrapper — the <tr> elements must be direct siblings inside the
- * <tbody>, so this is just React.Fragment forwarding children.
- */
+/** Fragment wrapper — tr elements must be direct siblings inside <tbody>. */
 function ObjectiveRowGroup({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// ---------- Modal ----------
+// ---------- Update modal ----------
 
 interface ObjectiveUpdateModalProps {
   objective: ObjectiveWithTasks;
@@ -641,7 +965,6 @@ function ObjectiveUpdateModal({ objective, current, onClose, onSave, onClear }: 
     if (status !== objective.status) patch.new_status = status;
     if (comment.trim()) patch.comment = comment.trim();
 
-    // If no changes at all and no prior pending edit, just close.
     if (
       patch.new_progress === undefined &&
       patch.new_status === undefined &&
@@ -657,79 +980,77 @@ function ObjectiveUpdateModal({ objective, current, onClose, onSave, onClear }: 
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
-      <div className="Polaris-Card" style={{ width: '480px', padding: '2.4rem', borderRadius: '12px' }}>
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
-            <h2 style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36' }}>Actualizar objetivo</h2>
-            <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '2rem', color: '#637381' }}>&times;</button>
-          </div>
-          <p style={{ fontSize: '1.3rem', color: '#637381', marginBottom: '1.6rem' }}>{objective.title}</p>
+    <AnimatedModal open={true} onClose={onClose} width={480}>
+      <form onSubmit={handleSubmit}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+          <h2 style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36' }}>Actualizar objetivo</h2>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '2rem', color: '#637381' }}>&times;</button>
+        </div>
+        <p style={{ fontSize: '1.3rem', color: '#637381', marginBottom: '1.6rem' }}>{objective.title}</p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
-            {showManual && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                  <label style={{ fontSize: '1.3rem', color: '#454f5b', fontWeight: 500 }}>Progreso manual</label>
-                  <span style={{ fontSize: '1.3rem', fontWeight: 600, color: '#212b36' }}>{progress}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={progress}
-                  onChange={(e) => setProgress(Number(e.target.value))}
-                  style={{ width: '100%', accentColor: '#5c6ac4' }}
-                />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
+          {showManual && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                <label style={{ fontSize: '1.3rem', color: '#454f5b', fontWeight: 500 }}>Progreso manual</label>
+                <span style={{ fontSize: '1.3rem', fontWeight: 600, color: '#212b36' }}>{progress}%</span>
               </div>
-            )}
-
-            <div>
-              <label style={{ display: 'block', fontSize: '1.3rem', fontWeight: 500, marginBottom: '0.4rem', color: '#454f5b' }}>Estado</label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as ObjectiveStatus)}
-                style={{ width: '100%', padding: '0.6rem 1rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px', backgroundColor: 'white' }}
-              >
-                {OBJECTIVE_STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '1.3rem', fontWeight: 500, marginBottom: '0.4rem', color: '#454f5b' }}>Comentario</label>
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                rows={3}
-                placeholder="Contexto adicional que se añadirá al timeline"
-                style={{ width: '100%', padding: '0.6rem 1rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px', resize: 'vertical' }}
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={progress}
+                onChange={(e) => setProgress(Number(e.target.value))}
+                style={{ width: '100%', accentColor: '#5c6ac4' }}
               />
             </div>
+          )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem' }}>
-              {(current.new_progress !== undefined || current.new_status !== undefined || current.comment) && (
-                <button
-                  type="button"
-                  onClick={onClear}
-                  style={{ padding: '0.6rem 1.2rem', fontSize: '1.3rem', color: '#637381', backgroundColor: 'transparent', border: '1px solid #dfe3e8', borderRadius: '4px', cursor: 'pointer' }}
-                >
-                  Descartar cambios
-                </button>
-              )}
-              <button
-                type="submit"
-                style={{ marginLeft: 'auto', padding: '0.6rem 1.6rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: '#5c6ac4', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-              >
-                Guardar en el check-in
-              </button>
-            </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '1.3rem', fontWeight: 500, marginBottom: '0.4rem', color: '#454f5b' }}>Estado</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as ObjectiveStatus)}
+              style={{ width: '100%', padding: '0.6rem 1rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px', backgroundColor: 'white' }}
+            >
+              {OBJECTIVE_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
           </div>
-        </form>
-      </div>
-    </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '1.3rem', fontWeight: 500, marginBottom: '0.4rem', color: '#454f5b' }}>Comentario</label>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              rows={3}
+              placeholder="Contexto adicional que se añadirá al timeline"
+              style={{ width: '100%', padding: '0.6rem 1rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px', resize: 'vertical' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem' }}>
+            {(current.new_progress !== undefined || current.new_status !== undefined || current.comment) && (
+              <button
+                type="button"
+                onClick={onClear}
+                style={{ padding: '0.6rem 1.2rem', fontSize: '1.3rem', color: '#637381', backgroundColor: 'transparent', border: '1px solid #dfe3e8', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                Descartar cambios
+              </button>
+            )}
+            <button
+              type="submit"
+              style={{ marginLeft: 'auto', padding: '0.6rem 1.6rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: '#5c6ac4', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              Guardar en el check-in
+            </button>
+          </div>
+        </div>
+      </form>
+    </AnimatedModal>
   );
 }
 
@@ -790,11 +1111,14 @@ function CheckButton({
   checked,
   disabled,
   onClick,
+  compact,
 }: {
   checked: boolean;
   disabled: boolean;
   onClick: () => void;
+  compact?: boolean;
 }) {
+  const size = compact ? '2.4rem' : '3rem';
   return (
     <button
       type="button"
@@ -802,8 +1126,9 @@ function CheckButton({
       disabled={disabled}
       aria-label={checked ? 'Completada' : 'Marcar completada'}
       style={{
-        width: '3rem',
-        height: '3rem',
+        width: size,
+        height: size,
+        minWidth: size,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -814,9 +1139,10 @@ function CheckButton({
         color: checked ? '#108043' : '#919eab',
         cursor: disabled ? 'default' : 'pointer',
         opacity: disabled ? 0.7 : 1,
+        flexShrink: 0,
       }}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
         <path d="M5 13l4 4L19 7" />
       </svg>
     </button>

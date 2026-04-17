@@ -83,3 +83,58 @@ body {
 .glow-completed {
   animation: skillGlow 2s ease-in-out infinite;
 }
+
+/* --------------------------------------------------------------------- */
+/* Motion primitives                                                     */
+/* All transitions are single-keyframe "enter" animations that run once  */
+/* on mount. Components that need an exit animation (the side panel,     */
+/* modals) drive that from React state in <AnimatedModal> /              */
+/* <OkrDetailPanel> so the element stays mounted long enough to animate. */
+/* --------------------------------------------------------------------- */
+
+@keyframes backdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalCardIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes slideInFromRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes appearUp {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes appearFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Apply to backdrop / overlay of any modal. */
+.anim-backdrop {
+  animation: backdropFadeIn 160ms ease-out;
+}
+
+/* Apply to the modal card (the actual panel / form). */
+.anim-modal-card {
+  animation: modalCardIn 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Apply to every <tr> / <li> that we want to enter-animate when it mounts.
+   Existing rows don't re-run the animation on re-render, so only freshly
+   created rows (after a refetch that added a row) visibly animate. */
+.anim-row-in {
+  animation: appearUp 260ms ease-out;
+}
+
+.anim-fade-in {
+  animation: appearFade 200ms ease-out;
+}
+

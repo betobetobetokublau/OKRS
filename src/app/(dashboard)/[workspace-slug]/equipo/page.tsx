@@ -288,8 +288,8 @@ export default function EquipoPage() {
 
       {/* Create user modal */}
       {showCreateModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
-          <div className="Polaris-Card" style={{ width: '480px', maxHeight: '90vh', overflowY: 'auto', padding: '2.4rem', borderRadius: '12px' }}>
+        <div className="anim-backdrop" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
+          <div className="Polaris-Card anim-modal-card" style={{ width: '480px', maxHeight: '90vh', overflowY: 'auto', padding: '2.4rem', borderRadius: '12px' }}>
             {tempPasswordShown ? (
               <div>
                 <h2 style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36', marginBottom: '1.6rem' }}>Usuario creado</h2>
@@ -402,8 +402,8 @@ export default function EquipoPage() {
 
       {/* Password reset modal */}
       {resetTarget && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
-          <div className="Polaris-Card" style={{ width: '440px', padding: '2.4rem', borderRadius: '12px' }}>
+        <div className="anim-backdrop" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
+          <div className="Polaris-Card anim-modal-card" style={{ width: '440px', padding: '2.4rem', borderRadius: '12px' }}>
             {resetDone ? (
               <div>
                 <h2 style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36', marginBottom: '1.6rem' }}>Contraseña actualizada</h2>

@@ -398,6 +398,7 @@ function KpiGroupBody({
   return (
     <tbody ref={setNodeRef} style={style}>
       <tr
+        className="anim-row-in"
         onClick={hasObjectives ? onToggleKpi : undefined}
         style={{
           cursor: hasObjectives ? 'pointer' : 'default',
@@ -498,6 +499,7 @@ function ObjectiveRowGroup({
   return (
     <>
       <tr
+        className="anim-row-in"
         onClick={hasTasks ? onToggle : undefined}
         style={{
           cursor: hasTasks ? 'pointer' : 'default',
@@ -540,7 +542,7 @@ function ObjectiveRowGroup({
         obj.tasks.map((t) => {
           const progress = getTaskProgress(t);
           return (
-            <tr key={`${obj.id}-${t.id}`} style={{ backgroundColor: 'white' }}>
+            <tr key={`${obj.id}-${t.id}`} className="anim-row-in" style={{ backgroundColor: 'white' }}>
               <td style={cellBase}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', paddingLeft: '7rem' }}>
                   <Chevron expanded={false} visible={false} />

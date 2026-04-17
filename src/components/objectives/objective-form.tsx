@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { AnimatedModal } from '@/components/common/animated-modal';
 import type { Department, Profile, KPI, ProgressMode, ObjectiveStatus } from '@/types';
 
 interface ObjectiveFormProps {
@@ -109,8 +110,7 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
-      <div className="Polaris-Card" style={{ width: '560px', maxHeight: '90vh', overflowY: 'auto', padding: '2.4rem', borderRadius: '12px' }}>
+    <AnimatedModal open={true} onClose={onClose} width={560}>
         <form onSubmit={handleSubmit}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
             <h2 style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36' }}>{initialData?.id ? 'Editar Objetivo' : 'Crear Objetivo'}</h2>
@@ -200,7 +200,6 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </AnimatedModal>
   );
 }

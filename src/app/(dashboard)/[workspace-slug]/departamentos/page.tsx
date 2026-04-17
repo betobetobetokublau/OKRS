@@ -232,8 +232,8 @@ export default function DepartamentosPage() {
       </div>
 
       {showCreate && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
-          <div className="Polaris-Card" style={{ width: '400px', padding: '2.4rem', borderRadius: '12px' }}>
+        <div className="anim-backdrop" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
+          <div className="Polaris-Card anim-modal-card" style={{ width: '400px', padding: '2.4rem', borderRadius: '12px' }}>
             <form onSubmit={handleCreate}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                 <h2 style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36' }}>Crear departamento</h2>
