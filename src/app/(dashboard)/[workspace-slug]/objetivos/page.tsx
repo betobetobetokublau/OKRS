@@ -58,6 +58,7 @@ export default function ObjetivosPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [filterStatus, setFilterStatus] = useState<ObjectiveStatus | 'all'>('all');
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
+  const [activeTab, setActiveTab] = useState<'listado' | 'metricas'>('listado');
 
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
   const canReorder = canEdit;
@@ -215,32 +216,66 @@ export default function ObjetivosPage() {
         </div>
       </div>
 
-      {/* Metrics */}
-      {activePeriod && !loading && rows.length > 0 && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: '1.6rem',
-            marginBottom: '2rem',
-          }}
-        >
-          <StatCard
-            label="Objetivos finalizados"
-            value={metrics.finishedCount}
-            subtext={`de ${rows.length} totales`}
-            accent="#108043"
-          />
-          <StatCard
-            label="Objetivos atrasados"
-            value={metrics.behindCount}
-            subtext="< 50% de progreso y > 50% del tiempo"
-            accent="#bf0711"
-          />
-          <LeaderboardCard rows={metrics.leaderboard} />
-        </div>
+      {/* Tabs */}
+      <div
+        role="tablist"
+        style={{
+          display: 'flex',
+          gap: '0.4rem',
+          borderBottom: '1px solid #dfe3e8',
+          marginBottom: '2rem',
+        }}
+      >
+        <TabButton active={activeTab === 'listado'} onClick={() => setActiveTab('listado')}>
+          Listado
+        </TabButton>
+        <TabButton active={activeTab === 'metricas'} onClick={() => setActiveTab('metricas')}>
+          Métricas
+        </TabButton>
+      </div>
+
+      {activeTab === 'metricas' && (
+        <>
+          {!activePeriod ? (
+            <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+              <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
+            </div>
+          ) : loading ? (
+            <p style={{ color: '#637381', textAlign: 'center', padding: '4rem' }}>Cargando métricas...</p>
+          ) : rows.length === 0 ? (
+            <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+              <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay objetivos en este periodo.</p>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                // Row 1 sizes to the taller of the two stat cards, so both
+                // render at the same height regardless of subtext length.
+                gridAutoRows: 'minmax(0, auto)',
+                gap: '1.6rem',
+              }}
+            >
+              <StatCard
+                label="Objetivos finalizados"
+                value={metrics.finishedCount}
+                subtext={`de ${rows.length} totales`}
+                accent="#108043"
+              />
+              <StatCard
+                label="Objetivos atrasados"
+                value={metrics.behindCount}
+                subtext="< 50% de progreso y > 50% del tiempo"
+                accent="#bf0711"
+              />
+              <LeaderboardCard rows={metrics.leaderboard} />
+            </div>
+          )}
+        </>
       )}
 
+      {activeTab === 'listado' && <>
       {/* Filters */}
       <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '2rem' }}>
         {(['all', 'in_progress', 'upcoming', 'paused', 'deprecated'] as const).map((s) => {
@@ -310,6 +345,7 @@ export default function ObjetivosPage() {
           )}
         </div>
       )}
+      </>}
 
       {showCreate && activePeriod && currentWorkspace && (
         <ObjectiveForm
@@ -526,6 +562,12 @@ function StatCard({
     <div
       className="Polaris-Card"
       style={{
+        // height: 100% so that sibling stat cards in the same grid row end up
+        // the same height regardless of subtext wrapping. The grid row itself
+        // sizes to the tallest card's natural content; this pins the shorter
+        // one to match.
+        height: '100%',
+        minHeight: '14rem',
         borderRadius: '8px',
         border: '1px solid var(--color-border)',
         backgroundColor: 'white',
@@ -533,6 +575,7 @@ function StatCard({
         display: 'flex',
         flexDirection: 'column',
         gap: '0.4rem',
+        boxSizing: 'border-box',
       }}
     >
       <span style={{ fontSize: '1.2rem', color: '#637381', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -541,8 +584,44 @@ function StatCard({
       <span style={{ fontSize: '3.6rem', fontWeight: 700, color: accent, lineHeight: 1 }}>
         {value}
       </span>
-      <span style={{ fontSize: '1.2rem', color: '#919eab' }}>{subtext}</span>
+      <span style={{ fontSize: '1.2rem', color: '#919eab', marginTop: 'auto' }}>{subtext}</span>
     </div>
+  );
+}
+
+// ---------- Tab button ----------
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      style={{
+        padding: '0.8rem 1.6rem',
+        fontSize: '1.4rem',
+        fontWeight: active ? 600 : 500,
+        color: active ? '#5c6ac4' : '#637381',
+        backgroundColor: 'transparent',
+        border: 'none',
+        borderBottom: active ? '2px solid #5c6ac4' : '2px solid transparent',
+        marginBottom: '-1px', // overlap the tablist's bottom border so the
+                             // active underline visually replaces it
+        cursor: 'pointer',
+        transition: 'color 0.15s ease, border-color 0.15s ease',
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
