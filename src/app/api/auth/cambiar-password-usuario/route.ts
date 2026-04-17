@@ -1,50 +1,55 @@
-import { createAdminClient, createServerSupabaseClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { requireAuth, requireWorkspaceRole } from '@/lib/api/require-auth';
+import { checkRateLimit } from '@/lib/api/rate-limit';
+
+const MIN_PASSWORD_LEN = 6;
 
 /**
  * Admin-only endpoint: forcibly set another user's password and optionally
- * flag them for a password change at next login. Used by the Equipo view.
+ * flag them for a password change at next login. Every call writes a row to
+ * `password_reset_audits` for accountability (admin-on-admin resets can
+ * otherwise enable silent impersonation).
  */
 export async function POST(request: Request) {
   try {
-    const supabase = createServerSupabaseClient();
-    const {
-      data: { user: currentUser },
-    } = await supabase.auth.getUser();
-    if (!currentUser) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    const authed = await requireAuth();
+    if (authed instanceof NextResponse) return authed;
+    const { user: currentUser, supabase } = authed;
+
+    // Rate limit per caller: 10 resets / min.
+    const rl = checkRateLimit(`reset-password:${currentUser.id}`, 10, 60_000);
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes, intenta más tarde.' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+      );
     }
 
-    const { target_user_id, workspace_id, password, must_change_password } =
-      (await request.json()) as {
-        target_user_id: string;
-        workspace_id: string;
-        password: string;
-        must_change_password?: boolean;
-      };
+    const body = (await request.json()) as {
+      target_user_id?: unknown;
+      workspace_id?: unknown;
+      password?: unknown;
+      must_change_password?: unknown;
+    };
+    const target_user_id = typeof body.target_user_id === 'string' ? body.target_user_id : '';
+    const workspace_id = typeof body.workspace_id === 'string' ? body.workspace_id : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const must_change_password =
+      typeof body.must_change_password === 'boolean' ? body.must_change_password : undefined;
 
-    if (!target_user_id || !workspace_id || !password || password.length < 6) {
+    if (!target_user_id || !workspace_id || !password || password.length < MIN_PASSWORD_LEN) {
       return NextResponse.json(
-        { error: 'Datos inválidos (la contraseña debe tener al menos 6 caracteres)' },
+        { error: `Datos inválidos (la contraseña debe tener al menos ${MIN_PASSWORD_LEN} caracteres)` },
         { status: 400 },
       );
     }
 
-    // Verify caller is admin in the workspace
-    const { data: callerUw } = await supabase
-      .from('user_workspaces')
-      .select('role')
-      .eq('user_id', currentUser.id)
-      .eq('workspace_id', workspace_id)
-      .single();
-    if (!callerUw || callerUw.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Solo administradores pueden cambiar contraseñas' },
-        { status: 403 },
-      );
-    }
+    const roleResult = await requireWorkspaceRole(supabase, currentUser.id, workspace_id, 'admin');
+    if (roleResult instanceof NextResponse) return roleResult;
 
-    // Verify target belongs to the same workspace (prevents cross-workspace attack)
+    // Verify target belongs to the same workspace (prevents cross-workspace
+    // admin from rotating a stranger's password).
     const { data: targetUw } = await supabase
       .from('user_workspaces')
       .select('user_id')
@@ -63,10 +68,10 @@ export async function POST(request: Request) {
       password,
     });
     if (updateError) {
+      console.error('[api/auth/cambiar-password-usuario] updateUserById failed:', updateError);
       return NextResponse.json({ error: updateError.message }, { status: 400 });
     }
 
-    // Flip the must_change_password flag if specified.
     if (typeof must_change_password === 'boolean') {
       await adminClient
         .from('profiles')
@@ -74,8 +79,18 @@ export async function POST(request: Request) {
         .eq('id', target_user_id);
     }
 
+    // Audit row — written with the service-role key, the only writer
+    // allowed by the table's RLS config.
+    await adminClient.from('password_reset_audits').insert({
+      actor_user_id: currentUser.id,
+      target_user_id,
+      workspace_id,
+      must_change_password: must_change_password ?? null,
+    });
+
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (err) {
+    console.error('[api/auth/cambiar-password-usuario] failed:', err);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }

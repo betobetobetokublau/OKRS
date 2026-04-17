@@ -1,31 +1,26 @@
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import ReactPDF from '@react-pdf/renderer';
 import { QuarterlyPDFReport } from '@/components/quarterly/pdf-report';
+import { requireAuth, requireWorkspaceRole } from '@/lib/api/require-auth';
 import type { KPI, Objective, Task, Department } from '@/types';
 
 export async function POST(request: Request) {
   try {
-    const supabase = createServerSupabaseClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    const authed = await requireAuth();
+    if (authed instanceof NextResponse) return authed;
+    const { user, supabase } = authed;
+
+    const body = (await request.json()) as { workspace_id?: unknown; period_id?: unknown };
+    const workspace_id = typeof body.workspace_id === 'string' ? body.workspace_id : '';
+    const period_id = typeof body.period_id === 'string' ? body.period_id : '';
+    if (!workspace_id || !period_id) {
+      return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
     }
 
-    const body = await request.json();
-    const { workspace_id, period_id } = body;
-
-    // Verify user role
-    const { data: uw } = await supabase
-      .from('user_workspaces')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('workspace_id', workspace_id)
-      .single();
-
-    if (!uw || uw.role === 'member') {
-      return NextResponse.json({ error: 'No tienes permiso para exportar' }, { status: 403 });
-    }
+    // Caller must be manager+ in the target workspace (matches the old
+    // `role !== 'member'` check but via the shared helper).
+    const roleResult = await requireWorkspaceRole(supabase, user.id, workspace_id, 'manager');
+    if (roleResult instanceof NextResponse) return roleResult;
 
     // Fetch all data
     const [wsRes, periodRes, kpisRes, objsRes, deptsRes] = await Promise.all([
