@@ -24,25 +24,22 @@ interface NavItem {
 }
 
 /**
- * Width constants — exported so the workspace layout can match its
- * main-content offset to the collapsed width. When the sidebar is hovered
- * over in collapsed mode it expands to the EXPANDED_WIDTH *as an overlay*,
- * without shifting the main content.
+ * Width constants — exported so the workspace layout can size its main-
+ * content offset to match the persisted collapse state. Hover-expansion
+ * overlays on top of main content and does NOT change the offset.
  */
 export const SIDEBAR_EXPANDED_WIDTH = 240;
-export const SIDEBAR_COLLAPSED_WIDTH = 64;
+// Exactly icon (24px) + 18px padding on each side = 60px.
+const ICON_SIZE_COLLAPSED = 24;
+const ICON_PADDING_COLLAPSED = 18;
+export const SIDEBAR_COLLAPSED_WIDTH =
+  ICON_SIZE_COLLAPSED + ICON_PADDING_COLLAPSED * 2;
 
 export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
   const pathname = usePathname();
   const base = `/${workspaceSlug}`;
   const collapsed = useSidebarStore((s) => s.collapsed);
   const [hovered, setHovered] = useState(false);
-
-  // Show labels whenever the sidebar is not collapsed OR the user is hovering
-  // over it. Hovering doesn't change the store, so the main content doesn't
-  // shift; we just widen the nav element visually and it overlays.
-  const expanded = !collapsed || hovered;
-  const width = expanded ? SIDEBAR_EXPANDED_WIDTH : SIDEBAR_COLLAPSED_WIDTH;
 
   const navItems: NavItem[] = [
     { label: 'Dashboard', href: base, icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
@@ -67,146 +64,259 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
     return pathname.startsWith(href);
   }
 
-  // Icon size grows a bit when collapsed (and not hovered) to fill the
-  // narrower rail without the labels.
-  const iconSize = collapsed && !hovered ? 24 : 20;
-
-  const linkStyle = (active: boolean): React.CSSProperties => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1.2rem',
-    padding: expanded ? '0.4rem 1.2rem' : '0.6rem',
-    margin: expanded ? '0 0.8rem' : '0 0.6rem',
-    borderRadius: '3px',
-    color: active ? '#202e78' : '#212b36',
-    backgroundColor: active ? 'rgba(92, 106, 196, 0.12)' : 'transparent',
-    textDecoration: 'none',
-    fontSize: '1.4rem',
-    fontWeight: active ? 600 : 500,
-    lineHeight: '2.4rem',
-    transition: 'background 0.15s ease, padding 0.18s ease',
-    marginBottom: '1px',
-    justifyContent: expanded ? 'flex-start' : 'center',
-    whiteSpace: 'nowrap' as const,
-    overflow: 'hidden' as const,
-  });
-
   const iconColor = (active: boolean): string => (active ? '#5c6ac4' : '#919eab');
 
-  return (
-    <nav
-      className="Polaris-Navigation"
-      onMouseEnter={() => collapsed && setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        width: `${width}px`,
-        backgroundColor: '#f4f6f8',
-        borderRight: '1px solid #dfe3e8',
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'fixed',
-        left: 0,
-        top: '56px',
-        bottom: 0,
-        zIndex: hovered ? 160 : 100, // overlay main content while hovered
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        transition: 'width 0.18s cubic-bezier(0.2, 0.8, 0.2, 1)',
-        boxShadow: hovered ? '4px 0 18px rgba(0,0,0,0.06)' : 'none',
-      }}
-    >
-      {/* Main nav */}
-      <div style={{ padding: '1.2rem 0', flex: 1 }}>
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-          {navItems.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <li key={item.href}>
-                <Link href={item.href} style={linkStyle(active)} title={!expanded ? item.label : undefined}>
-                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke={iconColor(active)} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transition: 'width 0.18s ease, height 0.18s ease' }}>
-                    <path d={item.icon} />
-                  </svg>
-                  {expanded && (
-                    <>
-                      <span style={{ flex: 1 }}>{item.label}</span>
-                      {item.badge && (
-                        <span
-                          style={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: '#de3618',
-                          }}
-                        />
-                      )}
-                    </>
-                  )}
-                  {!expanded && item.badge && (
-                    // Small dot on the icon itself when collapsed
-                    <span
-                      style={{
-                        position: 'absolute',
-                        marginLeft: '1.2rem',
-                        marginTop: '-1.2rem',
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        backgroundColor: '#de3618',
-                      }}
-                    />
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+  // Two faces: the always-visible collapsed rail (when collapsed), and the
+  // full expanded drawer (shown when !collapsed or when the rail is hovered).
+  // When the drawer appears because of hover, it animates in via
+  // `slideInFromLeft`; when it appears because the user toggled the sidebar
+  // open, no entrance animation is needed — the rail simply unmounts and the
+  // drawer takes its place at a wider width.
+  const showDrawer = !collapsed || hovered;
+  const drawerSlidingIn = collapsed && hovered;
 
-        {/* Admin section */}
-        {canManageTeam(role) && (
-          <>
-            {expanded ? (
-              <div
-                style={{
-                  fontSize: '1.1rem',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  color: '#637381',
-                  padding: '1.6rem 2rem 0.4rem',
-                  marginTop: '0.8rem',
-                }}
-              >
-                Administración
-              </div>
-            ) : (
-              <div
-                aria-hidden
-                style={{
-                  height: '1px',
-                  backgroundColor: '#dfe3e8',
-                  margin: '1.2rem 1rem 0.8rem',
-                }}
-              />
-            )}
+  return (
+    <>
+      {/* Collapsed icon rail. Rendered only when the drawer is not in view,
+          so there's no double-rendering. */}
+      {!showDrawer && (
+        <nav
+          className="Polaris-Navigation"
+          onMouseEnter={() => setHovered(true)}
+          aria-label="Barra lateral (contraída)"
+          style={{
+            width: `${SIDEBAR_COLLAPSED_WIDTH}px`,
+            backgroundColor: '#f4f6f8',
+            borderRight: '1px solid #dfe3e8',
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'fixed',
+            left: 0,
+            top: '56px',
+            bottom: 0,
+            zIndex: 100,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+          }}
+        >
+          <div style={{ padding: '1.2rem 0', flex: 1 }}>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {adminItems.map((item) => {
-                if (item.adminOnly && !canManageTeam(role)) return null;
-                const active = isActive(item.href);
-                return (
-                  <li key={item.href}>
-                    <Link href={item.href} style={linkStyle(active)} title={!expanded ? item.label : undefined}>
-                      <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke={iconColor(active)} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transition: 'width 0.18s ease, height 0.18s ease' }}>
-                        <path d={item.icon} />
-                      </svg>
-                      {expanded && <span>{item.label}</span>}
-                    </Link>
-                  </li>
-                );
-              })}
+              {navItems.map((item) => (
+                <CollapsedLink key={item.href} item={item} active={isActive(item.href)} iconColor={iconColor} />
+              ))}
             </ul>
-          </>
+
+            {canManageTeam(role) && (
+              <>
+                <div
+                  aria-hidden
+                  style={{ height: '1px', backgroundColor: '#dfe3e8', margin: '1.2rem 1rem 0.8rem' }}
+                />
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {adminItems.map((item) => {
+                    if (item.adminOnly && !canManageTeam(role)) return null;
+                    return (
+                      <CollapsedLink
+                        key={item.href}
+                        item={item}
+                        active={isActive(item.href)}
+                        iconColor={iconColor}
+                      />
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+          </div>
+        </nav>
+      )}
+
+      {/* Expanded drawer. Slides in from the left when it's appearing because
+          of hover; renders statically when the user has toggled the sidebar
+          to always-expanded. A shadow is applied while hovered to signal it's
+          overlaying the main content. */}
+      {showDrawer && (
+        <nav
+          className="Polaris-Navigation"
+          onMouseLeave={() => setHovered(false)}
+          aria-label="Barra lateral"
+          style={{
+            width: `${SIDEBAR_EXPANDED_WIDTH}px`,
+            backgroundColor: '#f4f6f8',
+            borderRight: '1px solid #dfe3e8',
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'fixed',
+            left: 0,
+            top: '56px',
+            bottom: 0,
+            zIndex: drawerSlidingIn ? 160 : 100,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            boxShadow: drawerSlidingIn ? '4px 0 18px rgba(0,0,0,0.08)' : 'none',
+            animation: drawerSlidingIn
+              ? 'slideInFromLeft 180ms cubic-bezier(0.2, 0.8, 0.2, 1)'
+              : undefined,
+          }}
+        >
+          <div style={{ padding: '1.2rem 0', flex: 1 }}>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {navItems.map((item) => (
+                <ExpandedLink key={item.href} item={item} active={isActive(item.href)} iconColor={iconColor} />
+              ))}
+            </ul>
+
+            {canManageTeam(role) && (
+              <>
+                <div
+                  style={{
+                    fontSize: '1.1rem',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.1em',
+                    color: '#637381',
+                    padding: '1.6rem 2rem 0.4rem',
+                    marginTop: '0.8rem',
+                  }}
+                >
+                  Administración
+                </div>
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {adminItems.map((item) => {
+                    if (item.adminOnly && !canManageTeam(role)) return null;
+                    return (
+                      <ExpandedLink key={item.href} item={item} active={isActive(item.href)} iconColor={iconColor} />
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+          </div>
+        </nav>
+      )}
+    </>
+  );
+}
+
+// ---------- Row variants ----------
+
+function CollapsedLink({
+  item,
+  active,
+  iconColor,
+}: {
+  item: NavItem;
+  active: boolean;
+  iconColor: (a: boolean) => string;
+}) {
+  return (
+    <li>
+      <Link
+        href={item.href}
+        title={item.label}
+        aria-label={item.label}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: `0.6rem ${ICON_PADDING_COLLAPSED}px`,
+          margin: 0,
+          borderRadius: 0,
+          color: active ? '#202e78' : '#212b36',
+          backgroundColor: active ? 'rgba(92, 106, 196, 0.12)' : 'transparent',
+          textDecoration: 'none',
+          position: 'relative',
+        }}
+      >
+        <svg
+          width={ICON_SIZE_COLLAPSED}
+          height={ICON_SIZE_COLLAPSED}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={iconColor(active)}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ flexShrink: 0 }}
+        >
+          <path d={item.icon} />
+        </svg>
+        {item.badge && (
+          <span
+            aria-hidden
+            style={{
+              position: 'absolute',
+              top: '0.8rem',
+              right: '1.2rem',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#de3618',
+            }}
+          />
         )}
-      </div>
-    </nav>
+      </Link>
+    </li>
+  );
+}
+
+function ExpandedLink({
+  item,
+  active,
+  iconColor,
+}: {
+  item: NavItem;
+  active: boolean;
+  iconColor: (a: boolean) => string;
+}) {
+  return (
+    <li>
+      <Link
+        href={item.href}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1.2rem',
+          padding: '0.4rem 1.2rem',
+          margin: '0 0.8rem',
+          borderRadius: '3px',
+          color: active ? '#202e78' : '#212b36',
+          backgroundColor: active ? 'rgba(92, 106, 196, 0.12)' : 'transparent',
+          textDecoration: 'none',
+          fontSize: '1.4rem',
+          fontWeight: active ? 600 : 500,
+          lineHeight: '2.4rem',
+          transition: 'background 0.15s ease',
+          marginBottom: '1px',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+        }}
+      >
+        <svg
+          width={20}
+          height={20}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={iconColor(active)}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ flexShrink: 0 }}
+        >
+          <path d={item.icon} />
+        </svg>
+        <span style={{ flex: 1 }}>{item.label}</span>
+        {item.badge && (
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#de3618',
+            }}
+          />
+        )}
+      </Link>
+    </li>
   );
 }
