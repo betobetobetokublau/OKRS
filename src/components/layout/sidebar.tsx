@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState } from 'react';
 import type { WorkspaceRole } from '@/types';
 import { canManageTeam } from '@/lib/utils/permissions';
+import { useSidebarStore } from '@/stores/sidebar-store';
 
 interface SidebarProps {
   workspaceSlug: string;
@@ -21,9 +23,26 @@ interface NavItem {
   managerOnly?: boolean;
 }
 
+/**
+ * Width constants — exported so the workspace layout can match its
+ * main-content offset to the collapsed width. When the sidebar is hovered
+ * over in collapsed mode it expands to the EXPANDED_WIDTH *as an overlay*,
+ * without shifting the main content.
+ */
+export const SIDEBAR_EXPANDED_WIDTH = 240;
+export const SIDEBAR_COLLAPSED_WIDTH = 64;
+
 export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
   const pathname = usePathname();
   const base = `/${workspaceSlug}`;
+  const collapsed = useSidebarStore((s) => s.collapsed);
+  const [hovered, setHovered] = useState(false);
+
+  // Show labels whenever the sidebar is not collapsed OR the user is hovering
+  // over it. Hovering doesn't change the store, so the main content doesn't
+  // shift; we just widen the nav element visually and it overlays.
+  const expanded = !collapsed || hovered;
+  const width = expanded ? SIDEBAR_EXPANDED_WIDTH : SIDEBAR_COLLAPSED_WIDTH;
 
   const navItems: NavItem[] = [
     { label: 'Dashboard', href: base, icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
@@ -48,12 +67,16 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
     return pathname.startsWith(href);
   }
 
+  // Icon size grows a bit when collapsed (and not hovered) to fill the
+  // narrower rail without the labels.
+  const iconSize = collapsed && !hovered ? 24 : 20;
+
   const linkStyle = (active: boolean): React.CSSProperties => ({
     display: 'flex',
     alignItems: 'center',
     gap: '1.2rem',
-    padding: '0.4rem 1.2rem',
-    margin: '0 0.8rem',
+    padding: expanded ? '0.4rem 1.2rem' : '0.6rem',
+    margin: expanded ? '0 0.8rem' : '0 0.6rem',
     borderRadius: '3px',
     color: active ? '#202e78' : '#212b36',
     backgroundColor: active ? 'rgba(92, 106, 196, 0.12)' : 'transparent',
@@ -61,17 +84,22 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
     fontSize: '1.4rem',
     fontWeight: active ? 600 : 500,
     lineHeight: '2.4rem',
-    transition: 'background 0.15s ease',
+    transition: 'background 0.15s ease, padding 0.18s ease',
     marginBottom: '1px',
+    justifyContent: expanded ? 'flex-start' : 'center',
+    whiteSpace: 'nowrap' as const,
+    overflow: 'hidden' as const,
   });
 
-  const iconColor = (active: boolean): string => active ? '#5c6ac4' : '#919eab';
+  const iconColor = (active: boolean): string => (active ? '#5c6ac4' : '#919eab');
 
   return (
     <nav
       className="Polaris-Navigation"
+      onMouseEnter={() => collapsed && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        width: '240px',
+        width: `${width}px`,
         backgroundColor: '#f4f6f8',
         borderRight: '1px solid #dfe3e8',
         display: 'flex',
@@ -80,8 +108,11 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
         left: 0,
         top: '56px',
         bottom: 0,
-        zIndex: 100,
+        zIndex: hovered ? 160 : 100, // overlay main content while hovered
         overflowY: 'auto',
+        overflowX: 'hidden',
+        transition: 'width 0.18s cubic-bezier(0.2, 0.8, 0.2, 1)',
+        boxShadow: hovered ? '4px 0 18px rgba(0,0,0,0.06)' : 'none',
       }}
     >
       {/* Main nav */}
@@ -91,14 +122,32 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
             const active = isActive(item.href);
             return (
               <li key={item.href}>
-                <Link href={item.href} style={linkStyle(active)}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor(active)} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <Link href={item.href} style={linkStyle(active)} title={!expanded ? item.label : undefined}>
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke={iconColor(active)} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transition: 'width 0.18s ease, height 0.18s ease' }}>
                     <path d={item.icon} />
                   </svg>
-                  <span style={{ flex: 1 }}>{item.label}</span>
-                  {item.badge && (
+                  {expanded && (
+                    <>
+                      <span style={{ flex: 1 }}>{item.label}</span>
+                      {item.badge && (
+                        <span
+                          style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: '#de3618',
+                          }}
+                        />
+                      )}
+                    </>
+                  )}
+                  {!expanded && item.badge && (
+                    // Small dot on the icon itself when collapsed
                     <span
                       style={{
+                        position: 'absolute',
+                        marginLeft: '1.2rem',
+                        marginTop: '-1.2rem',
                         width: '8px',
                         height: '8px',
                         borderRadius: '50%',
@@ -115,30 +164,41 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
         {/* Admin section */}
         {canManageTeam(role) && (
           <>
-            <div
-              style={{
-                fontSize: '1.1rem',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                color: '#637381',
-                padding: '1.6rem 2rem 0.4rem',
-                marginTop: '0.8rem',
-              }}
-            >
-              Administración
-            </div>
+            {expanded ? (
+              <div
+                style={{
+                  fontSize: '1.1rem',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  color: '#637381',
+                  padding: '1.6rem 2rem 0.4rem',
+                  marginTop: '0.8rem',
+                }}
+              >
+                Administración
+              </div>
+            ) : (
+              <div
+                aria-hidden
+                style={{
+                  height: '1px',
+                  backgroundColor: '#dfe3e8',
+                  margin: '1.2rem 1rem 0.8rem',
+                }}
+              />
+            )}
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {adminItems.map((item) => {
                 if (item.adminOnly && !canManageTeam(role)) return null;
                 const active = isActive(item.href);
                 return (
                   <li key={item.href}>
-                    <Link href={item.href} style={linkStyle(active)}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor(active)} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <Link href={item.href} style={linkStyle(active)} title={!expanded ? item.label : undefined}>
+                      <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke={iconColor(active)} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transition: 'width 0.18s ease, height 0.18s ease' }}>
                         <path d={item.icon} />
                       </svg>
-                      <span>{item.label}</span>
+                      {expanded && <span>{item.label}</span>}
                     </Link>
                   </li>
                 );

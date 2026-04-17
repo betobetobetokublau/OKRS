@@ -1,15 +1,17 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { Sidebar } from '@/components/layout/sidebar';
+import { Sidebar, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
 import { useWorkspace } from '@/hooks/use-workspace';
 import { useRealtime } from '@/hooks/use-realtime';
+import { useSidebarStore } from '@/stores/sidebar-store';
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   const params = useParams();
   const workspaceSlug = params['workspace-slug'] as string;
   const { currentWorkspace, userWorkspace, profile } = useWorkspace(workspaceSlug);
+  const collapsed = useSidebarStore((s) => s.collapsed);
 
   useRealtime(profile?.id);
 
@@ -34,6 +36,11 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
     );
   }
 
+  // Main content is offset by the COLLAPSED-OR-EXPANDED width (the persisted
+  // state). The sidebar's hover expansion overlays on top without nudging the
+  // main content.
+  const mainOffset = collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <Topbar
@@ -48,7 +55,14 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
           role={userWorkspace.role}
           workspaceName={currentWorkspace.name}
         />
-        <main style={{ flex: 1, marginLeft: '240px', padding: '2.4rem' }}>
+        <main
+          style={{
+            flex: 1,
+            marginLeft: `${mainOffset}px`,
+            padding: '2.4rem',
+            transition: 'margin-left 0.18s cubic-bezier(0.2, 0.8, 0.2, 1)',
+          }}
+        >
           {children}
         </main>
       </div>

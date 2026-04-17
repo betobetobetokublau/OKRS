@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { NotificationBell } from './notification-bell';
 import { UserAvatar } from '@/components/common/user-avatar';
+import { useSidebarStore } from '@/stores/sidebar-store';
 import type { Profile } from '@/types';
 import { useState, useRef, useEffect } from 'react';
 
@@ -19,6 +20,7 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const toggleSidebar = useSidebarStore((s) => s.toggle);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -52,8 +54,30 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
         width: '100%',
       }}
     >
-      {/* Left: Logo + workspace name */}
+      {/* Left: Hamburger + Logo + workspace name */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          aria-label="Alternar barra lateral"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '32px',
+            height: '32px',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            borderRadius: '4px',
+            color: 'white',
+            padding: 0,
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 6h18M3 12h18M3 18h18" />
+          </svg>
+        </button>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
           <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
