@@ -1,5 +1,26 @@
 # Kublau OKR platform — agent notes
 
+## Testing
+
+Framework: **vitest** (unit tests colocated as `*.test.ts`).
+
+- `npm test` — run suite once
+- `npm run test:watch` — watch mode
+- `npm run test:ui` — vitest UI
+
+Covered today: `src/lib/utils/progress.ts`, `src/lib/utils/permissions.ts`,
+`src/lib/api/rate-limit.ts`, `src/lib/validators/*`. API routes, hooks, and
+RLS policies are not yet covered.
+
+RLS isolation test: `sql/tests/rls-workspace-isolation.test.sql`. Run with
+`psql "$SUPABASE_DB_URL" -f sql/tests/rls-workspace-isolation.test.sql`
+against a dev project. Seeds two workspaces/users and asserts no cross-
+workspace reads or writes across workspaces/profiles/objectives/kpis/
+user_workspaces. Fails loudly on any bleed.
+
+CI runs `tsc --noEmit`, `npm run lint`, and `npm test` on every PR via
+`.github/workflows/ci.yml`.
+
 ## gstack
 
 Installed under `~/.claude/skills/`. Each skill registers its own slash

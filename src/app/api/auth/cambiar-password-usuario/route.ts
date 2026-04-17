@@ -2,8 +2,8 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { requireAuth, requireWorkspaceRole } from '@/lib/api/require-auth';
 import { checkRateLimit } from '@/lib/api/rate-limit';
-
-const MIN_PASSWORD_LEN = 6;
+import { parseJsonBody } from '@/lib/api/parse-body';
+import { changePasswordAdminApiSchema } from '@/lib/validators/user';
 
 /**
  * Admin-only endpoint: forcibly set another user's password and optionally
@@ -26,24 +26,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as {
-      target_user_id?: unknown;
-      workspace_id?: unknown;
-      password?: unknown;
-      must_change_password?: unknown;
-    };
-    const target_user_id = typeof body.target_user_id === 'string' ? body.target_user_id : '';
-    const workspace_id = typeof body.workspace_id === 'string' ? body.workspace_id : '';
-    const password = typeof body.password === 'string' ? body.password : '';
-    const must_change_password =
-      typeof body.must_change_password === 'boolean' ? body.must_change_password : undefined;
-
-    if (!target_user_id || !workspace_id || !password || password.length < MIN_PASSWORD_LEN) {
-      return NextResponse.json(
-        { error: `Datos inválidos (la contraseña debe tener al menos ${MIN_PASSWORD_LEN} caracteres)` },
-        { status: 400 },
-      );
-    }
+    const parsed = await parseJsonBody(request, changePasswordAdminApiSchema);
+    if (parsed instanceof NextResponse) return parsed;
+    const { target_user_id, workspace_id, password, must_change_password } = parsed;
 
     const roleResult = await requireWorkspaceRole(supabase, currentUser.id, workspace_id, 'admin');
     if (roleResult instanceof NextResponse) return roleResult;

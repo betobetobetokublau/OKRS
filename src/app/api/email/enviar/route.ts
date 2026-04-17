@@ -3,15 +3,8 @@ import { getPostmarkClient } from '@/lib/postmark/client';
 import { NextResponse } from 'next/server';
 import { requireAuth, requireWorkspaceRole } from '@/lib/api/require-auth';
 import { checkRateLimit } from '@/lib/api/rate-limit';
-
-// Templates a caller may request. Anything outside this list is rejected,
-// which prevents the endpoint from being used as a generic Postmark relay
-// for arbitrary templates on the verified sender domain.
-const ALLOWED_TEMPLATES = new Set<string>([
-  'monthly-review-reminder',
-  'quarterly-session-invite',
-  'welcome-new-user',
-]);
+import { parseJsonBody } from '@/lib/api/parse-body';
+import { sendEmailApiSchema } from '@/lib/validators/email';
 
 export async function POST(request: Request) {
   try {
@@ -28,29 +21,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as {
-      to?: unknown;
-      template_alias?: unknown;
-      template_model?: unknown;
-      workspace_id?: unknown;
-    };
-    const to = typeof body.to === 'string' ? body.to : '';
-    const template_alias = typeof body.template_alias === 'string' ? body.template_alias : '';
-    const workspace_id = typeof body.workspace_id === 'string' ? body.workspace_id : '';
-    const template_model =
-      body.template_model && typeof body.template_model === 'object'
-        ? (body.template_model as Record<string, unknown>)
-        : {};
-
-    if (!to || !template_alias || !workspace_id) {
-      return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
-    }
-    if (!ALLOWED_TEMPLATES.has(template_alias)) {
-      return NextResponse.json(
-        { error: 'Plantilla no permitida' },
-        { status: 400 },
-      );
-    }
+    const parsed = await parseJsonBody(request, sendEmailApiSchema);
+    if (parsed instanceof NextResponse) return parsed;
+    const { to, template_alias, template_model, workspace_id } = parsed;
 
     // Caller must be at least a manager in the target workspace.
     const roleResult = await requireWorkspaceRole(supabase, user.id, workspace_id, 'manager');
