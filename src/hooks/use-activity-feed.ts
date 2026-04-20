@@ -76,6 +76,30 @@ export function useActivityFeed(
       return;
     }
     setLoading(true);
+    try {
+      await loadActivity(workspaceId, limit, setEvents);
+    } catch (err) {
+      // Any query hiccup should empty the feed instead of bubbling into
+      // the React tree and crashing the page.
+      console.error('[use-activity-feed] load failed:', err);
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId, limit]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { events, loading, refetch: load };
+}
+
+async function loadActivity(
+  workspaceId: string,
+  limit: number,
+  setEvents: (events: ActivityEvent[]) => void,
+) {
     const supabase = createClient();
 
     // ── Step 1: raw rows per source. SELECT * on progress_logs and
@@ -169,15 +193,21 @@ export function useActivityFeed(
     );
 
     const objById = new Map<string, MinimalObj>();
-    (objsRes.data || []).forEach((o: MinimalObj) =>
-      objById.set(o.id, { id: o.id, title: o.title, workspace_id: o.workspace_id }),
-    );
+    (objsRes.data || []).forEach((o: MinimalObj) => {
+      if (!o?.id) return;
+      objById.set(o.id, {
+        id: o.id,
+        title: o.title ?? '',
+        workspace_id: o.workspace_id ?? '',
+      });
+    });
     (extraObjsRes.data || []).forEach((o: MinimalObj) => {
       // Only allow objectives in the current workspace into the lookup
       // map — RLS should block cross-workspace reads anyway, but this is
       // a defensive filter so comments/progress_logs events can't surface
       // under the wrong workspace.
-      if (o.workspace_id === workspaceId) objById.set(o.id, o);
+      if (!o?.id || o.workspace_id !== workspaceId) return;
+      objById.set(o.id, { id: o.id, title: o.title ?? '', workspace_id: o.workspace_id });
     });
 
     // ── Step 5: transform into a unified event list. ─────────────────
@@ -189,7 +219,7 @@ export function useActivityFeed(
       if (!id) return undefined;
       const o = objById.get(id);
       if (!o) return undefined;
-      return { type: 'objective', id: o.id, title: o.title };
+      return { type: 'objective', id: o.id, title: o.title ?? '' };
     };
 
     // Progress log → "X actualizó progreso de Y a N%". The real schema
@@ -236,21 +266,23 @@ export function useActivityFeed(
     // Objectives / KPIs created. No actor available (no created_by
     // column) so we render the action anonymously.
     (objsRes.data || []).forEach((r: any) => {
+      if (!r?.id) return;
       out.push({
         id: `obj-created-${r.id}`,
         kind: 'objective_created',
         timestamp: r.created_at,
         actor: null,
-        target: { type: 'objective', id: r.id, title: r.title },
+        target: { type: 'objective', id: r.id, title: r.title ?? '' },
       });
     });
     (kpisRes.data || []).forEach((r: any) => {
+      if (!r?.id) return;
       out.push({
         id: `kpi-created-${r.id}`,
         kind: 'kpi_created',
         timestamp: r.created_at,
         actor: null,
-        target: { type: 'kpi', id: r.id, title: r.title },
+        target: { type: 'kpi', id: r.id, title: r.title ?? '' },
       });
     });
 
@@ -258,10 +290,15 @@ export function useActivityFeed(
     // blocked). tasks table has no updated_at, so the status-event
     // timestamp is created_at (approximation until an audit trail lands).
     (tasksRes.data || []).forEach((r: any) => {
+      if (!r?.id) return;
       const objective = Array.isArray(r.objective) ? r.objective[0] : r.objective;
-      if (!objective) return;
-      const parent: EntityRef = { type: 'objective', id: objective.id, title: objective.title };
-      const target: EntityRef = { type: 'task', id: r.id, title: r.title };
+      if (!objective?.id) return;
+      const parent: EntityRef = {
+        type: 'objective',
+        id: objective.id,
+        title: objective.title ?? '',
+      };
+      const target: EntityRef = { type: 'task', id: r.id, title: r.title ?? '' };
 
       // Always emit a task_created event — plain and independent of
       // current status.
@@ -310,12 +347,4 @@ export function useActivityFeed(
     // Sort desc by timestamp, clip.
     out.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
     setEvents(out.slice(0, limit));
-    setLoading(false);
-  }, [workspaceId, limit]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  return { events, loading, refetch: load };
 }
