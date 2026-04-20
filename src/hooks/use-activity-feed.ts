@@ -58,20 +58,16 @@ export function useActivityFeed(
     setLoading(true);
     const supabase = createClient();
 
-    // Fetch in parallel. RLS scopes most of these to the caller's workspace
-    // already, but we also pass workspace_id where we can for clarity.
-    const [
-      progressRes,
-      commentsRes,
-      objsRes,
-      kpisRes,
-      tasksRes,
-      checkinsRes,
-    ] = await Promise.all([
+    // Fetch events first — user names are resolved in a second pass
+    // because progress_logs.user_id and checkins.user_id both FK into
+    // auth.users (not profiles), so PostgREST's embedded-join syntax
+    // can't resolve profiles via the hint. RLS scopes most of these to
+    // the caller's workspace already; we pass workspace_id where we can.
+    const [progressRes, commentsRes, objsRes, kpisRes, tasksRes, checkinsRes] = await Promise.all([
       supabase
         .from('progress_logs')
         .select(
-          'id, created_at, progress_value, user:profiles!progress_logs_user_id_fkey(id, full_name), kpi_id, objective_id, task_id, kpi:kpis(id, title), objective:objectives(id, title), task:tasks(id, title)',
+          'id, created_at, user_id, progress_value, kpi_id, objective_id, task_id, kpi:kpis(id, title), objective:objectives(id, title), task:tasks(id, title)',
         )
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
@@ -79,11 +75,11 @@ export function useActivityFeed(
       supabase
         .from('comments')
         .select(
-          'id, created_at, content, user:profiles!comments_user_id_fkey(id, full_name), kpi_id, objective_id, kpi:kpis!inner(id, title, workspace_id), objective:objectives(id, title, workspace_id)',
+          'id, created_at, user_id, content, kpi_id, objective_id, kpi:kpis(id, title, workspace_id), objective:objectives(id, title, workspace_id)',
         )
-        // Comments filter by joined entity's workspace. Supabase's
-        // `.or()` works on root columns; we approximate by fetching recent
-        // comments and filtering in-memory.
+        // We filter to the current workspace in-memory via the joined
+        // entity's workspace_id — comments don't carry workspace_id
+        // directly, and OR-across-joins is awkward in PostgREST.
         .order('created_at', { ascending: false })
         .limit(limit),
       supabase
@@ -108,11 +104,31 @@ export function useActivityFeed(
         .limit(30),
       supabase
         .from('checkins')
-        .select('id, created_at, summary, user:profiles!checkins_user_id_fkey(id, full_name)')
+        .select('id, created_at, user_id, summary')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
         .limit(10),
     ]);
+
+    // Collect every user_id that shows up in any event source, then
+    // batch-fetch their profiles in one query.
+    const userIds = new Set<string>();
+    (progressRes.data || []).forEach((r: any) => r.user_id && userIds.add(r.user_id));
+    (commentsRes.data || []).forEach((r: any) => r.user_id && userIds.add(r.user_id));
+    (checkinsRes.data || []).forEach((r: any) => r.user_id && userIds.add(r.user_id));
+
+    const profileByUserId = new Map<string, Pick<Profile, 'id' | 'full_name'>>();
+    if (userIds.size > 0) {
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', Array.from(userIds));
+      (profs || []).forEach((p: { id: string; full_name: string }) =>
+        profileByUserId.set(p.id, p),
+      );
+    }
+    const actorFor = (userId: string | null | undefined) =>
+      userId ? profileByUserId.get(userId) ?? null : null;
 
     const out: ActivityEvent[] = [];
 
@@ -124,7 +140,7 @@ export function useActivityFeed(
         id: `progress-${r.id}`,
         kind: 'progress_log',
         timestamp: r.created_at,
-        actor: pickOne(r.user),
+        actor: actorFor(r.user_id),
         target,
         progressPct: r.progress_value,
       });
@@ -149,7 +165,7 @@ export function useActivityFeed(
         id: `comment-${r.id}`,
         kind: 'comment',
         timestamp: r.created_at,
-        actor: pickOne(r.user),
+        actor: actorFor(r.user_id),
         target,
         quote: r.content,
       });
@@ -225,7 +241,7 @@ export function useActivityFeed(
         id: `checkin-${r.id}`,
         kind: 'checkin',
         timestamp: r.created_at,
-        actor: pickOne(r.user),
+        actor: actorFor(r.user_id),
         quote: r.summary || undefined,
       });
     });
