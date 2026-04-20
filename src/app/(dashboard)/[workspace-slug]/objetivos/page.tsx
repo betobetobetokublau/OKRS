@@ -10,7 +10,8 @@ import { ObjectivesGantt } from '@/components/objectives/objectives-gantt';
 import { SkillTreeCanvas } from '@/components/skill-tree/skill-tree-canvas';
 import { createClient } from '@/lib/supabase/client';
 import { canManageContent } from '@/lib/utils/permissions';
-import type { Department, KPI, ObjectiveStatus } from '@/types';
+import { calculateKpiProgress } from '@/lib/utils/progress';
+import type { Department, KPI, KPIStatus, ObjectiveStatus } from '@/types';
 import type { ObjectiveRow } from '@/hooks/use-objectives-table';
 
 const ARROW_UP = 'M5 15l7-7 7 7';
@@ -430,6 +431,22 @@ function KpiSection({
   onChanged,
   onOpenPanel,
 }: KpiSectionProps) {
+  // Derived: roll-up progress computed from the linked objectives (respects
+  // manual/auto/hybrid mode). Counts drive the per-KPI summary line.
+  const progress = useMemo(
+    () =>
+      calculateKpiProgress(
+        kpi,
+        rows.map((obj) => ({ objective: obj, tasks: obj.tasks || [] })),
+      ),
+    [kpi, rows],
+  );
+  const inProgressCount = rows.filter((r) => r.status === 'in_progress').length;
+  const atRiskCount = rows.filter((r) => isBehindSchedule(r)).length;
+  const responsibleDept = kpi.responsible_department_id
+    ? departments.find((d) => d.id === kpi.responsible_department_id)
+    : null;
+
   return (
     <div
       className="Polaris-Card"
@@ -440,43 +457,86 @@ function KpiSection({
         overflow: 'hidden',
       }}
     >
-      {/* Subtitle row with title on one side and up/down on the opposite corner */}
+      {/* Header: ring + title block + summary + reorder */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '1rem',
-          padding: '1.2rem 1.6rem',
+          gap: '1.6rem',
+          padding: '1.6rem 2rem',
           borderBottom: '1px solid #f1f2f4',
           backgroundColor: '#fafbfb',
         }}
       >
-        <button
-          type="button"
-          onClick={() => onOpenPanel({ type: 'kpi', id: kpi.id })}
-          style={{
-            background: 'none',
-            border: 'none',
-            padding: 0,
-            margin: 0,
-            font: 'inherit',
-            fontSize: '1.6rem',
-            fontWeight: 600,
-            color: '#212b36',
-            cursor: 'pointer',
-            textAlign: 'left',
-          }}
-        >
-          {kpi.title}
-        </button>
+        <KpiRing value={progress} />
 
-        {canReorder && (
-          <div style={{ display: 'flex', gap: '0.4rem' }}>
-            <ReorderButton direction="up" disabled={isFirst} onClick={onMoveUp} />
-            <ReorderButton direction="down" disabled={isLast} onClick={onMoveDown} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: '1.0rem',
+              fontWeight: 600,
+              color: '#919eab',
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              marginBottom: '0.2rem',
+            }}
+          >
+            KPI{responsibleDept ? ` · ${responsibleDept.name}` : ''}
           </div>
-        )}
+          <button
+            type="button"
+            onClick={() => onOpenPanel({ type: 'kpi', id: kpi.id })}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              margin: 0,
+              font: 'inherit',
+              fontSize: '1.7rem',
+              fontWeight: 600,
+              color: '#212b36',
+              cursor: 'pointer',
+              textAlign: 'left',
+              lineHeight: 1.25,
+              display: 'block',
+              maxWidth: '100%',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={kpi.title}
+          >
+            {kpi.title}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.8rem', flexShrink: 0 }}>
+          <div style={{ fontSize: '1.2rem', color: '#637381' }}>
+            <strong style={{ color: '#212b36', fontWeight: 600 }}>{rows.length}</strong>{' '}
+            {rows.length === 1 ? 'objetivo' : 'objetivos'}
+            <span style={{ color: '#c4cdd5', padding: '0 0.4rem' }}>·</span>
+            <strong style={{ color: '#212b36', fontWeight: 600 }}>{inProgressCount}</strong> en progreso
+            <span style={{ color: '#c4cdd5', padding: '0 0.4rem' }}>·</span>
+            <strong
+              style={{
+                color: atRiskCount > 0 ? '#bf0711' : '#212b36',
+                fontWeight: 600,
+              }}
+            >
+              {atRiskCount}
+            </strong>{' '}
+            en riesgo
+          </div>
+          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+            <KpiStatusPill status={kpi.status} />
+            {canReorder && (
+              <>
+                <ReorderButton direction="up" disabled={isFirst} onClick={onMoveUp} />
+                <ReorderButton direction="down" disabled={isLast} onClick={onMoveDown} />
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       <ObjectivesTable
@@ -489,6 +549,105 @@ function KpiSection({
         emptyLabel="No hay objetivos vinculados a este KPI."
       />
     </div>
+  );
+}
+
+/**
+ * Circular progress indicator for the KPI section header. Uses an SVG ring
+ * matching the inline-progress style elsewhere in the app (indigo stroke on
+ * a border-colored track). Percentage label centered.
+ */
+function KpiRing({ value }: { value: number }) {
+  const clamped = Math.max(0, Math.min(100, Math.round(value)));
+  // r=17.5 → circumference ≈ 109.96, so dasharray in hundredths of pct
+  // maps cleanly via pathLength=100.
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: '5.6rem',
+        height: '5.6rem',
+        flexShrink: 0,
+      }}
+    >
+      <svg
+        viewBox="0 0 40 40"
+        width="100%"
+        height="100%"
+        style={{ transform: 'rotate(-90deg)' }}
+        aria-hidden="true"
+      >
+        <circle cx="20" cy="20" r="17.5" stroke="#dfe3e8" strokeWidth="3.5" fill="none" />
+        <circle
+          cx="20"
+          cy="20"
+          r="17.5"
+          stroke="#5c6ac4"
+          strokeWidth="3.5"
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${clamped} 100`}
+          pathLength={100}
+        />
+      </svg>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'grid',
+          placeItems: 'center',
+          fontSize: '1.3rem',
+          fontWeight: 600,
+          color: '#212b36',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {clamped}%
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Small Polaris-tinted pill rendering the KPI's status. Matches the visual
+ * vocabulary used in the inline-status dropdowns but without edit affordance
+ * (header is not an editor).
+ */
+function KpiStatusPill({ status }: { status: KPIStatus }) {
+  const style: Record<KPIStatus, { label: string; fg: string; bg: string; border: string; dot: string }> = {
+    on_track:  { label: 'On track',       fg: '#108043', bg: '#e3f1df', border: 'rgba(80,184,60,0.28)', dot: '#50b83c' },
+    at_risk:   { label: 'En riesgo',      fg: '#a45412', bg: '#fdeedc', border: 'rgba(244,147,66,0.32)', dot: '#f49342' },
+    off_track: { label: 'Fuera de curso', fg: '#bf0711', bg: '#fbeae5', border: 'rgba(222,54,24,0.24)', dot: '#de3618' },
+    achieved:  { label: 'Completado',     fg: '#108043', bg: '#e3f1df', border: 'rgba(80,184,60,0.28)', dot: '#50b83c' },
+  };
+  const s = style[status];
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        padding: '0.2rem 0.9rem',
+        borderRadius: '999px',
+        fontSize: '1.15rem',
+        fontWeight: 500,
+        color: s.fg,
+        backgroundColor: s.bg,
+        border: `1px solid ${s.border}`,
+        lineHeight: '1.8rem',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span
+        style={{
+          width: '0.7rem',
+          height: '0.7rem',
+          borderRadius: '999px',
+          backgroundColor: s.dot,
+        }}
+      />
+      {s.label}
+    </span>
   );
 }
 
