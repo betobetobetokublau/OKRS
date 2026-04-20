@@ -11,6 +11,14 @@ import { TaskForm } from '@/components/tasks/task-form';
 import { ObjectiveForm } from '@/components/objectives/objective-form';
 import { InlineTeamSelect } from './inline-team-select';
 import { InlineStatusSelect } from './inline-status-select';
+import {
+  AsanaDetailShell,
+  AsanaSection,
+  AsanaEmpty,
+  AsanaDateRangeValue,
+  type FieldRow,
+  type BreadcrumbItem,
+} from './asana-detail-shell';
 import { calculateObjectiveProgress } from '@/lib/utils/progress';
 import type { Objective, Task, KPI, Department } from '@/types';
 
@@ -22,8 +30,8 @@ interface ObjectiveDetailPanelBodyProps {
 }
 
 /**
- * 1-column adaptation of src/components/objectives/objective-detail.tsx.
- * Status and Team are editable inline via InlineStatusSelect / InlineTeamSelect.
+ * Objective detail in Asana-style layout. Used verbatim by the slide-in panel
+ * AND by `/objetivos/[id]` (wrapped in page chrome).
  */
 export function ObjectiveDetailPanelBody({
   objectiveId,
@@ -50,8 +58,16 @@ export function ObjectiveDetailPanelBody({
     ]);
     if (objRes.data) setObjective(objRes.data as Objective);
     setTasks((tasksRes.data || []) as Task[]);
-    setLinkedKpis((kpiRes.data || []).map((r: any) => r.kpi).filter(Boolean) as KPI[]);
-    setLinkedDepartments((deptRes.data || []).map((r: any) => r.department).filter(Boolean) as Department[]);
+    setLinkedKpis(
+      (kpiRes.data || [])
+        .map((r: any) => (Array.isArray(r.kpi) ? r.kpi[0] : r.kpi))
+        .filter(Boolean) as KPI[],
+    );
+    setLinkedDepartments(
+      (deptRes.data || [])
+        .map((r: any) => (Array.isArray(r.department) ? r.department[0] : r.department))
+        .filter(Boolean) as Department[],
+    );
     setLoading(false);
   }, [objectiveId]);
 
@@ -63,8 +79,6 @@ export function ObjectiveDetailPanelBody({
     return <div style={{ padding: '2rem', color: '#637381' }}>Cargando objetivo...</div>;
   }
 
-  // Always compute client-side so the meter reacts to mode changes and task
-  // edits without relying on a persisted `computed_progress` column.
   const progress = calculateObjectiveProgress(objective, tasks);
 
   function refresh() {
@@ -81,30 +95,95 @@ export function ObjectiveDetailPanelBody({
   }
 
   const showManualControl = objective.progress_mode === 'manual' || objective.progress_mode === 'hybrid';
+  const completedCount = tasks.filter((t) => t.status === 'completed').length;
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.8rem' }}>
-          <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#212b36', lineHeight: 1.3, margin: 0 }}>{objective.title}</h1>
-          <button
-            type="button"
-            onClick={() => setShowEditForm(true)}
-            style={{
-              padding: '0.4rem 1.2rem',
-              fontSize: '1.3rem',
-              fontWeight: 500,
-              color: '#5c6ac4',
-              backgroundColor: '#f4f5fc',
-              border: '1px solid #e3e5f1',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            Editar
-          </button>
-        </div>
+  // Breadcrumb: the parent KPI(s). If multiple, show the first as primary with
+  // a small "+N más" hint; if none, show "Sin KPI" so the user knows it's an orphan.
+  const breadcrumb: BreadcrumbItem[] =
+    linkedKpis.length > 0
+      ? [
+          {
+            label:
+              linkedKpis.length === 1
+                ? `KPI: ${linkedKpis[0].title}`
+                : `KPI: ${linkedKpis[0].title} (+${linkedKpis.length - 1} más)`,
+          },
+        ]
+      : [{ label: 'Sin KPI padre' }];
+
+  const fields: FieldRow[] = [
+    {
+      label: 'Responsable',
+      value: objective.responsible_user ? (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem' }}>
+          <UserAvatar user={objective.responsible_user} size="small" />
+          <span>{objective.responsible_user.full_name}</span>
+        </span>
+      ) : (
+        <AsanaEmpty />
+      ),
+    },
+    {
+      label: 'Fechas',
+      value: <AsanaDateRangeValue startIso={objective.start_date} endIso={objective.end_date} />,
+    },
+    {
+      label: 'KPI(s) vinculado(s)',
+      value:
+        linkedKpis.length > 0 ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {linkedKpis.map((k) => (
+              <span
+                key={k.id}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '0.2rem 0.8rem',
+                  fontSize: '1.2rem',
+                  color: '#5c6ac4',
+                  backgroundColor: '#f4f5fc',
+                  border: '1px solid #e3e5f1',
+                  borderRadius: '999px',
+                }}
+              >
+                {k.title}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <AsanaEmpty>Ninguno</AsanaEmpty>
+        ),
+    },
+    {
+      label: 'Depto. responsable',
+      value: (
+        <InlineTeamSelect
+          entity="objective"
+          id={objective.id}
+          currentDepartmentId={objective.responsible_department_id}
+          currentDepartment={objective.responsible_department}
+          departments={departments}
+          canEdit={canEdit}
+          onChanged={refresh}
+        />
+      ),
+    },
+    {
+      label: 'Departamentos',
+      value:
+        linkedDepartments.length > 0 ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {linkedDepartments.map((d) => (
+              <DepartmentTag key={d.id} department={d} />
+            ))}
+          </div>
+        ) : (
+          <AsanaEmpty>Ninguno</AsanaEmpty>
+        ),
+    },
+    {
+      label: 'Estado',
+      value: (
         <InlineStatusSelect
           entity="objective"
           id={objective.id}
@@ -112,145 +191,128 @@ export function ObjectiveDetailPanelBody({
           canEdit={canEdit}
           onChanged={refresh}
         />
-        {objective.description && (
-          <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.8rem', lineHeight: 1.6 }}>{objective.description}</p>
-        )}
-      </div>
+      ),
+    },
+    {
+      label: 'Modo de progreso',
+      value: (
+        <span>
+          {objective.progress_mode === 'manual' ? 'Manual' : objective.progress_mode === 'auto' ? 'Automático' : 'Híbrido'}
+        </span>
+      ),
+    },
+  ];
 
-      {/* Progress card */}
-      <div className="Polaris-Card" style={{ padding: '1.6rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#212b36' }}>Progreso</h2>
-          <span style={{ fontSize: '2rem', fontWeight: 700, color: '#5c6ac4' }}>{progress}%</span>
-        </div>
-        <ProgressBar value={progress} size="large" showLabel={false} />
-        <p style={{ fontSize: '1.2rem', color: '#637381', marginTop: '0.8rem' }}>
-          Modo: {objective.progress_mode === 'manual' ? 'Manual' : objective.progress_mode === 'auto' ? 'Automático' : 'Híbrido'}
-          {tasks.length > 0 && ` — ${tasks.filter(t => t.status === 'completed').length}/${tasks.length} tareas completadas`}
-        </p>
-
-        {showManualControl && (
-          <div style={{ marginTop: '1.6rem', paddingTop: '1.2rem', borderTop: '1px solid #f1f2f4' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-              <label style={{ fontSize: '1.2rem', color: '#637381' }}>
-                Progreso manual {objective.progress_mode === 'hybrid' && '(se promedia con las tareas)'}
-              </label>
-              <span style={{ fontSize: '1.3rem', fontWeight: 600, color: '#212b36' }}>
-                {objective.manual_progress}%
-              </span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={objective.manual_progress}
-              disabled={savingManual || !canEdit}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                // Local echo while dragging
-                setObjective({ ...objective, manual_progress: v });
-              }}
-              onMouseUp={(e) => saveManualProgress(Number((e.target as HTMLInputElement).value))}
-              onTouchEnd={(e) => saveManualProgress(Number((e.target as HTMLInputElement).value))}
-              onKeyUp={(e) => {
-                if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
-                  saveManualProgress(Number((e.target as HTMLInputElement).value));
-                }
-              }}
-              style={{ width: '100%', accentColor: '#5c6ac4' }}
-            />
+  return (
+    <>
+      <AsanaDetailShell
+        breadcrumb={breadcrumb}
+        title={objective.title}
+        onEdit={canEdit ? () => setShowEditForm(true) : undefined}
+        fields={fields}
+      >
+        {/* Progress */}
+        <AsanaSection title="Progreso">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+            <span style={{ fontSize: '1.2rem', color: '#637381' }}>
+              {tasks.length > 0
+                ? `${completedCount}/${tasks.length} tareas completadas`
+                : 'Sin tareas'}
+            </span>
+            <span style={{ fontSize: '2rem', fontWeight: 700, color: '#5c6ac4' }}>{progress}%</span>
           </div>
-        )}
-      </div>
+          <ProgressBar value={progress} size="large" showLabel={false} />
 
-      {/* Tasks */}
-      <div className="Polaris-Card" style={{ padding: '1.6rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#212b36' }}>Tareas ({tasks.length})</h2>
-          {canEdit && (
-            <button
-              onClick={() => setShowTaskForm(true)}
-              style={{ padding: '0.4rem 1.2rem', fontSize: '1.3rem', fontWeight: 500, color: '#5c6ac4', backgroundColor: '#f4f5fc', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-            >
-              + Agregar tarea
-            </button>
+          {showManualControl && (
+            <div style={{ marginTop: '1.6rem', paddingTop: '1.2rem', borderTop: '1px solid #f1f2f4' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                <label style={{ fontSize: '1.2rem', color: '#637381' }}>
+                  Progreso manual {objective.progress_mode === 'hybrid' && '(se promedia con las tareas)'}
+                </label>
+                <span style={{ fontSize: '1.3rem', fontWeight: 600, color: '#212b36' }}>
+                  {objective.manual_progress}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={objective.manual_progress}
+                disabled={savingManual || !canEdit}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setObjective({ ...objective, manual_progress: v });
+                }}
+                onMouseUp={(e) => saveManualProgress(Number((e.target as HTMLInputElement).value))}
+                onTouchEnd={(e) => saveManualProgress(Number((e.target as HTMLInputElement).value))}
+                onKeyUp={(e) => {
+                  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
+                    saveManualProgress(Number((e.target as HTMLInputElement).value));
+                  }
+                }}
+                style={{ width: '100%', accentColor: '#5c6ac4' }}
+              />
+            </div>
           )}
-        </div>
-        {tasks.length === 0 ? (
-          <p style={{ color: '#637381', fontSize: '1.3rem' }}>No hay tareas para este objetivo</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            {tasks.map((task) => (
-              <TaskRow key={task.id} task={task} onUpdated={refresh} />
-            ))}
-          </div>
+        </AsanaSection>
+
+        {/* Description */}
+        {objective.description && (
+          <AsanaSection title="Descripción">
+            <p style={{ color: '#212b36', fontSize: '1.4rem', lineHeight: 1.6, margin: 0 }}>{objective.description}</p>
+          </AsanaSection>
         )}
-      </div>
 
-      {/* KPIs linked */}
-      {linkedKpis.length > 0 && (
-        <div className="Polaris-Card" style={{ padding: '1.6rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#212b36', marginBottom: '1.2rem' }}>KPIs vinculados</h2>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {linkedKpis.map((kpi) => (
-              <li key={kpi.id} style={{ padding: '0.8rem 0', borderBottom: '1px solid #f4f6f8' }}>
-                <div style={{ fontSize: '1.3rem', fontWeight: 500, color: '#212b36' }}>{kpi.title}</div>
-                <div style={{ marginTop: '0.4rem' }}>
-                  <ProgressBar value={kpi.manual_progress} size="small" />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Detalles */}
-      <div className="Polaris-Card" style={{ padding: '1.6rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-        <h3 style={{ fontSize: '1.3rem', fontWeight: 600, color: '#212b36', marginBottom: '1.2rem' }}>Detalles</h3>
-
-        <div style={{ marginBottom: '1.2rem' }}>
-          <p style={{ fontSize: '1.2rem', color: '#637381', marginBottom: '0.4rem' }}>Depto. responsable</p>
-          <InlineTeamSelect
-            entity="objective"
-            id={objective.id}
-            currentDepartmentId={objective.responsible_department_id}
-            currentDepartment={objective.responsible_department}
-            departments={departments}
-            canEdit={canEdit}
-            onChanged={refresh}
-          />
-        </div>
-
-        {objective.responsible_user && (
-          <div style={{ marginBottom: '1.2rem' }}>
-            <p style={{ fontSize: '1.2rem', color: '#637381', marginBottom: '0.4rem' }}>Responsable</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-              <UserAvatar user={objective.responsible_user} size="small" />
-              <span style={{ fontSize: '1.3rem', color: '#212b36' }}>{objective.responsible_user.full_name}</span>
+        {/* Subtasks = Tasks */}
+        <AsanaSection
+          title="Tareas"
+          count={tasks.length > 0 ? `${completedCount}/${tasks.length}` : 0}
+          action={
+            canEdit ? (
+              <button
+                type="button"
+                onClick={() => setShowTaskForm(true)}
+                style={{
+                  padding: '0.4rem 1.2rem',
+                  fontSize: '1.3rem',
+                  fontWeight: 500,
+                  color: '#5c6ac4',
+                  backgroundColor: '#f4f5fc',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                + Agregar tarea
+              </button>
+            ) : null
+          }
+        >
+          {tasks.length === 0 ? (
+            <p style={{ color: '#637381', fontSize: '1.3rem', margin: 0 }}>No hay tareas para este objetivo</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              {tasks.map((task) => (
+                <TaskRow key={task.id} task={task} onUpdated={refresh} />
+              ))}
             </div>
-          </div>
-        )}
+          )}
+        </AsanaSection>
 
-        <div>
-          <p style={{ fontSize: '1.2rem', color: '#637381', marginBottom: '0.4rem' }}>Departamentos</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-            {linkedDepartments.length > 0
-              ? linkedDepartments.map((d) => <DepartmentTag key={d.id} department={d} />)
-              : <span style={{ fontSize: '1.2rem', color: '#919eab' }}>Ninguno</span>}
-          </div>
-        </div>
-      </div>
-
-      {/* Timeline */}
-      <CommentTimeline objectiveId={objectiveId} />
+        {/* Comment timeline */}
+        <CommentTimeline objectiveId={objectiveId} />
+      </AsanaDetailShell>
 
       {showTaskForm && (
         <TaskForm
           objectiveId={objectiveId}
           workspaceId={objective.workspace_id}
           onClose={() => setShowTaskForm(false)}
-          onSaved={() => { setShowTaskForm(false); refresh(); }}
+          onSaved={() => {
+            setShowTaskForm(false);
+            refresh();
+          }}
         />
       )}
 
@@ -259,7 +321,10 @@ export function ObjectiveDetailPanelBody({
           workspaceId={objective.workspace_id}
           periodId={objective.period_id}
           onClose={() => setShowEditForm(false)}
-          onSaved={() => { setShowEditForm(false); refresh(); }}
+          onSaved={() => {
+            setShowEditForm(false);
+            refresh();
+          }}
           initialData={{
             id: objective.id,
             title: objective.title,
@@ -274,6 +339,6 @@ export function ObjectiveDetailPanelBody({
           }}
         />
       )}
-    </div>
+    </>
   );
 }

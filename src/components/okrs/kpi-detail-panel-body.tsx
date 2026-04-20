@@ -11,8 +11,16 @@ import { KPIForm } from '@/components/kpis/kpi-form';
 import { ObjectiveForm } from '@/components/objectives/objective-form';
 import { InlineTeamSelect } from './inline-team-select';
 import { InlineStatusSelect } from './inline-status-select';
+import {
+  AsanaDetailShell,
+  AsanaSection,
+  AsanaEmpty,
+  formatShortDate,
+  type FieldRow,
+  type BreadcrumbItem,
+} from './asana-detail-shell';
 import { calculateKpiProgress, calculateObjectiveProgress } from '@/lib/utils/progress';
-import type { KPI, Objective, Department } from '@/types';
+import type { KPI, Objective, Department, Period } from '@/types';
 
 interface KpiDetailPanelBodyProps {
   kpiId: string;
@@ -22,11 +30,13 @@ interface KpiDetailPanelBodyProps {
 }
 
 /**
- * 1-column adaptation of src/components/kpis/kpi-detail.tsx for the slide-in panel.
- * Adds inline team editing at the top of Detalles; otherwise visually identical.
+ * KPI detail in Asana-style layout: breadcrumb + title + fields table + sections.
+ * Used verbatim by the slide-in panel AND by the `/kpis/[id]` page (wrapped in
+ * page chrome).
  */
 export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: KpiDetailPanelBodyProps) {
   const [kpi, setKpi] = useState<KPI | null>(null);
+  const [period, setPeriod] = useState<Period | null>(null);
   const [linkedObjectives, setLinkedObjectives] = useState<Objective[]>([]);
   const [linkedDepartments, setLinkedDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,9 +51,24 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
       supabase.from('kpi_objectives').select('objective:objectives(*, tasks(*))').eq('kpi_id', kpiId),
       supabase.from('kpi_departments').select('department:departments(*)').eq('kpi_id', kpiId),
     ]);
-    if (kpiRes.data) setKpi(kpiRes.data as KPI);
-    setLinkedObjectives((objRes.data || []).map((r: any) => r.objective).filter(Boolean) as Objective[]);
-    setLinkedDepartments((deptRes.data || []).map((r: any) => r.department).filter(Boolean) as Department[]);
+    if (kpiRes.data) {
+      const k = kpiRes.data as KPI;
+      setKpi(k);
+      const { data: p } = await supabase.from('periods').select('*').eq('id', k.period_id).single();
+      if (p) setPeriod(p as Period);
+    }
+    // Supabase flattens the joined record to either an object or a 1-item array
+    // depending on version; tolerate either shape.
+    setLinkedObjectives(
+      (objRes.data || [])
+        .map((r: any) => (Array.isArray(r.objective) ? r.objective[0] : r.objective))
+        .filter(Boolean) as Objective[],
+    );
+    setLinkedDepartments(
+      (deptRes.data || [])
+        .map((r: any) => (Array.isArray(r.department) ? r.department[0] : r.department))
+        .filter(Boolean) as Department[],
+    );
     setLoading(false);
   }, [kpiId]);
 
@@ -55,8 +80,6 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
     return <div style={{ padding: '2rem', color: '#637381' }}>Cargando KPI...</div>;
   }
 
-  // Always compute progress client-side from the linked objectives' tasks so it
-  // stays in sync when the user flips progress_mode without a full reload.
   const progress = calculateKpiProgress(
     kpi,
     linkedObjectives.map((obj) => ({
@@ -65,7 +88,7 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
     })),
   );
 
-  function handleTeamChanged() {
+  function refresh() {
     load();
     onChanged();
   }
@@ -75,188 +98,210 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
     const supabase = createClient();
     await supabase.from('kpis').update({ manual_progress: value }).eq('id', kpi!.id);
     setSavingManual(false);
-    handleTeamChanged();
+    refresh();
   }
 
   const showManualControl = kpi.progress_mode === 'manual' || kpi.progress_mode === 'hybrid';
+  const breadcrumb: BreadcrumbItem[] = period ? [{ label: `Periodo: ${period.name}` }] : [];
+
+  const fields: FieldRow[] = [
+    {
+      label: 'Responsable',
+      value: kpi.responsible_user ? (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem' }}>
+          <UserAvatar user={kpi.responsible_user} size="small" />
+          <span>{kpi.responsible_user.full_name}</span>
+        </span>
+      ) : (
+        <AsanaEmpty />
+      ),
+    },
+    {
+      label: 'Depto. responsable',
+      value: (
+        <InlineTeamSelect
+          entity="kpi"
+          id={kpi.id}
+          currentDepartmentId={kpi.responsible_department_id}
+          currentDepartment={kpi.responsible_department}
+          departments={departments}
+          canEdit={canEdit}
+          onChanged={refresh}
+        />
+      ),
+    },
+    {
+      label: 'Departamentos',
+      value:
+        linkedDepartments.length > 0 ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {linkedDepartments.map((d) => (
+              <DepartmentTag key={d.id} department={d} />
+            ))}
+          </div>
+        ) : (
+          <AsanaEmpty>Ninguno</AsanaEmpty>
+        ),
+    },
+    {
+      label: 'Estado',
+      value: (
+        <InlineStatusSelect
+          entity="kpi"
+          id={kpi.id}
+          currentStatus={kpi.status}
+          canEdit={canEdit}
+          onChanged={refresh}
+        />
+      ),
+    },
+    {
+      label: 'Modo de progreso',
+      value: (
+        <span>
+          {kpi.progress_mode === 'manual' ? 'Manual' : kpi.progress_mode === 'auto' ? 'Automático' : 'Híbrido'}
+        </span>
+      ),
+    },
+  ];
+
+  if (period) {
+    fields.push({
+      label: 'Periodo',
+      value: (
+        <span>
+          {period.name}
+          <span style={{ color: '#919eab', marginLeft: '0.6rem' }}>
+            ({formatShortDate(period.start_date)} – {formatShortDate(period.end_date)})
+          </span>
+        </span>
+      ),
+    });
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-          <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#212b36', lineHeight: 1.3, margin: 0 }}>{kpi.title}</h1>
-          <button
-            type="button"
-            onClick={() => setShowEditForm(true)}
-            style={{
-              padding: '0.4rem 1.2rem',
-              fontSize: '1.3rem',
-              fontWeight: 500,
-              color: '#5c6ac4',
-              backgroundColor: '#f4f5fc',
-              border: '1px solid #e3e5f1',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            Editar
-          </button>
-        </div>
-        {kpi.description && (
-          <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.8rem', lineHeight: 1.6 }}>{kpi.description}</p>
-        )}
-      </div>
-
-      {/* Progress card */}
-      <div className="Polaris-Card" style={{ padding: '1.6rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#212b36' }}>Progreso</h2>
-          <span style={{ fontSize: '2rem', fontWeight: 700, color: '#5c6ac4' }}>{progress}%</span>
-        </div>
-        <ProgressBar value={progress} size="large" showLabel={false} />
-        <p style={{ fontSize: '1.2rem', color: '#637381', marginTop: '0.8rem' }}>
-          Modo: {kpi.progress_mode === 'manual' ? 'Manual' : kpi.progress_mode === 'auto' ? 'Automático' : 'Híbrido'}
-        </p>
-
-        {showManualControl && (
-          <div style={{ marginTop: '1.6rem', paddingTop: '1.2rem', borderTop: '1px solid #f1f2f4' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-              <label style={{ fontSize: '1.2rem', color: '#637381' }}>
-                Progreso manual {kpi.progress_mode === 'hybrid' && '(se promedia con los objetivos)'}
-              </label>
-              <span style={{ fontSize: '1.3rem', fontWeight: 600, color: '#212b36' }}>
-                {kpi.manual_progress}%
-              </span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={kpi.manual_progress}
-              disabled={savingManual || !canEdit}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setKpi({ ...kpi, manual_progress: v });
-              }}
-              onMouseUp={(e) => saveManualProgress(Number((e.target as HTMLInputElement).value))}
-              onTouchEnd={(e) => saveManualProgress(Number((e.target as HTMLInputElement).value))}
-              onKeyUp={(e) => {
-                if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
-                  saveManualProgress(Number((e.target as HTMLInputElement).value));
-                }
-              }}
-              style={{ width: '100%', accentColor: '#5c6ac4' }}
-            />
+    <>
+      <AsanaDetailShell
+        breadcrumb={breadcrumb}
+        title={kpi.title}
+        onEdit={canEdit ? () => setShowEditForm(true) : undefined}
+        fields={fields}
+      >
+        {/* Progress */}
+        <AsanaSection title="Progreso">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+            <span style={{ fontSize: '1.2rem', color: '#637381' }}>
+              Modo {kpi.progress_mode === 'manual' ? 'manual' : kpi.progress_mode === 'auto' ? 'automático' : 'híbrido'}
+            </span>
+            <span style={{ fontSize: '2rem', fontWeight: 700, color: '#5c6ac4' }}>{progress}%</span>
           </div>
-        )}
-      </div>
+          <ProgressBar value={progress} size="large" showLabel={false} />
 
-      {/* Linked objectives */}
-      <div className="Polaris-Card" style={{ padding: '1.6rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#212b36' }}>
-            Objetivos vinculados ({linkedObjectives.length})
-          </h2>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => setShowObjectiveForm(true)}
-              style={{
-                padding: '0.4rem 1.2rem',
-                fontSize: '1.3rem',
-                fontWeight: 500,
-                color: '#5c6ac4',
-                backgroundColor: '#f4f5fc',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-            >
-              + Agregar objetivo
-            </button>
+          {showManualControl && (
+            <div style={{ marginTop: '1.6rem', paddingTop: '1.2rem', borderTop: '1px solid #f1f2f4' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                <label style={{ fontSize: '1.2rem', color: '#637381' }}>
+                  Progreso manual {kpi.progress_mode === 'hybrid' && '(se promedia con los objetivos)'}
+                </label>
+                <span style={{ fontSize: '1.3rem', fontWeight: 600, color: '#212b36' }}>{kpi.manual_progress}%</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={kpi.manual_progress}
+                disabled={savingManual || !canEdit}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setKpi({ ...kpi, manual_progress: v });
+                }}
+                onMouseUp={(e) => saveManualProgress(Number((e.target as HTMLInputElement).value))}
+                onTouchEnd={(e) => saveManualProgress(Number((e.target as HTMLInputElement).value))}
+                onKeyUp={(e) => {
+                  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
+                    saveManualProgress(Number((e.target as HTMLInputElement).value));
+                  }
+                }}
+                style={{ width: '100%', accentColor: '#5c6ac4' }}
+              />
+            </div>
           )}
-        </div>
-        {linkedObjectives.length === 0 ? (
-          <p style={{ color: '#637381', fontSize: '1.3rem' }}>No hay objetivos vinculados a este KPI</p>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {linkedObjectives.map((obj) => (
-              <li key={obj.id} style={{ padding: '1rem 0', borderBottom: '1px solid #f4f6f8' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', gap: '0.8rem' }}>
-                  <span style={{ fontSize: '1.3rem', fontWeight: 500, color: '#212b36' }}>{obj.title}</span>
-                  <StatusBadge status={obj.status} type="objective" />
-                </div>
-                <ProgressBar value={obj.manual_progress} size="small" />
-                {obj.tasks && obj.tasks.length > 0 && (
-                  <p style={{ fontSize: '1.2rem', color: '#637381', marginTop: '0.4rem' }}>
-                    {obj.tasks.filter(t => t.status === 'completed').length}/{obj.tasks.length} tareas completadas
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+        </AsanaSection>
 
-      {/* Detalles */}
-      <div className="Polaris-Card" style={{ padding: '1.6rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-        <h3 style={{ fontSize: '1.3rem', fontWeight: 600, color: '#212b36', marginBottom: '1.2rem' }}>Detalles</h3>
-
-        <div style={{ marginBottom: '1.2rem' }}>
-          <p style={{ fontSize: '1.2rem', color: '#637381', marginBottom: '0.4rem' }}>Estado</p>
-          <InlineStatusSelect
-            entity="kpi"
-            id={kpi.id}
-            currentStatus={kpi.status}
-            canEdit={canEdit}
-            onChanged={handleTeamChanged}
-          />
-        </div>
-
-        <div style={{ marginBottom: '1.2rem' }}>
-          <p style={{ fontSize: '1.2rem', color: '#637381', marginBottom: '0.4rem' }}>Depto. responsable</p>
-          <InlineTeamSelect
-            entity="kpi"
-            id={kpi.id}
-            currentDepartmentId={kpi.responsible_department_id}
-            currentDepartment={kpi.responsible_department}
-            departments={departments}
-            canEdit={canEdit}
-            onChanged={handleTeamChanged}
-          />
-        </div>
-
-        {kpi.responsible_user && (
-          <div style={{ marginBottom: '1.2rem' }}>
-            <p style={{ fontSize: '1.2rem', color: '#637381', marginBottom: '0.4rem' }}>Responsable</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-              <UserAvatar user={kpi.responsible_user} size="small" />
-              <span style={{ fontSize: '1.3rem', color: '#212b36' }}>{kpi.responsible_user.full_name}</span>
-            </div>
-          </div>
+        {/* Description */}
+        {kpi.description && (
+          <AsanaSection title="Descripción">
+            <p style={{ color: '#212b36', fontSize: '1.4rem', lineHeight: 1.6, margin: 0 }}>{kpi.description}</p>
+          </AsanaSection>
         )}
 
-        <div>
-          <p style={{ fontSize: '1.2rem', color: '#637381', marginBottom: '0.4rem' }}>Departamentos</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-            {linkedDepartments.length > 0
-              ? linkedDepartments.map((d) => <DepartmentTag key={d.id} department={d} />)
-              : <span style={{ fontSize: '1.2rem', color: '#919eab' }}>Ninguno</span>}
-          </div>
-        </div>
-      </div>
+        {/* Linked objectives (Asana's "Subtasks") */}
+        <AsanaSection
+          title="Objetivos vinculados"
+          count={linkedObjectives.length}
+          action={
+            canEdit ? (
+              <button
+                type="button"
+                onClick={() => setShowObjectiveForm(true)}
+                style={{
+                  padding: '0.4rem 1.2rem',
+                  fontSize: '1.3rem',
+                  fontWeight: 500,
+                  color: '#5c6ac4',
+                  backgroundColor: '#f4f5fc',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                + Agregar objetivo
+              </button>
+            ) : null
+          }
+        >
+          {linkedObjectives.length === 0 ? (
+            <p style={{ color: '#637381', fontSize: '1.3rem', margin: 0 }}>No hay objetivos vinculados a este KPI</p>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {linkedObjectives.map((obj, i) => (
+                <li
+                  key={obj.id}
+                  style={{
+                    padding: '1rem 0',
+                    borderBottom: i < linkedObjectives.length - 1 ? '1px solid #f4f6f8' : 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', gap: '0.8rem' }}>
+                    <span style={{ fontSize: '1.3rem', fontWeight: 500, color: '#212b36' }}>{obj.title}</span>
+                    <StatusBadge status={obj.status} type="objective" />
+                  </div>
+                  <ProgressBar value={obj.manual_progress} size="small" />
+                  {obj.tasks && obj.tasks.length > 0 && (
+                    <p style={{ fontSize: '1.2rem', color: '#637381', marginTop: '0.4rem' }}>
+                      {obj.tasks.filter((t) => t.status === 'completed').length}/{obj.tasks.length} tareas completadas
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </AsanaSection>
 
-      {/* Timeline */}
-      <CommentTimeline kpiId={kpiId} />
+        {/* Comments timeline */}
+        <CommentTimeline kpiId={kpiId} />
+      </AsanaDetailShell>
 
       {showObjectiveForm && (
         <ObjectiveForm
           workspaceId={kpi.workspace_id}
           periodId={kpi.period_id}
           onClose={() => setShowObjectiveForm(false)}
-          onSaved={() => { setShowObjectiveForm(false); handleTeamChanged(); }}
+          onSaved={() => {
+            setShowObjectiveForm(false);
+            refresh();
+          }}
           initialData={{ kpi_ids: [kpi.id] }}
         />
       )}
@@ -266,7 +311,10 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
           workspaceId={kpi.workspace_id}
           periodId={kpi.period_id}
           onClose={() => setShowEditForm(false)}
-          onSaved={() => { setShowEditForm(false); handleTeamChanged(); }}
+          onSaved={() => {
+            setShowEditForm(false);
+            refresh();
+          }}
           initialData={{
             id: kpi.id,
             title: kpi.title,
@@ -279,6 +327,6 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
           }}
         />
       )}
-    </div>
+    </>
   );
 }
