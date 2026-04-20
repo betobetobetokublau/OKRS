@@ -63,7 +63,17 @@ export default function CambiarPasswordPage() {
   }
 
   return (
-    <div className="Polaris-Card" style={{ width: '100%', maxWidth: '420px', padding: '3.2rem' }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f4f6f8',
+        padding: '2rem',
+      }}
+    >
+    <div className="Polaris-Card" style={{ width: '100%', maxWidth: '420px', padding: '3.2rem', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #dfe3e8' }}>
       <div style={{ textAlign: 'center', marginBottom: '2.4rem' }}>
         <div
           style={{
@@ -170,6 +180,7 @@ export default function CambiarPasswordPage() {
           </button>
         </div>
       </form>
+    </div>
     </div>
   );
 }
