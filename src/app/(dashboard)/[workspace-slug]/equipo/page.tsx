@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { UserAvatar } from '@/components/common/user-avatar';
+import { writeImpersonationTarget } from '@/lib/impersonation';
 import type { Profile, UserWorkspace, WorkspaceRole, Department, UserDepartment } from '@/types';
 
 interface TeamMember {
@@ -22,7 +24,22 @@ function generateTempPassword(): string {
 }
 
 export default function EquipoPage() {
-  const { currentWorkspace } = useWorkspaceStore();
+  const router = useRouter();
+  const params = useParams();
+  const workspaceSlug = (params['workspace-slug'] as string) || '';
+  const {
+    currentWorkspace,
+    userWorkspace,
+    profile: currentProfile,
+    enterImpersonation,
+  } = useWorkspaceStore();
+  // Only real admins can impersonate. Note: if the current admin is ALREADY
+  // impersonating, userWorkspace.role reflects the impersonated role, so
+  // `isImpersonating` is true and we hide the button in that case to avoid
+  // nested impersonation.
+  const { isImpersonating } = useWorkspaceStore();
+  const canImpersonate =
+    !isImpersonating && userWorkspace?.role === 'admin';
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -145,6 +162,29 @@ export default function EquipoPage() {
     setResetting(false);
   }
 
+  /**
+   * Enter "view as user" mode. We persist the target id to sessionStorage
+   * (so refreshes preserve the impersonation) and apply the swap to the
+   * workspace store synchronously so the current tab updates without a
+   * round-trip. Then we route to the workspace home — members would
+   * typically land there.
+   */
+  function handleImpersonate(member: TeamMember) {
+    if (!canImpersonate) return;
+    if (!currentProfile || !userWorkspace) return;
+    if (member.profile.id === currentProfile.id) return;
+
+    writeImpersonationTarget(member.profile.id);
+    enterImpersonation(
+      { profile: currentProfile, userWorkspace },
+      { profile: member.profile, userWorkspace: member.userWorkspace },
+    );
+    // Route to the workspace root so the impersonated user sees their
+    // landing page (for a member that's typically /check-in or /objetivos
+    // depending on their nav; the dashboard root redirects appropriately).
+    router.push(`/${workspaceSlug}`);
+  }
+
   async function handleRoleChange(_userId: string, uwId: string, newRole: WorkspaceRole) {
     const supabase = createClient();
     await supabase.from('user_workspaces').update({ role: newRole }).eq('id', uwId);
@@ -259,26 +299,47 @@ export default function EquipoPage() {
                   </div>
                 </td>
                 <td style={cellStyle}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setResetTarget(m);
-                      setResetForm({ password: '', must_change_password: true });
-                      setResetDone(false);
-                      setResetError('');
-                    }}
-                    style={{
-                      padding: '0.4rem 1rem',
-                      fontSize: '1.2rem',
-                      color: '#5c6ac4',
-                      backgroundColor: 'transparent',
-                      border: '1px solid #dfe3e8',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Cambiar contraseña
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'flex-end' }}>
+                    {canImpersonate && m.profile.id !== currentProfile?.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleImpersonate(m)}
+                        title={`Ver la plataforma como ${m.profile.full_name}`}
+                        style={{
+                          padding: '0.4rem 1rem',
+                          fontSize: '1.2rem',
+                          color: '#212b36',
+                          backgroundColor: '#f4f6f8',
+                          border: '1px solid #dfe3e8',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontWeight: 500,
+                        }}
+                      >
+                        Entrar como
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResetTarget(m);
+                        setResetForm({ password: '', must_change_password: true });
+                        setResetDone(false);
+                        setResetError('');
+                      }}
+                      style={{
+                        padding: '0.4rem 1rem',
+                        fontSize: '1.2rem',
+                        color: '#5c6ac4',
+                        backgroundColor: 'transparent',
+                        border: '1px solid #dfe3e8',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cambiar contraseña
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
