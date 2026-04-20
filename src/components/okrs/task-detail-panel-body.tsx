@@ -3,9 +3,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { UserAvatar } from '@/components/common/user-avatar';
-import { formatDate, isOverdue } from '@/lib/utils/dates';
+import { isOverdue } from '@/lib/utils/dates';
 import { InlineStatusSelect } from './inline-status-select';
 import { TaskForm } from '@/components/tasks/task-form';
+import {
+  AsanaDetailShell,
+  AsanaSection,
+  AsanaEmpty,
+  AsanaDueDateValue,
+  type FieldRow,
+  type BreadcrumbItem,
+} from './asana-detail-shell';
 import type { Task, Objective } from '@/types';
 
 interface TaskDetailPanelBodyProps {
@@ -15,9 +23,7 @@ interface TaskDetailPanelBodyProps {
 }
 
 /**
- * Single-object detail body for a task. No standalone detail page exists;
- * this consolidates the same information shown inline in TaskRow + a link
- * to the parent objective.
+ * Task detail in Asana-style layout. Breadcrumb is the parent objective.
  */
 export function TaskDetailPanelBody({ taskId, canEdit, onChanged }: TaskDetailPanelBodyProps) {
   const [task, setTask] = useState<Task | null>(null);
@@ -64,33 +70,29 @@ export function TaskDetailPanelBody({ taskId, canEdit, onChanged }: TaskDetailPa
     onChanged();
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.8rem' }}>
-          <h1 style={{ fontSize: '2rem', fontWeight: 600, color: '#212b36', lineHeight: 1.3, margin: 0 }}>
-            {task.title}
-          </h1>
-          {canEdit && workspaceId && (
-            <button
-              type="button"
-              onClick={() => setShowEditForm(true)}
-              style={{
-                padding: '0.4rem 1.2rem',
-                fontSize: '1.3rem',
-                fontWeight: 500,
-                color: '#5c6ac4',
-                backgroundColor: '#f4f5fc',
-                border: '1px solid #e3e5f1',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}
-            >
-              Editar
-            </button>
-          )}
-        </div>
+  const breadcrumb: BreadcrumbItem[] = objective
+    ? [{ label: `Objetivo: ${objective.title}` }]
+    : [{ label: 'Sin objetivo padre' }];
+
+  const fields: FieldRow[] = [
+    {
+      label: 'Asignada a',
+      value: task.assigned_user ? (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem' }}>
+          <UserAvatar user={task.assigned_user} size="small" />
+          <span>{task.assigned_user.full_name}</span>
+        </span>
+      ) : (
+        <AsanaEmpty />
+      ),
+    },
+    {
+      label: 'Fecha límite',
+      value: <AsanaDueDateValue iso={task.due_date} overdue={overdue} />,
+    },
+    {
+      label: 'Estado',
+      value: (
         <InlineStatusSelect
           entity="task"
           id={task.id}
@@ -98,59 +100,49 @@ export function TaskDetailPanelBody({ taskId, canEdit, onChanged }: TaskDetailPa
           canEdit={canEdit}
           onChanged={refresh}
         />
+      ),
+    },
+  ];
+
+  if (objective) {
+    fields.push({
+      label: 'Objetivo',
+      value: <span style={{ color: '#5c6ac4', fontWeight: 500 }}>{objective.title}</span>,
+    });
+  }
+
+  return (
+    <>
+      <AsanaDetailShell
+        breadcrumb={breadcrumb}
+        title={task.title}
+        onEdit={canEdit && workspaceId ? () => setShowEditForm(true) : undefined}
+        fields={fields}
+      >
+        {/* Block reason (when blocked) */}
+        {task.status === 'blocked' && task.block_reason && (
+          <AsanaSection title="Motivo del bloqueo">
+            <p style={{ fontSize: '1.3rem', color: '#bf0711', margin: 0, lineHeight: 1.5 }}>{task.block_reason}</p>
+          </AsanaSection>
+        )}
+
+        {/* Description */}
         {task.description && (
-          <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.8rem', lineHeight: 1.6 }}>
-            {task.description}
-          </p>
+          <AsanaSection title="Descripción">
+            <p style={{ color: '#212b36', fontSize: '1.4rem', lineHeight: 1.6, margin: 0 }}>{task.description}</p>
+          </AsanaSection>
         )}
-      </div>
-
-      {/* Block reason */}
-      {task.status === 'blocked' && task.block_reason && (
-        <div className="Polaris-Card" style={{ padding: '1.2rem 1.6rem', borderRadius: '8px', border: '1px solid #fde3df', backgroundColor: '#fef3f0' }}>
-          <p style={{ fontSize: '1.2rem', color: '#8a2a2a', marginBottom: '0.2rem', fontWeight: 600 }}>Motivo del bloqueo</p>
-          <p style={{ fontSize: '1.3rem', color: '#bf0711' }}>{task.block_reason}</p>
-        </div>
-      )}
-
-      {/* Details */}
-      <div className="Polaris-Card" style={{ padding: '1.6rem', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-        <h3 style={{ fontSize: '1.3rem', fontWeight: 600, color: '#212b36', marginBottom: '1.2rem' }}>Detalles</h3>
-
-        {task.assigned_user && (
-          <div style={{ marginBottom: '1.2rem' }}>
-            <p style={{ fontSize: '1.2rem', color: '#637381', marginBottom: '0.4rem' }}>Asignada a</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-              <UserAvatar user={task.assigned_user} size="small" />
-              <span style={{ fontSize: '1.3rem', color: '#212b36' }}>{task.assigned_user.full_name}</span>
-            </div>
-          </div>
-        )}
-
-        {task.due_date && (
-          <div style={{ marginBottom: '1.2rem' }}>
-            <p style={{ fontSize: '1.2rem', color: '#637381', marginBottom: '0.4rem' }}>Fecha límite</p>
-            <span style={{ fontSize: '1.3rem', color: overdue ? '#de3618' : '#212b36', fontWeight: overdue ? 600 : 400 }}>
-              {formatDate(task.due_date)}
-              {overdue && <span style={{ marginLeft: '0.6rem', fontSize: '1.1rem' }}>— Vencida</span>}
-            </span>
-          </div>
-        )}
-
-        {objective && (
-          <div>
-            <p style={{ fontSize: '1.2rem', color: '#637381', marginBottom: '0.4rem' }}>Objetivo</p>
-            <span style={{ fontSize: '1.3rem', color: '#212b36' }}>{objective.title}</span>
-          </div>
-        )}
-      </div>
+      </AsanaDetailShell>
 
       {showEditForm && workspaceId && (
         <TaskForm
           objectiveId={task.objective_id}
           workspaceId={workspaceId}
           onClose={() => setShowEditForm(false)}
-          onSaved={() => { setShowEditForm(false); refresh(); }}
+          onSaved={() => {
+            setShowEditForm(false);
+            refresh();
+          }}
           initialData={{
             id: task.id,
             title: task.title,
@@ -160,6 +152,6 @@ export function TaskDetailPanelBody({ taskId, canEdit, onChanged }: TaskDetailPa
           }}
         />
       )}
-    </div>
+    </>
   );
 }
