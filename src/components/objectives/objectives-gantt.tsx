@@ -9,36 +9,30 @@ import type { PanelTarget } from '@/components/okrs/okr-detail-panel';
  * Gantt view for /objetivos.
  *
  * Each objective is rendered as a horizontal bar placed on a time axis derived
- * from `start_date` / `end_date`. The axis is driven by two controls:
- *   - Zoom: the visible time window (active period by default, or a preset
- *     rolling window like "próximos 3 meses").
- *   - Frequency: the cohort size used to divide the axis and draw vertical
- *     gridlines and X labels. Changing frequency re-renders ticks and the
- *     dashed cohort dividers inside every row track.
+ * from `start_date` / `end_date`. One control drives the axis:
+ *   - Escala: the visible time window. Each option also picks a sensible
+ *     cohort size for the X labels and the dashed vertical gridlines, so
+ *     "1 semana" means "show one week with daily ticks", "3 meses" means
+ *     "show three months with biweekly ticks", etc.
  *
  * Clicking the objective title opens the shared OkrDetailPanel (same panel
  * used by Listado / Skill Tree views).
  */
 
-type ZoomKey = 'period' | 'month' | 'quarter' | 'six';
-type Frequency = 'week' | '2weeks' | 'month' | '3months';
+type Scale = '1w' | '2w' | '1m' | '3m' | 'period' | '6m';
 
 const MONTHS_ES_SHORT = [
   'ene', 'feb', 'mar', 'abr', 'may', 'jun',
   'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
 ];
 
+const DAY_MS = 86400000;
+
 interface ObjectivesGanttProps {
   rows: ObjectiveRow[];
   departments: Department[];
   activePeriod: Period | null;
   onOpenPanel: (t: PanelTarget) => void;
-}
-
-interface TimeWindow {
-  start: Date;
-  end: Date;
-  label: string;
 }
 
 interface Cohort {
@@ -82,91 +76,148 @@ function barColor(kind: ReturnType<typeof statusKind>): string {
   }
 }
 
-function computeWindow(zoomKey: ZoomKey, activePeriod: Period | null): TimeWindow {
-  const now = new Date();
-  if (zoomKey === 'period' && activePeriod) {
+/**
+ * Resolve a Scale option into an explicit time window + cohort plan.
+ *
+ * Short scales (≤ 3 months) roll around today so past-due and upcoming
+ * objectives both show up. Longer scales (period, 6 months) use explicit
+ * calendar-aligned windows so gridlines snap to month boundaries.
+ */
+function scaleConfig(scale: Scale, activePeriod: Period | null, now: Date = new Date()): {
+  start: Date;
+  end: Date;
+  stepDays?: number;
+  stepMonths?: number;
+  snapToMonday: boolean;
+  labelKind: 'day' | 'week' | 'month';
+} {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  if (scale === '1w') {
+    return {
+      start: addDays(today, -3),
+      end: addDays(today, 4),
+      stepDays: 1,
+      snapToMonday: false,
+      labelKind: 'day',
+    };
+  }
+  if (scale === '2w') {
+    return {
+      start: addDays(today, -4),
+      end: addDays(today, 10),
+      stepDays: 2,
+      snapToMonday: false,
+      labelKind: 'day',
+    };
+  }
+  if (scale === '1m') {
+    return {
+      start: addDays(today, -10),
+      end: addDays(today, 20),
+      stepDays: 7,
+      snapToMonday: true,
+      labelKind: 'week',
+    };
+  }
+  if (scale === '3m') {
+    return {
+      start: addDays(today, -30),
+      end: addDays(today, 60),
+      stepDays: 14,
+      snapToMonday: true,
+      labelKind: 'week',
+    };
+  }
+  if (scale === 'period' && activePeriod) {
     return {
       start: new Date(activePeriod.start_date),
       end: new Date(activePeriod.end_date),
-      label: activePeriod.name,
+      stepMonths: 1,
+      snapToMonday: false,
+      labelKind: 'month',
     };
   }
-  if (zoomKey === 'month') {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return { start, end, label: 'Este mes' };
-  }
-  if (zoomKey === 'quarter') {
-    const q = Math.floor(now.getMonth() / 3);
-    const start = new Date(now.getFullYear(), q * 3, 1);
-    const end = new Date(now.getFullYear(), q * 3 + 3, 0);
-    return { start, end, label: 'Este trimestre' };
-  }
-  // six months rolling (3 past, 3 future)
-  const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 4, 0);
-  return { start, end, label: '6 meses' };
+  // '6m' — 3 months back, 3 months forward, calendar-aligned.
+  return {
+    start: new Date(today.getFullYear(), today.getMonth() - 2, 1),
+    end: new Date(today.getFullYear(), today.getMonth() + 4, 0),
+    stepMonths: 1,
+    snapToMonday: false,
+    labelKind: 'month',
+  };
 }
 
-function frequencyDays(f: Frequency): number {
-  switch (f) {
-    case 'week': return 7;
-    case '2weeks': return 14;
-    case 'month': return 30;
-    case '3months': return 91;
-  }
+function addDays(d: Date, days: number): Date {
+  const out = new Date(d);
+  out.setDate(out.getDate() + days);
+  return out;
 }
 
-function buildCohorts(window: TimeWindow, freq: Frequency): Cohort[] {
-  const startMs = window.start.getTime();
-  const endMs = window.end.getTime();
+function buildCohorts(cfg: ReturnType<typeof scaleConfig>): Cohort[] {
+  const startMs = cfg.start.getTime();
+  const endMs = cfg.end.getTime();
   const totalMs = endMs - startMs;
   if (totalMs <= 0) return [];
 
   const cohorts: Cohort[] = [];
 
-  if (freq === 'month' || freq === '3months') {
-    // Calendar-aligned: iterate months. For 3months, skip by 3.
-    const step = freq === 'month' ? 1 : 3;
-    const cursor = new Date(window.start.getFullYear(), window.start.getMonth(), 1);
+  if (cfg.stepMonths) {
+    const step = cfg.stepMonths;
+    const cursor = new Date(cfg.start.getFullYear(), cfg.start.getMonth(), 1);
     while (cursor.getTime() <= endMs) {
       const chunkStart = new Date(cursor);
       const next = new Date(cursor.getFullYear(), cursor.getMonth() + step, 1);
       const chunkEnd = new Date(Math.min(next.getTime() - 1, endMs));
       const clampedStart = new Date(Math.max(chunkStart.getTime(), startMs));
+      if (clampedStart.getTime() >= chunkEnd.getTime()) {
+        cursor.setMonth(cursor.getMonth() + step);
+        continue;
+      }
       const leftPct = ((clampedStart.getTime() - startMs) / totalMs) * 100;
       const widthPct = ((chunkEnd.getTime() - clampedStart.getTime()) / totalMs) * 100;
-      const label = freq === 'month'
-        ? MONTHS_ES_SHORT[chunkStart.getMonth()]
-        : `Q${Math.floor(chunkStart.getMonth() / 3) + 1}`;
-      const sub = freq === 'month'
-        ? `${chunkStart.getFullYear()}`
-        : `${MONTHS_ES_SHORT[chunkStart.getMonth()]}–${MONTHS_ES_SHORT[Math.min(chunkStart.getMonth() + 2, 11)]}`;
-      cohorts.push({ start: clampedStart, end: chunkEnd, label, sub, leftPct, widthPct });
+      cohorts.push({
+        start: clampedStart,
+        end: chunkEnd,
+        label: MONTHS_ES_SHORT[chunkStart.getMonth()],
+        sub: `${chunkStart.getFullYear()}`,
+        leftPct,
+        widthPct,
+      });
       cursor.setMonth(cursor.getMonth() + step);
     }
     return cohorts;
   }
 
-  // Week-aligned: start on the Monday at-or-before window.start.
-  const days = frequencyDays(freq);
-  const cursor = new Date(window.start);
-  const dow = cursor.getDay(); // 0 = Sun, 1 = Mon
-  const daysBackToMonday = (dow + 6) % 7;
-  cursor.setDate(cursor.getDate() - daysBackToMonday);
+  const days = cfg.stepDays ?? 7;
+  const cursor = new Date(cfg.start);
   cursor.setHours(0, 0, 0, 0);
+  if (cfg.snapToMonday) {
+    const dow = cursor.getDay();
+    const back = (dow + 6) % 7;
+    cursor.setDate(cursor.getDate() - back);
+  }
 
   while (cursor.getTime() <= endMs) {
     const chunkStart = new Date(cursor);
-    const chunkEnd = new Date(cursor.getTime() + days * 86400000 - 1);
+    const chunkEnd = new Date(cursor.getTime() + days * DAY_MS - 1);
     const clampedStart = new Date(Math.max(chunkStart.getTime(), startMs));
     const clampedEnd = new Date(Math.min(chunkEnd.getTime(), endMs));
     if (clampedEnd.getTime() < clampedStart.getTime()) break;
     const leftPct = ((clampedStart.getTime() - startMs) / totalMs) * 100;
     const widthPct = ((clampedEnd.getTime() - clampedStart.getTime()) / totalMs) * 100;
-    const weekNum = isoWeek(clampedStart);
-    const label = MONTHS_ES_SHORT[clampedStart.getMonth()];
-    const sub = freq === 'week' ? `sem ${weekNum}` : `sem ${weekNum}–${isoWeek(clampedEnd)}`;
+
+    let label: string;
+    let sub: string;
+    if (cfg.labelKind === 'day') {
+      label = `${clampedStart.getDate()}`;
+      sub = MONTHS_ES_SHORT[clampedStart.getMonth()];
+    } else {
+      const weekNum = isoWeek(clampedStart);
+      label = MONTHS_ES_SHORT[clampedStart.getMonth()];
+      sub = days <= 7 ? `sem ${weekNum}` : `sem ${weekNum}–${isoWeek(clampedEnd)}`;
+    }
+
     cohorts.push({ start: clampedStart, end: clampedEnd, label, sub, leftPct, widthPct });
     cursor.setDate(cursor.getDate() + days);
   }
@@ -193,19 +244,18 @@ export function ObjectivesGantt({
   onOpenPanel,
 }: ObjectivesGanttProps) {
   const [deptFilter, setDeptFilter] = useState<string | 'all'>('all');
-  const [zoomKey, setZoomKey] = useState<ZoomKey>('period');
-  const [frequency, setFrequency] = useState<Frequency>('2weeks');
+  const [scale, setScale] = useState<Scale>(activePeriod ? 'period' : '3m');
 
-  const window = useMemo(() => computeWindow(zoomKey, activePeriod), [zoomKey, activePeriod]);
-  const cohorts = useMemo(() => buildCohorts(window, frequency), [window, frequency]);
-  const totalMs = window.end.getTime() - window.start.getTime();
+  const cfg = useMemo(() => scaleConfig(scale, activePeriod), [scale, activePeriod]);
+  const cohorts = useMemo(() => buildCohorts(cfg), [cfg]);
+  const totalMs = cfg.end.getTime() - cfg.start.getTime();
 
   // Today marker: only render if within window.
   const todayPct = useMemo(() => {
     const now = Date.now();
-    if (now < window.start.getTime() || now > window.end.getTime()) return null;
-    return ((now - window.start.getTime()) / totalMs) * 100;
-  }, [window, totalMs]);
+    if (now < cfg.start.getTime() || now > cfg.end.getTime()) return null;
+    return ((now - cfg.start.getTime()) / totalMs) * 100;
+  }, [cfg, totalMs]);
 
   const { visible, undated, outOfWindow } = useMemo(() => {
     const v: ObjectiveRow[] = [];
@@ -219,30 +269,14 @@ export function ObjectivesGantt({
       if (deptFilter !== 'all' && r.responsible_department_id !== deptFilter) return;
       const rs = new Date(r.start_date).getTime();
       const re = new Date(r.end_date).getTime();
-      if (re < window.start.getTime() || rs > window.end.getTime()) {
+      if (re < cfg.start.getTime() || rs > cfg.end.getTime()) {
         o += 1;
         return;
       }
       v.push(r);
     });
     return { visible: v, undated: u, outOfWindow: o };
-  }, [rows, deptFilter, window]);
-
-  if (!activePeriod) {
-    return (
-      <div
-        className="Polaris-Card"
-        style={{
-          padding: '4rem',
-          textAlign: 'center',
-          borderRadius: '8px',
-          border: '1px solid var(--color-border)',
-        }}
-      >
-        <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
-      </div>
-    );
-  }
+  }, [rows, deptFilter, cfg]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
@@ -256,25 +290,16 @@ export function ObjectivesGantt({
         }}
       >
         <ToolbarSelect
-          label="Zoom"
-          value={zoomKey}
-          onChange={(v) => setZoomKey(v as ZoomKey)}
+          label="Escala"
+          value={scale}
+          onChange={(v) => setScale(v as Scale)}
           options={[
-            { value: 'period', label: activePeriod ? activePeriod.name : 'Periodo activo' },
-            { value: 'month', label: 'Este mes' },
-            { value: 'quarter', label: 'Este trimestre' },
-            { value: 'six', label: '6 meses (rolling)' },
-          ]}
-        />
-        <ToolbarSelect
-          label="Frecuencia"
-          value={frequency}
-          onChange={(v) => setFrequency(v as Frequency)}
-          options={[
-            { value: 'week', label: '1 semana' },
-            { value: '2weeks', label: '2 semanas' },
-            { value: 'month', label: '1 mes' },
-            { value: '3months', label: '3 meses' },
+            { value: '1w', label: '1 semana' },
+            { value: '2w', label: '2 semanas' },
+            { value: '1m', label: '1 mes' },
+            { value: '3m', label: '3 meses' },
+            ...(activePeriod ? [{ value: 'period', label: activePeriod.name }] : []),
+            { value: '6m', label: '6 meses' },
           ]}
         />
         <ToolbarSelect
@@ -398,8 +423,8 @@ export function ObjectivesGantt({
               objective={o}
               departments={departments}
               cohorts={cohorts}
-              windowStart={window.start}
-              windowEnd={window.end}
+              windowStart={cfg.start}
+              windowEnd={cfg.end}
               todayPct={todayPct}
               onOpenPanel={onOpenPanel}
             />
