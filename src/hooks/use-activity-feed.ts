@@ -126,14 +126,10 @@ export function useActivityFeed(
 
     // ── Step 2: collect IDs that need a title / name lookup. ─────────
     const userIds = new Set<string>();
-    const kpiIds = new Set<string>();
     const objIds = new Set<string>();
-    const taskIds = new Set<string>();
 
     const addUser = (v: unknown) => typeof v === 'string' && userIds.add(v);
-    const addKpi = (v: unknown) => typeof v === 'string' && kpiIds.add(v);
     const addObj = (v: unknown) => typeof v === 'string' && objIds.add(v);
-    const addTask = (v: unknown) => typeof v === 'string' && taskIds.add(v);
 
     (progressRes.data || []).forEach((r: any) => {
       addUser(r.user_id);
@@ -147,31 +143,23 @@ export function useActivityFeed(
       addUser(r.user_id);
     });
 
-    // Objectives/KPIs we already loaded (the "created" streams) seed the
-    // title maps for free — skip refetching them below.
-
     // ── Step 3: batch lookups for entity titles. Skipped when empty. ──
+    // Objectives already loaded (the "created" stream) seed objById for
+    // free; we only fetch the ones referenced by progress_logs / comments
+    // that aren't already in that list.
     const needProfiles = userIds.size > 0;
-    const missingKpiIds = Array.from(kpiIds).filter(
-      (id) => !(kpisRes.data || []).some((k: any) => k.id === id),
-    );
+    type MinimalObj = { id: string; title: string; workspace_id: string };
     const missingObjIds = Array.from(objIds).filter(
-      (id) => !(objsRes.data || []).some((o: any) => o.id === id),
+      (id) => !(objsRes.data || []).some((o: MinimalObj) => o.id === id),
     );
 
-    const [profsRes, extraKpisRes, extraObjsRes, tasksLookupRes] = await Promise.all([
+    const [profsRes, extraObjsRes] = await Promise.all([
       needProfiles
         ? supabase.from('profiles').select('id, full_name').in('id', Array.from(userIds))
         : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
-      missingKpiIds.length
-        ? supabase.from('kpis').select('id, title, workspace_id').in('id', missingKpiIds)
-        : Promise.resolve({ data: [] as { id: string; title: string; workspace_id: string }[] }),
       missingObjIds.length
         ? supabase.from('objectives').select('id, title, workspace_id').in('id', missingObjIds)
-        : Promise.resolve({ data: [] as { id: string; title: string; workspace_id: string }[] }),
-      taskIds.size
-        ? supabase.from('tasks').select('id, title').in('id', Array.from(taskIds))
-        : Promise.resolve({ data: [] as { id: string; title: string }[] }),
+        : Promise.resolve({ data: [] as MinimalObj[] }),
     ]);
 
     // ── Step 4: build lookup maps. ───────────────────────────────────
@@ -180,19 +168,11 @@ export function useActivityFeed(
       profileByUserId.set(p.id, p),
     );
 
-    const kpiById = new Map<string, { id: string; title: string; workspace_id: string }>();
-    (kpisRes.data || []).forEach((k: any) =>
-      kpiById.set(k.id, { id: k.id, title: k.title, workspace_id: k.workspace_id }),
-    );
-    (extraKpisRes.data || []).forEach((k: { id: string; title: string; workspace_id: string }) => {
-      if (k.workspace_id === workspaceId) kpiById.set(k.id, k);
-    });
-
-    const objById = new Map<string, { id: string; title: string; workspace_id: string }>();
-    (objsRes.data || []).forEach((o: any) =>
+    const objById = new Map<string, MinimalObj>();
+    (objsRes.data || []).forEach((o: MinimalObj) =>
       objById.set(o.id, { id: o.id, title: o.title, workspace_id: o.workspace_id }),
     );
-    (extraObjsRes.data || []).forEach((o: { id: string; title: string; workspace_id: string }) => {
+    (extraObjsRes.data || []).forEach((o: MinimalObj) => {
       // Only allow objectives in the current workspace into the lookup
       // map — RLS should block cross-workspace reads anyway, but this is
       // a defensive filter so comments/progress_logs events can't surface
@@ -200,33 +180,16 @@ export function useActivityFeed(
       if (o.workspace_id === workspaceId) objById.set(o.id, o);
     });
 
-    const taskById = new Map<string, { id: string; title: string }>();
-    (tasksLookupRes.data || []).forEach((t: { id: string; title: string }) =>
-      taskById.set(t.id, t),
-    );
-
     // ── Step 5: transform into a unified event list. ─────────────────
     const out: ActivityEvent[] = [];
     const actorFor = (userId: string | null | undefined) =>
       userId ? profileByUserId.get(userId) ?? null : null;
 
-    const refForKpi = (id: string | null | undefined): EntityRef | undefined => {
-      if (!id) return undefined;
-      const k = kpiById.get(id);
-      if (!k) return undefined;
-      return { type: 'kpi', id: k.id, title: k.title };
-    };
     const refForObj = (id: string | null | undefined): EntityRef | undefined => {
       if (!id) return undefined;
       const o = objById.get(id);
       if (!o) return undefined;
       return { type: 'objective', id: o.id, title: o.title };
-    };
-    const refForTask = (id: string | null | undefined): EntityRef | undefined => {
-      if (!id) return undefined;
-      const t = taskById.get(id);
-      if (!t) return undefined;
-      return { type: 'task', id: t.id, title: t.title };
     };
 
     // Progress log → "X actualizó progreso de Y a N%". The real schema
