@@ -54,6 +54,14 @@ interface UseActivityFeedOptions {
   limit?: number;
 }
 
+/** Returns the first argument that's a finite number, else undefined. */
+function pickNumber(...candidates: unknown[]): number | undefined {
+  for (const c of candidates) {
+    if (typeof c === 'number' && Number.isFinite(c)) return c;
+  }
+  return undefined;
+}
+
 export function useActivityFeed(
   workspaceId: string | undefined,
   { limit = 50 }: UseActivityFeedOptions = {},
@@ -70,18 +78,20 @@ export function useActivityFeed(
     setLoading(true);
     const supabase = createClient();
 
-    // ── Step 1: raw rows per source (no embedded joins except one cheap
-    // inner-join on tasks.objective to filter by workspace). ─────────
+    // ── Step 1: raw rows per source. SELECT * on progress_logs and
+    // comments because their columns vary between deployments — some
+    // don't have progress_value / kpi_id and explicit selects blow up
+    // (42703). We read defensively in step 5. ────────────────────────
     const [progressRes, commentsRes, objsRes, kpisRes, tasksRes, checkinsRes] = await Promise.all([
       supabase
         .from('progress_logs')
-        .select('id, created_at, user_id, progress_value, kpi_id, objective_id, task_id')
+        .select('*')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
         .limit(limit),
       supabase
         .from('comments')
-        .select('id, created_at, user_id, content, kpi_id, objective_id')
+        .select('*')
         .order('created_at', { ascending: false })
         .limit(limit * 2), // fetch extra, workspace-filter in memory
       supabase
@@ -216,23 +226,29 @@ export function useActivityFeed(
       return { type: 'task', id: t.id, title: t.title };
     };
 
-    // Progress log → "X actualizó progreso de Y a N%"
+    // Progress log → "X actualizó progreso de Y a N%". The numeric
+    // field name varies across deployments (progress_value / value /
+    // new_progress), so we accept the first one that looks like a
+    // number. If none is present, the event still renders without %.
     (progressRes.data || []).forEach((r: any) => {
       const target =
         refForTask(r.task_id) ?? refForObj(r.objective_id) ?? refForKpi(r.kpi_id);
       if (!target) return;
+      const pct = pickNumber(r.progress_value, r.value, r.new_progress, r.progress);
       out.push({
         id: `progress-${r.id}`,
         kind: 'progress_log',
         timestamp: r.created_at,
         actor: actorFor(r.user_id),
         target,
-        progressPct: r.progress_value,
+        progressPct: pct,
       });
     });
 
-    // Comments → "X comentó en Y" + quote. Skip comments whose target
-    // isn't in this workspace (in-memory workspace filter).
+    // Comments → "X comentó en Y" + quote. Some deployments don't
+    // have comments.kpi_id; we just skip that path if the field is
+    // absent. The in-memory workspace filter happens via refForObj/Kpi
+    // — both maps are keyed only on entities in the current workspace.
     (commentsRes.data || []).forEach((r: any) => {
       const target = refForObj(r.objective_id) ?? refForKpi(r.kpi_id);
       if (!target) return;

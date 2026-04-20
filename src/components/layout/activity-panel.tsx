@@ -270,10 +270,11 @@ function ActivityText({
   }
 
   if (kind === 'progress_log' && event.target) {
+    const hasPct = typeof event.progressPct === 'number';
     return (
       <>
-        <b>{actor}</b> actualizó progreso de <EntityLink ref={event.target} /> a{' '}
-        <b>{Math.round(event.progressPct ?? 0)}%</b>
+        <b>{actor}</b> actualizó progreso de <EntityLink ref={event.target} />
+        {hasPct ? <> a <b>{Math.round(event.progressPct as number)}%</b></> : null}
       </>
     );
   }
