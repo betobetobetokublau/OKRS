@@ -241,11 +241,15 @@ function ActivityText({
   const actor = event.actor?.full_name?.split(' ')[0] || 'Alguien';
   const kind = event.kind;
 
-  function EntityLink({ ref }: { ref: EntityRef }) {
+  // NOTE: prop is named `entity`, not `ref`. `ref` is a React-reserved
+  // prop name — React strips it from a regular function component's
+  // props object, so the component would receive `undefined` and the
+  // children read would crash with "Cannot read properties of undefined".
+  function EntityLink({ entity }: { entity: EntityRef }) {
     return (
       <button
         type="button"
-        onClick={() => onOpen(ref)}
+        onClick={() => onOpen(entity)}
         style={{
           background: 'transparent',
           border: 'none',
@@ -264,7 +268,7 @@ function ActivityText({
           (e.currentTarget as HTMLButtonElement).style.textDecoration = 'none';
         }}
       >
-        {ref.title}
+        {entity.title}
       </button>
     );
   }
@@ -273,7 +277,7 @@ function ActivityText({
     const hasPct = typeof event.progressPct === 'number';
     return (
       <>
-        <b>{actor}</b> actualizó progreso de <EntityLink ref={event.target} />
+        <b>{actor}</b> actualizó progreso de <EntityLink entity={event.target} />
         {hasPct ? <> a <b>{Math.round(event.progressPct as number)}%</b></> : null}
       </>
     );
@@ -282,7 +286,7 @@ function ActivityText({
   if (kind === 'comment' && event.target) {
     return (
       <>
-        <b>{actor}</b> comentó en <EntityLink ref={event.target} />
+        <b>{actor}</b> comentó en <EntityLink entity={event.target} />
       </>
     );
   }
@@ -290,7 +294,7 @@ function ActivityText({
   if (kind === 'objective_created' && event.target) {
     return (
       <>
-        <b>{actor}</b> creó el objetivo <EntityLink ref={event.target} />
+        <b>{actor}</b> creó el objetivo <EntityLink entity={event.target} />
       </>
     );
   }
@@ -298,7 +302,7 @@ function ActivityText({
   if (kind === 'kpi_created' && event.target) {
     return (
       <>
-        <b>{actor}</b> creó el KPI <EntityLink ref={event.target} />
+        <b>{actor}</b> creó el KPI <EntityLink entity={event.target} />
       </>
     );
   }
@@ -306,8 +310,8 @@ function ActivityText({
   if (kind === 'task_created' && event.target && event.parent) {
     return (
       <>
-        <b>{actor}</b> creó la tarea <EntityLink ref={event.target} /> en{' '}
-        <EntityLink ref={event.parent} />
+        <b>{actor}</b> creó la tarea <EntityLink entity={event.target} /> en{' '}
+        <EntityLink entity={event.parent} />
       </>
     );
   }
@@ -315,8 +319,8 @@ function ActivityText({
   if (kind === 'task_completed' && event.target && event.parent) {
     return (
       <>
-        <b>{actor}</b> completó la tarea <EntityLink ref={event.target} /> en{' '}
-        <EntityLink ref={event.parent} />
+        <b>{actor}</b> completó la tarea <EntityLink entity={event.target} /> en{' '}
+        <EntityLink entity={event.parent} />
       </>
     );
   }
@@ -324,8 +328,8 @@ function ActivityText({
   if (kind === 'task_blocked' && event.target && event.parent) {
     return (
       <>
-        <b>{actor}</b> marcó como bloqueada <EntityLink ref={event.target} /> en{' '}
-        <EntityLink ref={event.parent} />
+        <b>{actor}</b> marcó como bloqueada <EntityLink entity={event.target} /> en{' '}
+        <EntityLink entity={event.parent} />
       </>
     );
   }
