@@ -203,31 +203,141 @@ function ActivityRow({
         borderBottom: '1px solid #f1f2f4',
         borderLeft: `3px solid ${accent}`,
         background: highlight ? 'rgba(80,184,60,0.04)' : 'transparent',
+        display: 'grid',
+        gridTemplateColumns: '28px 1fr',
+        columnGap: '1rem',
+        textAlign: 'left',
       }}
     >
-      <div style={{ fontSize: '1.1rem', color: '#919eab', marginBottom: '0.4rem' }}>
-        {formatRelativeEs(event.timestamp)}
+      {/* Left column — kind-specific icon. Color-matches the accent bar
+          so status is legible at a glance without needing to read text. */}
+      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '0.4rem', color: accent }}>
+        <ActivityIcon kind={event.kind} />
       </div>
-      <div style={{ fontSize: '1.3rem', color: '#212b36', lineHeight: 1.55 }}>
-        <ActivityText event={event} onOpen={onOpen} />
-      </div>
-      {event.quote && (
-        <div
-          style={{
-            marginTop: '0.8rem',
-            padding: '0.6rem 1rem',
-            backgroundColor: '#f4f6f8',
-            borderLeft: '2px solid #c4cdd5',
-            fontSize: '1.2rem',
-            color: '#637381',
-            fontStyle: 'italic',
-            borderRadius: '2px',
-          }}
-        >
-          &ldquo;{event.quote}&rdquo;
+
+      {/* Right column — timestamp + event text + optional quote. All
+          left-aligned; long entity names wrap beneath the line instead
+          of center-aligning to the button default. */}
+      <div style={{ textAlign: 'left', minWidth: 0 }}>
+        <div style={{ fontSize: '1.1rem', color: '#919eab', marginBottom: '0.4rem' }}>
+          {formatRelativeEs(event.timestamp)}
         </div>
-      )}
+        <div style={{ fontSize: '1.3rem', color: '#212b36', lineHeight: 1.55, textAlign: 'left' }}>
+          <ActivityText event={event} onOpen={onOpen} />
+        </div>
+        {event.quote && (
+          <div
+            style={{
+              marginTop: '0.8rem',
+              padding: '0.6rem 1rem',
+              backgroundColor: '#f4f6f8',
+              borderLeft: '2px solid #c4cdd5',
+              fontSize: '1.2rem',
+              color: '#637381',
+              fontStyle: 'italic',
+              borderRadius: '2px',
+              textAlign: 'left',
+            }}
+          >
+            &ldquo;{event.quote}&rdquo;
+          </div>
+        )}
+      </div>
     </article>
+  );
+}
+
+// ──────────────── Icon per event kind ────────────────
+
+function ActivityIcon({ kind }: { kind: ActivityEvent['kind'] }) {
+  // Inline SVG path (24x24 viewBox). Uses stroke: currentColor so the
+  // kind accent color bleeds through via the parent <div>.
+  const path = (() => {
+    switch (kind) {
+      case 'task_completed':
+        // check-circle
+        return (
+          <>
+            <circle cx="12" cy="12" r="10" />
+            <path d="M8 12l3 3 5-6" />
+          </>
+        );
+      case 'task_blocked':
+        // shield with warning
+        return (
+          <>
+            <path d="M12 3l8 3v6c0 4-3 7-8 9-5-2-8-5-8-9V6l8-3z" />
+            <path d="M12 9v4" />
+            <path d="M12 16.5v.01" />
+          </>
+        );
+      case 'task_created':
+        // checkbox plus
+        return (
+          <>
+            <rect x="4" y="4" width="16" height="16" rx="2" />
+            <path d="M12 8v8M8 12h8" />
+          </>
+        );
+      case 'objective_created':
+        // flag
+        return (
+          <>
+            <path d="M5 3v18" />
+            <path d="M5 4h11l-2 4 2 4H5" />
+          </>
+        );
+      case 'kpi_created':
+        // star / target
+        return (
+          <>
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="5" />
+            <circle cx="12" cy="12" r="1.5" />
+          </>
+        );
+      case 'progress_log':
+        // trending-up
+        return (
+          <>
+            <path d="M3 17l6-6 4 4 8-8" />
+            <path d="M14 7h7v7" />
+          </>
+        );
+      case 'comment':
+        // speech bubble
+        return (
+          <>
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </>
+        );
+      case 'checkin':
+        // calendar-check
+        return (
+          <>
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <path d="M16 2v4M8 2v4M3 10h18" />
+            <path d="M9 16l2 2 4-4" />
+          </>
+        );
+      default:
+        return <circle cx="12" cy="12" r="4" />;
+    }
+  })();
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {path}
+    </svg>
   );
 }
 
@@ -260,6 +370,13 @@ function ActivityText({
           fontWeight: 500,
           cursor: 'pointer',
           textDecoration: 'none',
+          // Default <button> text-align is center; force left so long
+          // entity titles wrap against the left edge instead of
+          // centering each line.
+          textAlign: 'left',
+          display: 'inline',
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
         }}
         onMouseEnter={(e) => {
           (e.currentTarget as HTMLButtonElement).style.textDecoration = 'underline';
