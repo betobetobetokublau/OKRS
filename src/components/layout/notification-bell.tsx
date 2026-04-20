@@ -1,45 +1,29 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { useNotificationStore } from '@/stores/notification-store';
-import { useNotifications } from '@/hooks/use-notifications';
-import { formatRelative } from '@/lib/utils/dates';
-import { useRouter } from 'next/navigation';
+import { ActivityPanel } from './activity-panel';
 
 interface NotificationBellProps {
   userId: string;
   workspaceId: string;
 }
 
-export function NotificationBell({ userId, workspaceId }: NotificationBellProps) {
+/**
+ * Bell icon in the topbar. Click → opens the centralized ActivityPanel
+ * (the team-wide activity timeline). The badge count still reflects the
+ * user's unread targeted notifications (monthly review reminders, etc.).
+ */
+export function NotificationBell({ workspaceId }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const router = useRouter();
-  const { notifications, unreadCount } = useNotificationStore();
-  const { markNotificationAsRead } = useNotifications(userId, workspaceId);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  function handleNotificationClick(notification: { id: string; action_url: string | null }) {
-    markNotificationAsRead(notification.id);
-    if (notification.action_url) {
-      router.push(notification.action_url);
-    }
-    setOpen(false);
-  }
+  const { unreadCount } = useNotificationStore();
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <>
       <button
-        onClick={() => setOpen(!open)}
+        type="button"
+        aria-label="Abrir actividad"
+        onClick={() => setOpen(true)}
         style={{
           position: 'relative',
           background: 'none',
@@ -79,84 +63,7 @@ export function NotificationBell({ userId, workspaceId }: NotificationBellProps)
         )}
       </button>
 
-      {open && (
-        <div
-          className="Polaris-Card"
-          style={{
-            position: 'absolute',
-            top: '100%',
-            right: 0,
-            width: '360px',
-            maxHeight: '480px',
-            overflowY: 'auto',
-            zIndex: 200,
-            borderRadius: '8px',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.15)',
-            marginTop: '4px',
-          }}
-        >
-          <div
-            style={{
-              padding: '1.2rem 1.6rem',
-              borderBottom: '1px solid #dfe3e8',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <span style={{ fontWeight: 600, fontSize: '1.4rem', color: '#212b36' }}>Notificaciones</span>
-            {unreadCount > 0 && (
-              <span style={{ fontSize: '1.2rem', color: '#5c6ac4', fontWeight: 500 }}>
-                {unreadCount} sin leer
-              </span>
-            )}
-          </div>
-
-          {notifications.length === 0 ? (
-            <div style={{ padding: '3.2rem', textAlign: 'center', color: '#637381', fontSize: '1.3rem' }}>
-              No tienes notificaciones
-            </div>
-          ) : (
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {notifications.slice(0, 20).map((n) => (
-                <li
-                  key={n.id}
-                  onClick={() => handleNotificationClick(n)}
-                  style={{
-                    padding: '1.2rem 1.6rem',
-                    borderBottom: '1px solid #f4f6f8',
-                    cursor: 'pointer',
-                    backgroundColor: n.read ? 'transparent' : '#f9fafb',
-                    transition: 'background-color 0.15s',
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'flex-start' }}>
-                    {!n.read && (
-                      <span
-                        style={{
-                          width: '8px',
-                          height: '8px',
-                          borderRadius: '50%',
-                          backgroundColor: '#5c6ac4',
-                          marginTop: '5px',
-                          flexShrink: 0,
-                        }}
-                      />
-                    )}
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, fontSize: '1.3rem', color: '#212b36' }}>{n.title}</div>
-                      <div style={{ fontSize: '1.2rem', color: '#637381', marginTop: '2px' }}>{n.message}</div>
-                      <div style={{ fontSize: '1.1rem', color: '#919eab', marginTop: '4px' }}>
-                        {formatRelative(n.created_at)}
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
+      <ActivityPanel open={open} onClose={() => setOpen(false)} workspaceId={workspaceId} />
+    </>
   );
 }
