@@ -91,6 +91,15 @@ export default function ObjetivosPage() {
   const metrics = useMemo(() => {
     const finishedCount = rows.filter(isFinished).length;
     const behindCount = rows.filter((o) => isBehindSchedule(o)).length;
+    // "Bloqueados" = objectives that have at least one blocked task. The
+    // ObjectiveStatus enum doesn't have a 'blocked' value, so we derive it
+    // from the tasks (which do).
+    const blockedCount = rows.filter((o) =>
+      (o.tasks || []).some((t) => t.status === 'blocked'),
+    ).length;
+    const overallAvg = rows.length
+      ? Math.round(rows.reduce((a, o) => a + getProgress(o), 0) / rows.length)
+      : 0;
     const deptStats = new Map<
       string,
       { department: Department; total: number; finished: number; progressSum: number }
@@ -119,7 +128,7 @@ export default function ObjetivosPage() {
         avg: Math.round(b.progressSum / Math.max(b.total, 1)),
       }))
       .sort((a, b) => b.finished - a.finished || b.avg - a.avg);
-    return { finishedCount, behindCount, leaderboard };
+    return { finishedCount, behindCount, blockedCount, overallAvg, leaderboard };
   }, [rows, departments]);
 
   // Apply the status filter once, then group by KPI.
@@ -179,26 +188,23 @@ export default function ObjetivosPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.4rem' }}>
-        <div>
-          <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>Objetivos</h1>
-          <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>
-            {activePeriod
-              ? `Periodo ${activePeriod.name}. Los objetivos se agrupan por KPI.`
-              : 'Sin periodo activo'}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
-          {canEdit && activePeriod && (
-            <button
-              onClick={() => setShowCreate(true)}
-              style={{ padding: '0.8rem 1.6rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: '#5c6ac4', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-            >
-              + Crear Objetivo
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Hero summary block — replaces the plain title row. */}
+      <ObjetivosHero
+        periodName={activePeriod?.name}
+        total={rows.length}
+        overallAvg={metrics.overallAvg}
+        finishedCount={metrics.finishedCount}
+        behindCount={metrics.behindCount}
+        blockedCount={metrics.blockedCount}
+        leaderboard={metrics.leaderboard}
+        canCreate={Boolean(canEdit && activePeriod)}
+        onCreate={() => setShowCreate(true)}
+      />
+
+      {/* Per-department progress bars */}
+      {metrics.leaderboard.length > 0 && (
+        <DepartmentBars rows={metrics.leaderboard} />
+      )}
 
       {/* Tabs */}
       <div
@@ -917,6 +923,299 @@ function LeaderboardCard({ rows }: { rows: LeaderboardRow[] }) {
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+// ──────────────── Hero + department bars (new top section) ────────────────
+
+interface HeroLeaderboardRow {
+  department: Department;
+  total: number;
+  finished: number;
+  avg: number;
+}
+
+function ObjetivosHero({
+  periodName,
+  total,
+  overallAvg,
+  finishedCount,
+  behindCount,
+  blockedCount,
+  leaderboard,
+  canCreate,
+  onCreate,
+}: {
+  periodName?: string;
+  total: number;
+  overallAvg: number;
+  finishedCount: number;
+  behindCount: number;
+  blockedCount: number;
+  leaderboard: HeroLeaderboardRow[];
+  canCreate: boolean;
+  onCreate: () => void;
+}) {
+  // Narrative built from per-department averages: call out the teams above
+  // / below the line so the hero reads like a quick status note.
+  const narrative = buildNarrative(leaderboard, overallAvg);
+  return (
+    <div
+      style={{
+        background: 'linear-gradient(180deg, #5c6ac4 0%, #4959bd 100%)',
+        color: '#fff',
+        borderRadius: '12px',
+        padding: '2.4rem 2.8rem',
+        marginBottom: '1.6rem',
+        display: 'grid',
+        gridTemplateColumns: '1fr auto',
+        gap: '2.4rem',
+        alignItems: 'center',
+        boxShadow: '0 10px 30px -10px rgba(73,89,189,0.25)',
+      }}
+    >
+      <div>
+        <div
+          style={{
+            fontSize: '1.1rem',
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: 'rgba(255,255,255,0.7)',
+            fontWeight: 600,
+            marginBottom: '0.6rem',
+          }}
+        >
+          Objetivos {periodName ? `· ${periodName}` : ''}
+        </div>
+        <h1
+          style={{
+            margin: 0,
+            fontSize: '3rem',
+            fontWeight: 700,
+            letterSpacing: '-0.015em',
+            lineHeight: 1.2,
+          }}
+        >
+          <span>{total} objetivos, </span>
+          <span style={{ color: '#ffe082' }}>{overallAvg}%</span>
+          <span> de avance medio</span>
+        </h1>
+        <div
+          style={{
+            fontSize: '1.8rem',
+            fontWeight: 600,
+            marginTop: '0.4rem',
+            color: 'rgba(255,255,255,0.92)',
+          }}
+        >
+          {finishedCount} completados <span style={{ opacity: 0.5 }}>·</span>{' '}
+          {behindCount} en riesgo <span style={{ opacity: 0.5 }}>·</span>{' '}
+          {blockedCount} bloqueados
+        </div>
+        {narrative && (
+          <p
+            style={{
+              margin: '1.4rem 0 0',
+              fontSize: '1.4rem',
+              lineHeight: '2.2rem',
+              color: 'rgba(255,255,255,0.85)',
+              maxWidth: '62ch',
+            }}
+          >
+            {narrative}
+          </p>
+        )}
+        {canCreate && (
+          <div style={{ marginTop: '1.8rem' }}>
+            <button
+              onClick={onCreate}
+              style={{
+                padding: '0.8rem 1.6rem',
+                fontSize: '1.3rem',
+                fontWeight: 600,
+                color: '#4959bd',
+                background: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 6px rgba(15,24,48,0.1)',
+              }}
+            >
+              + Crear Objetivo
+            </button>
+          </div>
+        )}
+      </div>
+      <HeroRing value={overallAvg} />
+    </div>
+  );
+}
+
+function HeroRing({ value }: { value: number }) {
+  const clamped = Math.max(0, Math.min(100, Math.round(value)));
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div
+        style={{
+          width: '10rem',
+          height: '10rem',
+          position: 'relative',
+        }}
+      >
+        <svg viewBox="0 0 40 40" width="100%" height="100%" style={{ transform: 'rotate(-90deg)' }}>
+          <circle cx="20" cy="20" r="17" stroke="rgba(255,255,255,0.22)" strokeWidth="4" fill="none" />
+          <circle
+            cx="20"
+            cy="20"
+            r="17"
+            stroke="#ffe082"
+            strokeWidth="4"
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={`${clamped} 100`}
+            pathLength={100}
+          />
+        </svg>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'grid',
+            placeItems: 'center',
+            fontSize: '2.4rem',
+            fontWeight: 700,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {clamped}%
+        </div>
+      </div>
+      <div
+        style={{
+          marginTop: '0.4rem',
+          fontSize: '1.05rem',
+          color: 'rgba(255,255,255,0.75)',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          fontWeight: 600,
+        }}
+      >
+        Promedio global
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Data-driven hero narrative. Points out the teams above/below the mean
+ * so the block reads like a short status note rather than a static label.
+ */
+function buildNarrative(leaderboard: HeroLeaderboardRow[], overallAvg: number): string | null {
+  if (leaderboard.length === 0) return null;
+  const sorted = [...leaderboard].sort((a, b) => b.avg - a.avg);
+  const best = sorted.filter((d) => d.avg >= overallAvg + 5).slice(0, 2).map((d) => d.department.name);
+  const worst = sorted
+    .filter((d) => d.avg < overallAvg - 5)
+    .slice(-1)
+    .map((d) => d.department.name)[0];
+
+  const parts: string[] = [];
+  if (best.length === 2) parts.push(`${best[0]} y ${best[1]} están por encima del ritmo`);
+  else if (best.length === 1) parts.push(`${best[0]} está por encima del ritmo`);
+  if (worst) parts.push(`${worst} necesita atención`);
+  if (parts.length === 0) parts.push('Todos los departamentos están cerca del promedio');
+  return `${parts.join(' · ')}.`;
+}
+
+function DepartmentBars({ rows }: { rows: HeroLeaderboardRow[] }) {
+  return (
+    <div
+      className="Polaris-Card"
+      style={{
+        padding: '1.6rem 2rem',
+        borderRadius: '12px',
+        border: '1px solid var(--color-border)',
+        background: '#fff',
+        marginBottom: '2rem',
+      }}
+    >
+      <div
+        style={{
+          fontSize: '1.1rem',
+          fontWeight: 600,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: '#637381',
+          marginBottom: '1rem',
+        }}
+      >
+        Progreso por departamento
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          columnGap: '3.6rem',
+          rowGap: '0.8rem',
+        }}
+      >
+        {rows.map((r) => (
+          <DepartmentBarRow key={r.department.id} row={r} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DepartmentBarRow({ row }: { row: HeroLeaderboardRow }) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '160px 1fr 56px 68px',
+        alignItems: 'center',
+        columnGap: '1.2rem',
+        fontSize: '1.25rem',
+        padding: '0.6rem 0',
+      }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem' }}>
+        <span
+          style={{
+            width: '0.8rem',
+            height: '0.8rem',
+            borderRadius: '2px',
+            backgroundColor: row.department.color || '#919eab',
+          }}
+        />
+        <span style={{ fontWeight: 500, color: '#212b36' }}>{row.department.name}</span>
+      </span>
+      <div style={{ position: 'relative', height: '0.8rem', borderRadius: '999px', background: '#dfe3e8', overflow: 'hidden' }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            right: 'auto',
+            width: `${Math.max(0, Math.min(100, row.avg))}%`,
+            background: '#5c6ac4',
+            borderRadius: '999px',
+          }}
+        />
+      </div>
+      <span
+        style={{
+          textAlign: 'right',
+          fontWeight: 700,
+          color: '#212b36',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {row.avg}%
+      </span>
+      <span style={{ fontSize: '1.15rem', color: '#637381', textAlign: 'right' }}>
+        {row.finished}/{row.total}
+      </span>
     </div>
   );
 }
