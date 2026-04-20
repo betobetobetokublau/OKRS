@@ -9,6 +9,18 @@ import type { Profile } from '@/types';
  * comments, creations, task status changes, check-ins) into one timeline
  * ordered by timestamp desc. Per-workspace. No realtime yet; the hook
  * exposes `refetch()` so the consumer can refresh on panel open.
+ *
+ * Implementation note: every table is queried with ONLY its own columns.
+ * We resolve related entities (profiles, kpis, objectives, tasks) in a
+ * second pass via `.in('id', [...])` batches. That's because:
+ *   - progress_logs.user_id / checkins.user_id FK into auth.users, not
+ *     profiles, so PostgREST's embedded-join hint doesn't resolve.
+ *   - Some deployments don't have comments→kpis / progress_logs→kpis
+ *     FKs registered in PostgREST's schema cache, so embedded joins
+ *     there fail with PGRST200.
+ *   - tasks.updated_at doesn't exist in the current schema (we only
+ *     have created_at), so we use created_at for status-change events
+ *     as an approximation until a proper audit trail lands.
  */
 
 export type ActivityEventKind =
@@ -58,83 +70,156 @@ export function useActivityFeed(
     setLoading(true);
     const supabase = createClient();
 
-    // Fetch events first — user names are resolved in a second pass
-    // because progress_logs.user_id and checkins.user_id both FK into
-    // auth.users (not profiles), so PostgREST's embedded-join syntax
-    // can't resolve profiles via the hint. RLS scopes most of these to
-    // the caller's workspace already; we pass workspace_id where we can.
+    // ── Step 1: raw rows per source (no embedded joins except one cheap
+    // inner-join on tasks.objective to filter by workspace). ─────────
     const [progressRes, commentsRes, objsRes, kpisRes, tasksRes, checkinsRes] = await Promise.all([
       supabase
         .from('progress_logs')
-        .select(
-          'id, created_at, user_id, progress_value, kpi_id, objective_id, task_id, kpi:kpis(id, title), objective:objectives(id, title), task:tasks(id, title)',
-        )
+        .select('id, created_at, user_id, progress_value, kpi_id, objective_id, task_id')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
         .limit(limit),
       supabase
         .from('comments')
-        .select(
-          'id, created_at, user_id, content, kpi_id, objective_id, kpi:kpis(id, title, workspace_id), objective:objectives(id, title, workspace_id)',
-        )
-        // We filter to the current workspace in-memory via the joined
-        // entity's workspace_id — comments don't carry workspace_id
-        // directly, and OR-across-joins is awkward in PostgREST.
+        .select('id, created_at, user_id, content, kpi_id, objective_id')
+        .order('created_at', { ascending: false })
+        .limit(limit * 2), // fetch extra, workspace-filter in memory
+      supabase
+        .from('objectives')
+        .select('id, title, created_at, workspace_id')
+        .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
         .limit(limit),
       supabase
-        .from('objectives')
-        .select('id, title, created_at')
-        .eq('workspace_id', workspaceId)
-        .order('created_at', { ascending: false })
-        .limit(15),
-      supabase
         .from('kpis')
-        .select('id, title, created_at')
+        .select('id, title, created_at, workspace_id')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
-        .limit(15),
+        .limit(limit),
       supabase
         .from('tasks')
         .select(
-          'id, title, status, block_reason, created_at, updated_at, objective:objectives!inner(id, title, workspace_id)',
+          'id, title, status, block_reason, created_at, objective:objectives!inner(id, title, workspace_id)',
         )
         .eq('objective.workspace_id', workspaceId)
-        .order('updated_at', { ascending: false })
-        .limit(30),
+        .order('created_at', { ascending: false })
+        .limit(limit),
       supabase
         .from('checkins')
         .select('id, created_at, user_id, summary')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
-        .limit(10),
+        .limit(limit),
     ]);
 
-    // Collect every user_id that shows up in any event source, then
-    // batch-fetch their profiles in one query.
+    // ── Step 2: collect IDs that need a title / name lookup. ─────────
     const userIds = new Set<string>();
-    (progressRes.data || []).forEach((r: any) => r.user_id && userIds.add(r.user_id));
-    (commentsRes.data || []).forEach((r: any) => r.user_id && userIds.add(r.user_id));
-    (checkinsRes.data || []).forEach((r: any) => r.user_id && userIds.add(r.user_id));
+    const kpiIds = new Set<string>();
+    const objIds = new Set<string>();
+    const taskIds = new Set<string>();
 
-    const profileByUserId = new Map<string, Pick<Profile, 'id' | 'full_name'>>();
-    if (userIds.size > 0) {
-      const { data: profs } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .in('id', Array.from(userIds));
-      (profs || []).forEach((p: { id: string; full_name: string }) =>
-        profileByUserId.set(p.id, p),
-      );
-    }
+    const addUser = (v: unknown) => typeof v === 'string' && userIds.add(v);
+    const addKpi = (v: unknown) => typeof v === 'string' && kpiIds.add(v);
+    const addObj = (v: unknown) => typeof v === 'string' && objIds.add(v);
+    const addTask = (v: unknown) => typeof v === 'string' && taskIds.add(v);
+
+    (progressRes.data || []).forEach((r: any) => {
+      addUser(r.user_id);
+      addKpi(r.kpi_id);
+      addObj(r.objective_id);
+      addTask(r.task_id);
+    });
+    (commentsRes.data || []).forEach((r: any) => {
+      addUser(r.user_id);
+      addKpi(r.kpi_id);
+      addObj(r.objective_id);
+    });
+    (checkinsRes.data || []).forEach((r: any) => {
+      addUser(r.user_id);
+    });
+
+    // Objectives/KPIs we already loaded (the "created" streams) seed the
+    // title maps for free — skip refetching them below.
+
+    // ── Step 3: batch lookups for entity titles. Skipped when empty. ──
+    const needProfiles = userIds.size > 0;
+    const missingKpiIds = Array.from(kpiIds).filter(
+      (id) => !(kpisRes.data || []).some((k: any) => k.id === id),
+    );
+    const missingObjIds = Array.from(objIds).filter(
+      (id) => !(objsRes.data || []).some((o: any) => o.id === id),
+    );
+
+    const [profsRes, extraKpisRes, extraObjsRes, tasksLookupRes] = await Promise.all([
+      needProfiles
+        ? supabase.from('profiles').select('id, full_name').in('id', Array.from(userIds))
+        : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+      missingKpiIds.length
+        ? supabase.from('kpis').select('id, title, workspace_id').in('id', missingKpiIds)
+        : Promise.resolve({ data: [] as { id: string; title: string; workspace_id: string }[] }),
+      missingObjIds.length
+        ? supabase.from('objectives').select('id, title, workspace_id').in('id', missingObjIds)
+        : Promise.resolve({ data: [] as { id: string; title: string; workspace_id: string }[] }),
+      taskIds.size
+        ? supabase.from('tasks').select('id, title').in('id', Array.from(taskIds))
+        : Promise.resolve({ data: [] as { id: string; title: string }[] }),
+    ]);
+
+    // ── Step 4: build lookup maps. ───────────────────────────────────
+    const profileByUserId = new Map<string, { id: string; full_name: string }>();
+    (profsRes.data || []).forEach((p: { id: string; full_name: string }) =>
+      profileByUserId.set(p.id, p),
+    );
+
+    const kpiById = new Map<string, { id: string; title: string; workspace_id: string }>();
+    (kpisRes.data || []).forEach((k: any) =>
+      kpiById.set(k.id, { id: k.id, title: k.title, workspace_id: k.workspace_id }),
+    );
+    (extraKpisRes.data || []).forEach((k: { id: string; title: string; workspace_id: string }) =>
+      kpiById.set(k.id, k),
+    );
+
+    const objById = new Map<string, { id: string; title: string; workspace_id: string }>();
+    (objsRes.data || []).forEach((o: any) =>
+      objById.set(o.id, { id: o.id, title: o.title, workspace_id: o.workspace_id }),
+    );
+    (extraObjsRes.data || []).forEach((o: { id: string; title: string; workspace_id: string }) =>
+      objById.set(o.id, o),
+    );
+
+    const taskById = new Map<string, { id: string; title: string }>();
+    (tasksLookupRes.data || []).forEach((t: { id: string; title: string }) =>
+      taskById.set(t.id, t),
+    );
+
+    // ── Step 5: transform into a unified event list. ─────────────────
+    const out: ActivityEvent[] = [];
     const actorFor = (userId: string | null | undefined) =>
       userId ? profileByUserId.get(userId) ?? null : null;
 
-    const out: ActivityEvent[] = [];
+    const refForKpi = (id: string | null | undefined): EntityRef | undefined => {
+      if (!id) return undefined;
+      const k = kpiById.get(id);
+      if (!k) return undefined;
+      return { type: 'kpi', id: k.id, title: k.title };
+    };
+    const refForObj = (id: string | null | undefined): EntityRef | undefined => {
+      if (!id) return undefined;
+      const o = objById.get(id);
+      if (!o) return undefined;
+      return { type: 'objective', id: o.id, title: o.title };
+    };
+    const refForTask = (id: string | null | undefined): EntityRef | undefined => {
+      if (!id) return undefined;
+      const t = taskById.get(id);
+      if (!t) return undefined;
+      return { type: 'task', id: t.id, title: t.title };
+    };
 
     // Progress log → "X actualizó progreso de Y a N%"
     (progressRes.data || []).forEach((r: any) => {
-      const target = pickEntity(r);
+      const target =
+        refForTask(r.task_id) ?? refForObj(r.objective_id) ?? refForKpi(r.kpi_id);
       if (!target) return;
       out.push({
         id: `progress-${r.id}`,
@@ -146,20 +231,10 @@ export function useActivityFeed(
       });
     });
 
-    // Comments → "X comentó en Y" + quote
+    // Comments → "X comentó en Y" + quote. Skip comments whose target
+    // isn't in this workspace (in-memory workspace filter).
     (commentsRes.data || []).forEach((r: any) => {
-      // Root filter by workspace: at least one joined entity must be in this workspace
-      const kpi = pickOne(r.kpi);
-      const obj = pickOne(r.objective);
-      const entityInWs =
-        (kpi && kpi.workspace_id === workspaceId) ||
-        (obj && obj.workspace_id === workspaceId);
-      if (!entityInWs) return;
-      const target: EntityRef | undefined = obj
-        ? { type: 'objective', id: obj.id, title: obj.title }
-        : kpi
-        ? { type: 'kpi', id: kpi.id, title: kpi.title }
-        : undefined;
+      const target = refForObj(r.objective_id) ?? refForKpi(r.kpi_id);
       if (!target) return;
       out.push({
         id: `comment-${r.id}`,
@@ -171,9 +246,8 @@ export function useActivityFeed(
       });
     });
 
-    // Creations — no actor available (no created_by column today). We
-    // still show the event with an anonymous actor so the timeline
-    // doesn't go silent on new entity creation.
+    // Objectives / KPIs created. No actor available (no created_by
+    // column) so we render the action anonymously.
     (objsRes.data || []).forEach((r: any) => {
       out.push({
         id: `obj-created-${r.id}`,
@@ -193,31 +267,31 @@ export function useActivityFeed(
       });
     });
 
-    // Tasks — creation, completion, and blocked.
+    // Tasks — creation + current status derived events (completion,
+    // blocked). tasks table has no updated_at, so the status-event
+    // timestamp is created_at (approximation until an audit trail lands).
     (tasksRes.data || []).forEach((r: any) => {
-      const objective = pickOne(r.objective);
+      const objective = Array.isArray(r.objective) ? r.objective[0] : r.objective;
       if (!objective) return;
       const parent: EntityRef = { type: 'objective', id: objective.id, title: objective.title };
       const target: EntityRef = { type: 'task', id: r.id, title: r.title };
 
-      // task_created: emit only if the task is recent and hasn't moved off
-      // 'pending' — otherwise we duplicate with completed/blocked below.
-      if (r.status === 'pending' || r.created_at === r.updated_at) {
-        out.push({
-          id: `task-created-${r.id}`,
-          kind: 'task_created',
-          timestamp: r.created_at,
-          actor: null,
-          target,
-          parent,
-        });
-      }
+      // Always emit a task_created event — plain and independent of
+      // current status.
+      out.push({
+        id: `task-created-${r.id}`,
+        kind: 'task_created',
+        timestamp: r.created_at,
+        actor: null,
+        target,
+        parent,
+      });
 
       if (r.status === 'completed') {
         out.push({
           id: `task-completed-${r.id}`,
           kind: 'task_completed',
-          timestamp: r.updated_at || r.created_at,
+          timestamp: r.created_at,
           actor: null,
           target,
           parent,
@@ -226,7 +300,7 @@ export function useActivityFeed(
         out.push({
           id: `task-blocked-${r.id}`,
           kind: 'task_blocked',
-          timestamp: r.updated_at || r.created_at,
+          timestamp: r.created_at,
           actor: null,
           target,
           parent,
@@ -257,23 +331,4 @@ export function useActivityFeed(
   }, [load]);
 
   return { events, loading, refetch: load };
-}
-
-// ─────────── helpers ───────────
-
-/** Supabase's nested-select returns either an object or a 1-item array
- *  depending on version. Normalize to a single object (or null). */
-function pickOne<T>(value: T | T[] | null | undefined): T | null {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return (value as T | null) ?? null;
-}
-
-function pickEntity(r: any): EntityRef | undefined {
-  const task = pickOne(r.task);
-  if (task && r.task_id) return { type: 'task', id: task.id, title: task.title };
-  const obj = pickOne(r.objective);
-  if (obj && r.objective_id) return { type: 'objective', id: obj.id, title: obj.title };
-  const kpi = pickOne(r.kpi);
-  if (kpi && r.kpi_id) return { type: 'kpi', id: kpi.id, title: kpi.title };
-  return undefined;
 }
