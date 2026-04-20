@@ -340,8 +340,11 @@ export function SkillTreeCanvas({
               opacity={isDimmed ? 0.18 : 1}
               onClick={(e) => {
                 e.stopPropagation();
+                // Click in the radial only TOGGLES focus. The focus panel
+                // that appears on the side is what routes to the slide-in
+                // detail — a second click (on the panel's title or an
+                // objective) fires onNodeClick.
                 setFocusedId(isFocused ? null : okr.id);
-                onNodeClick('kpi', okr.id);
               }}
             >
               {/* sector background */}
@@ -439,35 +442,65 @@ export function SkillTreeCanvas({
                 {Math.round(okr.progress)}%
               </text>
 
-              {/* Horizontal (unrotated) KPI title under the circle */}
-              <g style={{ pointerEvents: 'none' }}>
-                {lines.map((line, li) => (
-                  <text
-                    key={li}
-                    x={labelCx}
-                    y={labelCy - 4 + li * 13}
-                    textAnchor="middle"
-                    fontSize="11"
-                    fontWeight={700}
-                    fill="#0F1830"
-                    letterSpacing=".01em"
-                  >
-                    {line}
-                  </text>
-                ))}
-                <text
-                  x={labelCx}
-                  y={labelCy - 4 + lines.length * 13}
-                  textAnchor="middle"
-                  fontSize="9"
-                  fill="#6B7691"
-                  letterSpacing=".08em"
-                  style={{ textTransform: 'uppercase' }}
-                  fontWeight={600}
-                >
-                  {okr.category}
-                </text>
-              </g>
+              {/* White rounded "label card" with title lines + category
+                  subtitle — lifted from proposal 7A to give each KPI a
+                  readable, non-overlapping label that reads horizontally. */}
+              {(() => {
+                const fontTitle = 11;
+                const fontKpi = 9;
+                const lineH = 13;
+                const padX = 10;
+                const padY = 7;
+                const widest = Math.max(
+                  ...lines.map((l) => l.length * fontTitle * 0.55),
+                  (okr.category.length + 2) * fontKpi * 0.6,
+                );
+                const cardW = Math.min(180, Math.max(90, widest + padX * 2));
+                const cardH = lines.length * lineH + lineH + padY * 2 - 2;
+                const cardX = labelCx - cardW / 2;
+                const cardY = labelCy - 4 - lineH + padY - 2;
+                const textStartY = cardY + padY + fontTitle;
+                return (
+                  <g style={{ pointerEvents: 'none' }}>
+                    <rect
+                      x={cardX}
+                      y={cardY}
+                      width={cardW}
+                      height={cardH}
+                      rx={8}
+                      fill="#FFFFFF"
+                      stroke="#D9E1F2"
+                      strokeWidth={1}
+                    />
+                    {lines.map((line, li) => (
+                      <text
+                        key={li}
+                        x={labelCx}
+                        y={textStartY + li * lineH}
+                        textAnchor="middle"
+                        fontSize={fontTitle}
+                        fontWeight={700}
+                        fill="#0F1830"
+                        letterSpacing=".01em"
+                      >
+                        {line}
+                      </text>
+                    ))}
+                    <text
+                      x={labelCx}
+                      y={textStartY + lines.length * lineH}
+                      textAnchor="middle"
+                      fontSize={fontKpi}
+                      fill="#6B7691"
+                      letterSpacing=".08em"
+                      style={{ textTransform: 'uppercase' }}
+                      fontWeight={600}
+                    >
+                      {okr.category}
+                    </text>
+                  </g>
+                );
+              })()}
             </g>
           );
         })}
@@ -495,6 +528,234 @@ export function SkillTreeCanvas({
       </svg>
 
       <Hint />
+
+      {/* Focus modal: sits top-right of the canvas. Click on the header
+          opens the KPI slide-in; click an objective row opens that
+          objective's slide-in. Closing via X or ESC clears the focus. */}
+      <KpiFocusPanel
+        kpi={kpis.find((k) => k.id === focusedId) || null}
+        onClose={() => setFocusedId(null)}
+        onOpenKpi={(id) => onNodeClick('kpi', id)}
+        onOpenObjective={(id) => onNodeClick('obj', id)}
+      />
+    </div>
+  );
+}
+
+// ──────────────── Focus panel ────────────────
+
+function KpiFocusPanel({
+  kpi,
+  onClose,
+  onOpenKpi,
+  onOpenObjective,
+}: {
+  kpi: ViewKpi | null;
+  onClose: () => void;
+  onOpenKpi: (id: string) => void;
+  onOpenObjective: (id: string) => void;
+}) {
+  if (!kpi) return null;
+  const color = progressColor(kpi.progress);
+  return (
+    <div
+      className="anim-panel-enter"
+      style={{
+        position: 'absolute',
+        right: 18,
+        top: 60,
+        width: 320,
+        background: '#FFFFFF',
+        border: '1px solid #E3E7EF',
+        borderRadius: 12,
+        padding: 16,
+        zIndex: 6,
+        boxShadow: '0 8px 24px -12px rgba(15,24,48,0.15), 0 2px 6px rgba(15,24,48,0.04)',
+        maxHeight: 'calc(100% - 90px)',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <button
+        type="button"
+        aria-label="Cerrar"
+        onClick={onClose}
+        style={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          width: 26,
+          height: 26,
+          display: 'grid',
+          placeItems: 'center',
+          borderRadius: 6,
+          cursor: 'pointer',
+          background: 'transparent',
+          border: 'none',
+          color: '#9AA3B8',
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
+
+      {/* Header: eyebrow + title — clicking it opens the KPI detail. */}
+      <button
+        type="button"
+        onClick={() => onOpenKpi(kpi.id)}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          margin: 0,
+          textAlign: 'left',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          color: 'inherit',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            color: '#9AA3B8',
+            fontWeight: 600,
+            marginRight: 28, // leave room for the close button
+          }}
+        >
+          {kpi.category}
+        </div>
+        <div
+          style={{
+            margin: '4px 0 2px',
+            fontSize: 16,
+            fontWeight: 700,
+            color: '#0F1830',
+            letterSpacing: '-0.005em',
+            lineHeight: 1.25,
+          }}
+        >
+          {kpi.title}
+        </div>
+      </button>
+
+      <div
+        style={{
+          fontFamily: 'ui-monospace, "JetBrains Mono", monospace',
+          fontSize: 28,
+          fontWeight: 700,
+          marginTop: 8,
+          color,
+        }}
+      >
+        {Math.round(kpi.progress)}%
+      </div>
+      <div
+        style={{
+          height: 6,
+          borderRadius: 999,
+          background: '#EFF2F7',
+          overflow: 'hidden',
+          marginTop: 4,
+        }}
+      >
+        <div
+          style={{
+            height: '100%',
+            width: `${Math.max(0, Math.min(100, kpi.progress))}%`,
+            background: color,
+            borderRadius: 999,
+            transition: 'width 400ms ease',
+          }}
+        />
+      </div>
+
+      {/* Objectives list — each click opens the objective's slide-in. */}
+      <div
+        style={{
+          marginTop: 14,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          overflowY: 'auto',
+          paddingRight: 4,
+        }}
+      >
+        {kpi.objectives.length === 0 && (
+          <div style={{ color: '#9AA3B8', fontSize: 12.5, fontStyle: 'italic' }}>
+            Sin objetivos vinculados.
+          </div>
+        )}
+        {kpi.objectives.map((obj) => (
+          <button
+            key={obj.id}
+            type="button"
+            onClick={() => onOpenObjective(obj.id)}
+            style={{
+              border: '1px solid #E3E7EF',
+              borderRadius: 8,
+              padding: '10px 12px',
+              fontSize: 12.5,
+              background: '#FFFFFF',
+              cursor: 'pointer',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+              color: 'inherit',
+              transition: 'border-color 120ms ease, background 120ms ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#C8D2E4';
+              e.currentTarget.style.background = '#FAFBFD';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '#E3E7EF';
+              e.currentTarget.style.background = '#FFFFFF';
+            }}
+          >
+            <div style={{ color: '#3B455C', fontWeight: 500, lineHeight: 1.3 }}>{obj.name}</div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: 6,
+                gap: 8,
+              }}
+            >
+              <div
+                style={{
+                  flex: 1,
+                  height: 4,
+                  borderRadius: 999,
+                  background: '#EFF2F7',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${Math.max(0, Math.min(100, obj.progress))}%`,
+                    background: progressColor(obj.progress),
+                    borderRadius: 999,
+                  }}
+                />
+              </div>
+              <div
+                style={{
+                  fontFamily: 'ui-monospace, "JetBrains Mono", monospace',
+                  fontSize: 11,
+                  color: '#6B7691',
+                  fontWeight: 600,
+                }}
+              >
+                {Math.round(obj.progress)}%
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

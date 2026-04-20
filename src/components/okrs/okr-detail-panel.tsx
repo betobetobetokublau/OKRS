@@ -27,48 +27,53 @@ const CLOSE_ICON = 'M6 18L18 6M6 6l12 12';
  * Closes on ESC, backdrop click, or the X button.
  */
 export function OkrDetailPanel({ target, departments, canEdit, onClose, onChanged }: OkrDetailPanelProps) {
-  // Visibility latched after first target so we can animate in/out smoothly
-  const [mounted, setMounted] = useState(false);
-  const [entered, setEntered] = useState(false);
+  // `shown` drives whether the DOM is mounted; `closing` triggers the exit
+  // animation. On close we don't unmount until the exit keyframe finishes,
+  // so the panel visibly slides out (vs. the old transition-on-state-change
+  // which often didn't fire because React committed both states in one frame).
+  const [shown, setShown] = useState<PanelTarget>(null);
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => {
     if (target) {
-      setMounted(true);
-      // Defer to next frame so the initial translateX(100%) is committed before
-      // transitioning to translateX(0).
-      requestAnimationFrame(() => setEntered(true));
-    } else if (mounted) {
-      setEntered(false);
-      const timer = setTimeout(() => setMounted(false), 220);
+      // Incoming: replace whatever was shown and cancel any pending close.
+      setClosing(false);
+      setShown(target);
+    } else if (shown) {
+      // Outgoing: trigger exit animation, unmount after it completes.
+      setClosing(true);
+      const timer = setTimeout(() => {
+        setShown(null);
+        setClosing(false);
+      }, 260);
       return () => clearTimeout(timer);
     }
-  }, [target, mounted]);
+  }, [target, shown]);
 
   useEffect(() => {
-    if (!target) return;
+    if (!shown || closing) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [target, onClose]);
+  }, [shown, closing, onClose]);
 
-  if (!mounted || !target) return null;
+  if (!shown) return null;
 
-  const typeLabel = target.type === 'kpi' ? 'KPI' : target.type === 'objective' ? 'Objetivo' : 'Tarea';
+  const typeLabel = shown.type === 'kpi' ? 'KPI' : shown.type === 'objective' ? 'Objetivo' : 'Tarea';
 
   return (
     <>
       {/* Backdrop */}
       <div
+        className={closing ? 'anim-backdrop-exit' : 'anim-backdrop'}
         onClick={onClose}
         style={{
           position: 'fixed',
           inset: 0,
           backgroundColor: 'rgba(0, 0, 0, 0.4)',
           zIndex: 200,
-          opacity: entered ? 1 : 0,
-          transition: 'opacity 200ms ease',
         }}
       />
 
@@ -76,6 +81,7 @@ export function OkrDetailPanel({ target, departments, canEdit, onClose, onChange
       <aside
         role="dialog"
         aria-modal="true"
+        className={closing ? 'anim-panel-exit' : 'anim-panel-enter'}
         style={{
           position: 'fixed',
           top: 0,
@@ -85,8 +91,6 @@ export function OkrDetailPanel({ target, departments, canEdit, onClose, onChange
           backgroundColor: 'white',
           zIndex: 201,
           boxShadow: '-4px 0 16px rgba(0,0,0,0.08)',
-          transform: entered ? 'translateX(0)' : 'translateX(100%)',
-          transition: 'transform 220ms ease',
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -139,25 +143,25 @@ export function OkrDetailPanel({ target, departments, canEdit, onClose, onChange
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '2rem' }}>
-          {target.type === 'kpi' && (
+          {shown.type === 'kpi' && (
             <KpiDetailPanelBody
-              kpiId={target.id}
+              kpiId={shown.id}
               departments={departments}
               canEdit={canEdit}
               onChanged={onChanged}
             />
           )}
-          {target.type === 'objective' && (
+          {shown.type === 'objective' && (
             <ObjectiveDetailPanelBody
-              objectiveId={target.id}
+              objectiveId={shown.id}
               departments={departments}
               canEdit={canEdit}
               onChanged={onChanged}
             />
           )}
-          {target.type === 'task' && (
+          {shown.type === 'task' && (
             <TaskDetailPanelBody
-              taskId={target.id}
+              taskId={shown.id}
               canEdit={canEdit}
               onChanged={onChanged}
             />
