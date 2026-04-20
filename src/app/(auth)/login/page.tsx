@@ -91,11 +91,23 @@ export default function LoginPage() {
           justifyContent: 'center',
           padding: '4rem',
           backgroundColor: '#fff',
+          // Stretch the column to full viewport height so align-items:center
+          // actually has room to center the content block.
+          minHeight: '100vh',
         }}
       >
-        <div style={{ width: '100%', maxWidth: '380px' }}>
+        {/* Single flex column — everything shares one consistent rhythm. */}
+        <div
+          style={{
+            width: '100%',
+            maxWidth: '380px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2.4rem',
+          }}
+        >
           {/* Wordmark */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem', marginBottom: '4rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
             <KLogo size={36} />
             <span style={{ fontWeight: 600, fontSize: '1.5rem', color: KUBLAU_INK, letterSpacing: '-0.01em' }}>
               Kublau
@@ -103,7 +115,7 @@ export default function LoginPage() {
           </div>
 
           {/* Title block */}
-          <div style={{ marginBottom: '2.8rem' }}>
+          <div>
             <h1
               style={{
                 fontSize: '2.2rem',
@@ -116,16 +128,16 @@ export default function LoginPage() {
             >
               Inicia sesión
             </h1>
-            <p style={{ color: KUBLAU_SUB, fontSize: '1.4rem', lineHeight: '2rem', marginTop: '0.4rem' }}>
+            <p style={{ color: KUBLAU_SUB, fontSize: '1.4rem', lineHeight: '2rem', margin: '0.4rem 0 0' }}>
               Bienvenido de vuelta. Continúa con tu cuenta de Kublau.
             </p>
           </div>
 
-          {/* Form */}
+          {/* Form — drop Polaris-FormLayout class to stop it from fighting
+              the inline flex+gap rhythm (was pushing fields apart by ~400px). */}
           <form
             onSubmit={handleSubmit}
-            className="Polaris-FormLayout"
-            style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}
+            style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem', margin: 0 }}
           >
             {error && <Banner>{error}</Banner>}
 
@@ -170,23 +182,14 @@ export default function LoginPage() {
               }
             />
 
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginTop: '-0.4rem',
-              }}
-            >
-              <RememberMe checked={remember} onChange={setRemember} />
-            </div>
+            <RememberMe checked={remember} onChange={setRemember} />
 
             <PrimaryButton loading={loading}>
               {loading ? '' : 'Iniciar sesión'}
             </PrimaryButton>
           </form>
 
-          <div style={{ marginTop: '2.8rem', fontSize: '1.3rem', color: KUBLAU_SUB }}>
+          <div style={{ fontSize: '1.3rem', color: KUBLAU_SUB }}>
             ¿No tienes cuenta?{' '}
             <span style={{ color: KUBLAU_PURPLE, fontWeight: 500 }}>Contacta al administrador</span>
           </div>
@@ -334,18 +337,14 @@ interface TextFieldProps {
 function TextField({ label, type = 'text', value, onChange, placeholder, autoFocus, required, right }: TextFieldProps) {
   const [focus, setFocus] = useState(false);
   return (
-    <div className="Polaris-FormLayout__Item">
-      <div className="Polaris-Labelled__LabelWrapper">
-        <label
-          className="Polaris-Label"
-          style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, color: KUBLAU_INK, marginBottom: '0.6rem' }}
-        >
-          {label}
-        </label>
-      </div>
-      <div className="Polaris-TextField" style={{ position: 'relative' }}>
+    <div>
+      <label
+        style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, color: KUBLAU_INK, marginBottom: '0.6rem' }}
+      >
+        {label}
+      </label>
+      <div style={{ position: 'relative' }}>
         <input
-          className="Polaris-TextField__Input"
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
