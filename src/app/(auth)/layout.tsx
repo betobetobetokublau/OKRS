@@ -1,16 +1,9 @@
+/**
+ * Auth layout: passthrough. Each auth page owns its own background +
+ * centering (login is full-bleed split-screen; cambiar-password is a
+ * centered card). Putting centering in the layout would fight the
+ * split-screen login.
+ */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#f4f6f8',
-        padding: '2rem',
-      }}
-    >
-      {children}
-    </div>
-  );
+  return <>{children}</>;
 }
