@@ -79,21 +79,23 @@ export function useActivityFeed(
     const supabase = createClient();
 
     // ── Step 1: raw rows per source. SELECT * on progress_logs and
-    // comments because their columns vary between deployments — some
-    // don't have progress_value / kpi_id and explicit selects blow up
-    // (42703). We read defensively in step 5. ────────────────────────
+    // comments because their actual schema is narrower than the spec —
+    // neither has workspace_id, and both only reference objective_id
+    // (no kpi_id / task_id on progress_logs either). We rely on RLS to
+    // scope them to the caller's workspace and additionally drop any
+    // event whose objective isn't in objById (loaded below per the
+    // current workspace). ──────────────────────────────────────────
     const [progressRes, commentsRes, objsRes, kpisRes, tasksRes, checkinsRes] = await Promise.all([
       supabase
         .from('progress_logs')
         .select('*')
-        .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
-        .limit(limit),
+        .limit(limit * 2),
       supabase
         .from('comments')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(limit * 2), // fetch extra, workspace-filter in memory
+        .limit(limit * 2),
       supabase
         .from('objectives')
         .select('id, title, created_at, workspace_id')
@@ -135,13 +137,10 @@ export function useActivityFeed(
 
     (progressRes.data || []).forEach((r: any) => {
       addUser(r.user_id);
-      addKpi(r.kpi_id);
       addObj(r.objective_id);
-      addTask(r.task_id);
     });
     (commentsRes.data || []).forEach((r: any) => {
       addUser(r.user_id);
-      addKpi(r.kpi_id);
       addObj(r.objective_id);
     });
     (checkinsRes.data || []).forEach((r: any) => {
@@ -185,17 +184,21 @@ export function useActivityFeed(
     (kpisRes.data || []).forEach((k: any) =>
       kpiById.set(k.id, { id: k.id, title: k.title, workspace_id: k.workspace_id }),
     );
-    (extraKpisRes.data || []).forEach((k: { id: string; title: string; workspace_id: string }) =>
-      kpiById.set(k.id, k),
-    );
+    (extraKpisRes.data || []).forEach((k: { id: string; title: string; workspace_id: string }) => {
+      if (k.workspace_id === workspaceId) kpiById.set(k.id, k);
+    });
 
     const objById = new Map<string, { id: string; title: string; workspace_id: string }>();
     (objsRes.data || []).forEach((o: any) =>
       objById.set(o.id, { id: o.id, title: o.title, workspace_id: o.workspace_id }),
     );
-    (extraObjsRes.data || []).forEach((o: { id: string; title: string; workspace_id: string }) =>
-      objById.set(o.id, o),
-    );
+    (extraObjsRes.data || []).forEach((o: { id: string; title: string; workspace_id: string }) => {
+      // Only allow objectives in the current workspace into the lookup
+      // map — RLS should block cross-workspace reads anyway, but this is
+      // a defensive filter so comments/progress_logs events can't surface
+      // under the wrong workspace.
+      if (o.workspace_id === workspaceId) objById.set(o.id, o);
+    });
 
     const taskById = new Map<string, { id: string; title: string }>();
     (tasksLookupRes.data || []).forEach((t: { id: string; title: string }) =>
@@ -226,15 +229,21 @@ export function useActivityFeed(
       return { type: 'task', id: t.id, title: t.title };
     };
 
-    // Progress log → "X actualizó progreso de Y a N%". The numeric
-    // field name varies across deployments (progress_value / value /
-    // new_progress), so we accept the first one that looks like a
-    // number. If none is present, the event still renders without %.
+    // Progress log → "X actualizó progreso de Y a N%". The real schema
+    // only has objective_id — no kpi_id / task_id columns — and the
+    // numeric field is new_value (with previous_value kept for audit).
+    // Accept any common name so a future schema change doesn't break.
+    // If none is a number, the event still renders but without the %.
     (progressRes.data || []).forEach((r: any) => {
-      const target =
-        refForTask(r.task_id) ?? refForObj(r.objective_id) ?? refForKpi(r.kpi_id);
+      const target = refForObj(r.objective_id);
       if (!target) return;
-      const pct = pickNumber(r.progress_value, r.value, r.new_progress, r.progress);
+      const pct = pickNumber(
+        r.new_value,
+        r.new_progress,
+        r.progress_value,
+        r.value,
+        r.progress,
+      );
       out.push({
         id: `progress-${r.id}`,
         kind: 'progress_log',
@@ -245,12 +254,11 @@ export function useActivityFeed(
       });
     });
 
-    // Comments → "X comentó en Y" + quote. Some deployments don't
-    // have comments.kpi_id; we just skip that path if the field is
-    // absent. The in-memory workspace filter happens via refForObj/Kpi
-    // — both maps are keyed only on entities in the current workspace.
+    // Comments → "X comentó en Y" + quote. Real schema has only
+    // objective_id. The in-memory workspace filter happens via
+    // refForObj — objById is keyed on the current workspace.
     (commentsRes.data || []).forEach((r: any) => {
-      const target = refForObj(r.objective_id) ?? refForKpi(r.kpi_id);
+      const target = refForObj(r.objective_id);
       if (!target) return;
       out.push({
         id: `comment-${r.id}`,
