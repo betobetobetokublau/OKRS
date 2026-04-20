@@ -13,6 +13,8 @@ import {
 import { AnimatedModal } from '@/components/common/animated-modal';
 import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
 import { TaskForm } from '@/components/tasks/task-form';
+import { ActivityList } from '@/components/layout/activity-list';
+import { useActivityFeed, type EntityRef } from '@/hooks/use-activity-feed';
 import type { Department, KPI, Objective, ObjectiveStatus, Task } from '@/types';
 
 // ---------- Types ----------
@@ -77,6 +79,24 @@ export default function CheckinPage() {
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
 
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
+
+  // Activity feed shown under "Mis tareas". Same data source as the bell
+  // slide-in; embedded look is flat — no card bg, subtle row dividers only.
+  const {
+    events: activityEvents,
+    loading: activityLoading,
+  } = useActivityFeed(currentWorkspace?.id);
+
+  // Embedded rows open the existing detail panel instead of navigating
+  // away (the check-in page already mounts OkrDetailPanel at the bottom).
+  const handleActivityOpen = useCallback(
+    (ref: EntityRef) => {
+      if (ref.type === 'kpi') setPanelTarget({ type: 'kpi', id: ref.id });
+      else if (ref.type === 'objective') setPanelTarget({ type: 'objective', id: ref.id });
+      else if (ref.type === 'task') setPanelTarget({ type: 'task', id: ref.id });
+    },
+    [],
+  );
 
   const load = useCallback(async () => {
     if (!currentWorkspace?.id || !activePeriod?.id || !profile?.id) return;
@@ -479,15 +499,45 @@ export default function CheckinPage() {
             )}
           </div>
 
-          {/* Right column: Mis tareas */}
-          <MyTasksColumn
-            tasks={myAssignedTasks}
-            tasksToComplete={tasksToComplete}
-            onToggleComplete={toggleTaskCompletion}
-            onOpenTask={(t) => setPanelTarget({ type: 'task', id: t.id })}
-            onOpenObjective={(oid) => setPanelTarget({ type: 'objective', id: oid })}
-            onAddTask={() => setAddingTaskFor({ objectiveId: null })}
-          />
+          {/* Right column: Mis tareas + Actividad feed.
+              Wrapper stacks both vertically. MyTasksColumn's sticky
+              positioning applies only to itself now — the activity list
+              sits beneath it in the normal flow. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            <MyTasksColumn
+              tasks={myAssignedTasks}
+              tasksToComplete={tasksToComplete}
+              onToggleComplete={toggleTaskCompletion}
+              onOpenTask={(t) => setPanelTarget({ type: 'task', id: t.id })}
+              onOpenObjective={(oid) => setPanelTarget({ type: 'objective', id: oid })}
+              onAddTask={() => setAddingTaskFor({ objectiveId: null })}
+            />
+
+            {/* Embedded activity timeline. Flat — no card bg — subtle
+                top/bottom borders only so it reads as part of the page. */}
+            <section aria-label="Actividad reciente">
+              <div
+                style={{
+                  padding: '1rem 0 0.8rem',
+                  borderBottom: '1px solid #edeff2',
+                  marginBottom: '0.4rem',
+                }}
+              >
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#212b36' }}>
+                  Actividad
+                </h2>
+                <p style={{ fontSize: '1.1rem', color: '#637381', marginTop: '0.2rem' }}>
+                  Últimos movimientos del workspace
+                </p>
+              </div>
+              <ActivityList
+                events={activityEvents}
+                loading={activityLoading}
+                onOpen={handleActivityOpen}
+                variant="embed"
+              />
+            </section>
+          </div>
         </div>
       )}
 

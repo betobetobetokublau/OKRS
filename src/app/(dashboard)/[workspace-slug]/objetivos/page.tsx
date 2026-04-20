@@ -186,24 +186,34 @@ export default function ObjetivosPage() {
     refetch();
   }
 
+  // The hero + department bars section is a tall block that only makes sense
+  // when the user is looking at the operational views (Listado / Gantt).
+  // On Métricas the same data is presented as full stat cards, and on the
+  // Skill Tree it would crowd the canvas, so we hide it there.
+  const showHeroBlock = activeTab === 'listado' || activeTab === 'gantt';
+
   return (
     <div>
-      {/* Hero summary block — replaces the plain title row. */}
-      <ObjetivosHero
-        periodName={activePeriod?.name}
-        total={rows.length}
-        overallAvg={metrics.overallAvg}
-        finishedCount={metrics.finishedCount}
-        behindCount={metrics.behindCount}
-        blockedCount={metrics.blockedCount}
-        leaderboard={metrics.leaderboard}
-        canCreate={Boolean(canEdit && activePeriod)}
-        onCreate={() => setShowCreate(true)}
-      />
+      {showHeroBlock && (
+        <>
+          {/* Hero summary block — transparent, floats on the page bg. */}
+          <ObjetivosHero
+            periodName={activePeriod?.name}
+            total={rows.length}
+            overallAvg={metrics.overallAvg}
+            finishedCount={metrics.finishedCount}
+            behindCount={metrics.behindCount}
+            blockedCount={metrics.blockedCount}
+            leaderboard={metrics.leaderboard}
+            canCreate={Boolean(canEdit && activePeriod)}
+            onCreate={() => setShowCreate(true)}
+          />
 
-      {/* Per-department progress bars */}
-      {metrics.leaderboard.length > 0 && (
-        <DepartmentBars rows={metrics.leaderboard} />
+          {/* Per-department progress bars */}
+          {metrics.leaderboard.length > 0 && (
+            <DepartmentBars rows={metrics.leaderboard} />
+          )}
+        </>
       )}
 
       {/* Tabs */}
@@ -516,7 +526,7 @@ function KpiSection({
           </button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.8rem', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem', flexShrink: 0 }}>
           <div style={{ fontSize: '1.2rem', color: '#637381' }}>
             <strong style={{ color: '#212b36', fontWeight: 600 }}>{rows.length}</strong>{' '}
             {rows.length === 1 ? 'objetivo' : 'objetivos'}
@@ -533,15 +543,13 @@ function KpiSection({
             </strong>{' '}
             en riesgo
           </div>
-          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
-            <KpiStatusPill status={kpi.status} />
-            {canReorder && (
-              <>
-                <ReorderButton direction="up" disabled={isFirst} onClick={onMoveUp} />
-                <ReorderButton direction="down" disabled={isLast} onClick={onMoveDown} />
-              </>
-            )}
-          </div>
+          <KpiStatusPill status={kpi.status} />
+          {canReorder && (
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+              <ReorderButton direction="up" disabled={isFirst} onClick={onMoveUp} />
+              <ReorderButton direction="down" disabled={isLast} onClick={onMoveDown} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -963,16 +971,15 @@ function ObjetivosHero({
   return (
     <div
       style={{
-        background: 'linear-gradient(180deg, #5c6ac4 0%, #4959bd 100%)',
-        color: '#fff',
-        borderRadius: '12px',
-        padding: '2.4rem 2.8rem',
-        marginBottom: '1.6rem',
+        // Transparent — floats on the page background (no card, no border).
+        background: 'transparent',
+        color: '#212b36',
+        padding: '0.4rem 0',
+        marginBottom: '1rem',
         display: 'grid',
         gridTemplateColumns: '1fr auto',
-        gap: '2.4rem',
+        gap: '2rem',
         alignItems: 'center',
-        boxShadow: '0 10px 30px -10px rgba(73,89,189,0.25)',
       }}
     >
       <div>
@@ -981,9 +988,9 @@ function ObjetivosHero({
             fontSize: '1.1rem',
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
-            color: 'rgba(255,255,255,0.7)',
+            color: '#637381',
             fontWeight: 600,
-            marginBottom: '0.6rem',
+            marginBottom: '0.4rem',
           }}
         >
           Objetivos {periodName ? `· ${periodName}` : ''}
@@ -991,35 +998,36 @@ function ObjetivosHero({
         <h1
           style={{
             margin: 0,
-            fontSize: '3rem',
+            fontSize: '2.6rem',
             fontWeight: 700,
             letterSpacing: '-0.015em',
             lineHeight: 1.2,
+            color: '#212b36',
           }}
         >
           <span>{total} objetivos, </span>
-          <span style={{ color: '#ffe082' }}>{overallAvg}%</span>
+          <span style={{ color: '#5c6ac4' }}>{overallAvg}%</span>
           <span> de avance medio</span>
         </h1>
         <div
           style={{
-            fontSize: '1.8rem',
-            fontWeight: 600,
-            marginTop: '0.4rem',
-            color: 'rgba(255,255,255,0.92)',
+            fontSize: '1.5rem',
+            fontWeight: 500,
+            marginTop: '0.2rem',
+            color: '#454f5b',
           }}
         >
-          {finishedCount} completados <span style={{ opacity: 0.5 }}>·</span>{' '}
-          {behindCount} en riesgo <span style={{ opacity: 0.5 }}>·</span>{' '}
+          {finishedCount} completados <span style={{ color: '#c4cdd5' }}>·</span>{' '}
+          {behindCount} en riesgo <span style={{ color: '#c4cdd5' }}>·</span>{' '}
           {blockedCount} bloqueados
         </div>
         {narrative && (
           <p
             style={{
-              margin: '1.4rem 0 0',
-              fontSize: '1.4rem',
-              lineHeight: '2.2rem',
-              color: 'rgba(255,255,255,0.85)',
+              margin: '0.8rem 0 0',
+              fontSize: '1.3rem',
+              lineHeight: '2rem',
+              color: '#637381',
               maxWidth: '62ch',
             }}
           >
@@ -1027,19 +1035,19 @@ function ObjetivosHero({
           </p>
         )}
         {canCreate && (
-          <div style={{ marginTop: '1.8rem' }}>
+          <div style={{ marginTop: '1rem' }}>
             <button
               onClick={onCreate}
               style={{
                 padding: '0.8rem 1.6rem',
                 fontSize: '1.3rem',
                 fontWeight: 600,
-                color: '#4959bd',
-                background: '#fff',
+                color: '#fff',
+                background: '#5c6ac4',
                 border: 'none',
                 borderRadius: '6px',
                 cursor: 'pointer',
-                boxShadow: '0 2px 6px rgba(15,24,48,0.1)',
+                boxShadow: '0 1px 2px rgba(15,24,48,0.08)',
               }}
             >
               + Crear Objetivo
@@ -1058,18 +1066,18 @@ function HeroRing({ value }: { value: number }) {
     <div style={{ textAlign: 'center' }}>
       <div
         style={{
-          width: '10rem',
-          height: '10rem',
+          width: '9rem',
+          height: '9rem',
           position: 'relative',
         }}
       >
         <svg viewBox="0 0 40 40" width="100%" height="100%" style={{ transform: 'rotate(-90deg)' }}>
-          <circle cx="20" cy="20" r="17" stroke="rgba(255,255,255,0.22)" strokeWidth="4" fill="none" />
+          <circle cx="20" cy="20" r="17" stroke="#dfe3e8" strokeWidth="4" fill="none" />
           <circle
             cx="20"
             cy="20"
             r="17"
-            stroke="#ffe082"
+            stroke="#5c6ac4"
             strokeWidth="4"
             fill="none"
             strokeLinecap="round"
@@ -1083,8 +1091,9 @@ function HeroRing({ value }: { value: number }) {
             inset: 0,
             display: 'grid',
             placeItems: 'center',
-            fontSize: '2.4rem',
+            fontSize: '2.2rem',
             fontWeight: 700,
+            color: '#212b36',
             fontVariantNumeric: 'tabular-nums',
           }}
         >
@@ -1095,7 +1104,7 @@ function HeroRing({ value }: { value: number }) {
         style={{
           marginTop: '0.4rem',
           fontSize: '1.05rem',
-          color: 'rgba(255,255,255,0.75)',
+          color: '#637381',
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
           fontWeight: 600,
@@ -1131,13 +1140,11 @@ function buildNarrative(leaderboard: HeroLeaderboardRow[], overallAvg: number): 
 function DepartmentBars({ rows }: { rows: HeroLeaderboardRow[] }) {
   return (
     <div
-      className="Polaris-Card"
       style={{
-        padding: '1.6rem 2rem',
-        borderRadius: '12px',
-        border: '1px solid var(--color-border)',
-        background: '#fff',
-        marginBottom: '2rem',
+        // Transparent — matches the page background (no card, no border).
+        padding: '0.4rem 0',
+        background: 'transparent',
+        marginBottom: '1.4rem',
       }}
     >
       <div
@@ -1147,7 +1154,7 @@ function DepartmentBars({ rows }: { rows: HeroLeaderboardRow[] }) {
           letterSpacing: '0.06em',
           textTransform: 'uppercase',
           color: '#637381',
-          marginBottom: '1rem',
+          marginBottom: '0.6rem',
         }}
       >
         Progreso por departamento
@@ -1157,7 +1164,7 @@ function DepartmentBars({ rows }: { rows: HeroLeaderboardRow[] }) {
           display: 'grid',
           gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
           columnGap: '3.6rem',
-          rowGap: '0.8rem',
+          rowGap: '0.4rem',
         }}
       >
         {rows.map((r) => (
