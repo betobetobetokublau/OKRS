@@ -1,6 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { NotificationBell } from './notification-bell';
 import { UserAvatar } from '@/components/common/user-avatar';
@@ -18,6 +19,8 @@ interface TopbarProps {
 
 export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumbs }: TopbarProps) {
   const router = useRouter();
+  const params = useParams();
+  const workspaceSlug = (params['workspace-slug'] as string) || '';
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const toggleSidebar = useSidebarStore((s) => s.toggle);
@@ -85,7 +88,7 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
           {workspaceName || 'kublau'}
         </span>
 
-        {/* Breadcrumbs */}
+        {/* Breadcrumbs (only when explicitly passed) */}
         {breadcrumbs && breadcrumbs.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '1.2rem' }}>
             {breadcrumbs.map((crumb, i) => (
@@ -105,6 +108,43 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
           </div>
         )}
       </div>
+
+      {/* Center: Check-in CTA (absolutely centered so left/right zones stay anchored) */}
+      {workspaceSlug && (
+        <Link
+          href={`/${workspaceSlug}/check-in`}
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            padding: '0.6rem 1.4rem',
+            borderRadius: '999px',
+            background: 'rgba(255,255,255,0.12)',
+            border: '1px solid rgba(255,255,255,0.25)',
+            color: 'white',
+            fontSize: '1.3rem',
+            fontWeight: 500,
+            textDecoration: 'none',
+            lineHeight: 1,
+            transition: 'background 120ms ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.22)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 13l4 4L19 7" />
+          </svg>
+          Check-in
+        </Link>
+      )}
 
       {/* Right: Help + Notifications + User */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.6rem' }}>
