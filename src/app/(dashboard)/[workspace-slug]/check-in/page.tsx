@@ -601,13 +601,16 @@ export default function CheckinPage() {
             {/* Free-form thought captured as the check-in's summary —
                 persisted to `checkins.summary` on save and surfaced on
                 the activity timeline as the quote attached to the
-                "hizo check-in" event. Transparent / no card chrome so
-                the block floats on the page bg; the textarea itself
-                still has a border so the input target stays obvious. */}
+                "hizo check-in" event. Background is transparent so the
+                card blends with the page bg; the border + padding
+                stay so it still reads as a discrete card. */}
             <div
+              className="Polaris-Card"
               style={{
-                background: 'transparent',
-                padding: '0 0 0.4rem',
+                borderRadius: '8px',
+                border: '1px solid var(--color-border)',
+                backgroundColor: 'transparent',
+                padding: '1.2rem 1.6rem',
               }}
             >
               <label
@@ -763,12 +766,15 @@ function MyTasksColumn({
   const APPROX_ROW_HEIGHT = '8rem';
 
   return (
-    // Transparent card — matches the page bg. Divider lines remain
-    // between rows so the list still reads as a grouped unit, but the
-    // surrounding white panel + border is gone.
+    // Background is transparent so the card blends with the page bg;
+    // the border + inner padding remain so the list still reads as a
+    // discrete card.
     <div
+      className="Polaris-Card"
       style={{
-        background: 'transparent',
+        borderRadius: '8px',
+        border: '1px solid var(--color-border)',
+        backgroundColor: 'transparent',
       }}
     >
       <div
@@ -776,9 +782,9 @@ function MyTasksColumn({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          padding: '0 0 1rem',
-          borderBottom: '1px solid #edeff2',
-          background: 'transparent',
+          padding: '1.2rem 1.6rem',
+          borderBottom: '1px solid #f1f2f4',
+          backgroundColor: 'transparent',
         }}
       >
         <div>
@@ -837,19 +843,18 @@ function MyTasksColumn({
               <li
                 key={t.id}
                 className="anim-row-in"
-                // Completed rows fade to ~65% so the whole block (title,
-                // objective link, status chip, Terminada button) reads
-                // as "done & parked" at a glance. `queued` rows keep a
-                // faint lilac wash so a user who's about to mark a task
-                // complete on save can see what's pending.
+                // Row padding / divider preserved from the original card
+                // shape. Background is transparent so the list floats on
+                // the page bg like the rest of this column; `queued`
+                // rows keep a faint lilac wash so a user who's about to
+                // mark a task complete on save can see what's pending.
                 style={{
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: '0.8rem',
-                  padding: '1rem 0',
-                  borderBottom: '1px solid #edeff2',
-                  backgroundColor: queued ? 'rgba(92,106,196,0.05)' : 'transparent',
-                  opacity: isDone && !queued ? 0.65 : 1,
+                  padding: '1rem 1.6rem',
+                  borderBottom: '1px solid #f4f6f8',
+                  backgroundColor: queued ? '#f4f5fc' : 'transparent',
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
