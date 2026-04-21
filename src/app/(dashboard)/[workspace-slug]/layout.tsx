@@ -1,17 +1,25 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Sidebar, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
+import { OnboardingCarousel } from '@/components/onboarding/onboarding-carousel';
 import { useWorkspace } from '@/hooks/use-workspace';
 import { useRealtime } from '@/hooks/use-realtime';
 import { useSidebarStore } from '@/stores/sidebar-store';
+import { useWorkspaceStore } from '@/stores/workspace-store';
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   const params = useParams();
   const workspaceSlug = params['workspace-slug'] as string;
   const { currentWorkspace, userWorkspace, profile } = useWorkspace(workspaceSlug);
   const collapsed = useSidebarStore((s) => s.collapsed);
+  const isImpersonating = useWorkspaceStore((s) => s.isImpersonating);
+
+  // Local override so the carousel disappears immediately on completion
+  // without waiting for the profile re-fetch to return `onboarded_at`.
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   useRealtime(profile?.id);
 
@@ -41,6 +49,17 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   // main content.
   const mainOffset = collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
 
+  // Show the first-login carousel for members + managers who've never
+  // completed it. Admins skip entirely (they're the ones provisioning
+  // everyone else, so they don't need the intro). And suppress it while
+  // impersonating — otherwise an admin stepping into a freshly-created
+  // member's shoes would hit the carousel every time.
+  const shouldShowOnboarding =
+    !isImpersonating &&
+    !onboardingDismissed &&
+    userWorkspace.role !== 'admin' &&
+    profile.onboarded_at == null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <Topbar
@@ -66,6 +85,12 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+      {shouldShowOnboarding && (
+        <OnboardingCarousel
+          role={userWorkspace.role}
+          onDone={() => setOnboardingDismissed(true)}
+        />
+      )}
     </div>
   );
 }
