@@ -122,20 +122,27 @@ async function loadActivity(
         .limit(limit * 2),
       supabase
         .from('objectives')
-        .select('id, title, created_at, workspace_id')
+        // `created_by` may be absent on deployments that haven't run
+        // 2026-04-21-created-by.sql yet. SELECT * so PostgREST returns
+        // whatever columns exist; the code below reads `r.created_by`
+        // defensively and falls back to `Alguien`.
+        .select('*')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
         .limit(limit),
       supabase
         .from('kpis')
-        .select('id, title, created_at, workspace_id')
+        .select('*')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
         .limit(limit),
       supabase
         .from('tasks')
+        // Include the whole task row so `created_by` travels along
+        // when present. The embedded `objective` join keeps the parent
+        // title / workspace scope filter working.
         .select(
-          'id, title, status, block_reason, created_at, objective:objectives!inner(id, title, workspace_id)',
+          '*, objective:objectives!inner(id, title, workspace_id)',
         )
         .eq('objective.workspace_id', workspaceId)
         .order('created_at', { ascending: false })
@@ -166,6 +173,12 @@ async function loadActivity(
     (checkinsRes.data || []).forEach((r: any) => {
       addUser(r.user_id);
     });
+    // Objectives / KPIs / Tasks now carry `created_by` (see migration
+    // 2026-04-21-created-by.sql). Harvest those ids so the same
+    // profile-lookup batch resolves them too.
+    (objsRes.data || []).forEach((r: any) => addUser(r.created_by));
+    (kpisRes.data || []).forEach((r: any) => addUser(r.created_by));
+    (tasksRes.data || []).forEach((r: any) => addUser(r.created_by));
 
     // ── Step 3: batch lookups for entity titles. Skipped when empty. ──
     // Objectives already loaded (the "created" stream) seed objById for
@@ -263,15 +276,16 @@ async function loadActivity(
       });
     });
 
-    // Objectives / KPIs created. No actor available (no created_by
-    // column) so we render the action anonymously.
+    // Objectives / KPIs created. Attribute to `created_by` when the
+    // migration 2026-04-21-created-by.sql has been applied; older rows
+    // with a NULL value render as "Alguien" as before.
     (objsRes.data || []).forEach((r: any) => {
       if (!r?.id) return;
       out.push({
         id: `obj-created-${r.id}`,
         kind: 'objective_created',
         timestamp: r.created_at,
-        actor: null,
+        actor: actorFor(r.created_by),
         target: { type: 'objective', id: r.id, title: r.title ?? '' },
       });
     });
@@ -281,7 +295,7 @@ async function loadActivity(
         id: `kpi-created-${r.id}`,
         kind: 'kpi_created',
         timestamp: r.created_at,
-        actor: null,
+        actor: actorFor(r.created_by),
         target: { type: 'kpi', id: r.id, title: r.title ?? '' },
       });
     });
@@ -289,6 +303,8 @@ async function loadActivity(
     // Tasks — creation + current status derived events (completion,
     // blocked). tasks table has no updated_at, so the status-event
     // timestamp is created_at (approximation until an audit trail lands).
+    // All three task events share the same `created_by`-derived actor
+    // until we have a per-status audit trail.
     (tasksRes.data || []).forEach((r: any) => {
       if (!r?.id) return;
       const objective = Array.isArray(r.objective) ? r.objective[0] : r.objective;
@@ -299,14 +315,13 @@ async function loadActivity(
         title: objective.title ?? '',
       };
       const target: EntityRef = { type: 'task', id: r.id, title: r.title ?? '' };
+      const actor = actorFor(r.created_by);
 
-      // Always emit a task_created event — plain and independent of
-      // current status.
       out.push({
         id: `task-created-${r.id}`,
         kind: 'task_created',
         timestamp: r.created_at,
-        actor: null,
+        actor,
         target,
         parent,
       });
@@ -316,7 +331,7 @@ async function loadActivity(
           id: `task-completed-${r.id}`,
           kind: 'task_completed',
           timestamp: r.created_at,
-          actor: null,
+          actor,
           target,
           parent,
         });
@@ -325,7 +340,7 @@ async function loadActivity(
           id: `task-blocked-${r.id}`,
           kind: 'task_blocked',
           timestamp: r.created_at,
-          actor: null,
+          actor,
           target,
           parent,
           quote: r.block_reason || undefined,

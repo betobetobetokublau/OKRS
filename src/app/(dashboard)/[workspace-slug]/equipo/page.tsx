@@ -166,8 +166,14 @@ export default function EquipoPage() {
    * Enter "view as user" mode. We persist the target id to sessionStorage
    * (so refreshes preserve the impersonation) and apply the swap to the
    * workspace store synchronously so the current tab updates without a
-   * round-trip. Then we route to the workspace home — members would
-   * typically land there.
+   * round-trip. Then we route to a role-appropriate landing page:
+   *   - member : /check-in (they can't see the analytics dashboard).
+   *   - manager: /objetivos (their operational focus).
+   *   - admin  : / (dashboard, same as their own login).
+   *
+   * The workspace root (/) is the analytics dashboard — it'd feel broken
+   * for a member to land there, especially since their sidebar no longer
+   * shows it. Route by role instead.
    */
   function handleImpersonate(member: TeamMember) {
     if (!canImpersonate) return;
@@ -179,15 +185,32 @@ export default function EquipoPage() {
       { profile: currentProfile, userWorkspace },
       { profile: member.profile, userWorkspace: member.userWorkspace },
     );
-    // Route to the workspace root so the impersonated user sees their
-    // landing page (for a member that's typically /check-in or /objetivos
-    // depending on their nav; the dashboard root redirects appropriately).
-    router.push(`/${workspaceSlug}`);
+
+    const targetRole = member.userWorkspace.role;
+    const landing =
+      targetRole === 'member'
+        ? `/${workspaceSlug}/check-in`
+        : targetRole === 'manager'
+          ? `/${workspaceSlug}/objetivos`
+          : `/${workspaceSlug}`;
+    router.push(landing);
   }
 
-  async function handleRoleChange(_userId: string, uwId: string, newRole: WorkspaceRole) {
-    const supabase = createClient();
-    await supabase.from('user_workspaces').update({ role: newRole }).eq('id', uwId);
+  /**
+   * Change a member's role. Routes through `/api/auth/cambiar-rol-usuario`
+   * because `user_workspaces` RLS doesn't expose an UPDATE path to the
+   * authenticated role — the server handler validates the caller is an
+   * admin of this workspace and uses the service-role client to persist.
+   *
+   * Optimistic echo: we update the table immediately, then revert + show
+   * an alert if the server rejects the change.
+   */
+  async function handleRoleChange(targetUserId: string, uwId: string, newRole: WorkspaceRole) {
+    if (!currentWorkspace) return;
+
+    // Snapshot the previous role so we can roll back on failure.
+    const prevRole = members.find((m) => m.userWorkspace.id === uwId)?.userWorkspace.role ?? null;
+
     setMembers((prev) =>
       prev.map((m) =>
         m.userWorkspace.id === uwId
@@ -195,6 +218,34 @@ export default function EquipoPage() {
           : m,
       ),
     );
+
+    const res = await fetch('/api/auth/cambiar-rol-usuario', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target_user_id: targetUserId,
+        workspace_id: currentWorkspace.id,
+        role: newRole,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const msg = body?.error || 'No se pudo cambiar el rol.';
+      if (prevRole) {
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.userWorkspace.id === uwId
+              ? { ...m, userWorkspace: { ...m.userWorkspace, role: prevRole } }
+              : m,
+          ),
+        );
+      }
+      // A lightweight alert avoids inventing a toast system here; the
+      // more serious error surface (last-admin block, forbidden) lands
+      // here with a clear Spanish message from the server.
+      alert(msg);
+    }
   }
 
   const cellStyle: React.CSSProperties = { padding: '1.2rem 1.6rem' };
