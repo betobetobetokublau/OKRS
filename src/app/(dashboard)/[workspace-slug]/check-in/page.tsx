@@ -440,7 +440,21 @@ export default function CheckinPage() {
         />
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.4rem' }}>
+      {/* Day header — centered as a group on the page width (calendar
+          badge + daily title block + Guardar button sit together,
+          centered horizontally) rather than spreading to the left /
+          right edges. Matches the design mock where the row reads as
+          a single centered unit. */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '3.2rem',
+          marginBottom: '2.4rem',
+          flexWrap: 'wrap',
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.6rem' }}>
           {/* Calendar date badge — visual anchor for the daily title */}
           <CalendarDateBadge date={new Date()} />
