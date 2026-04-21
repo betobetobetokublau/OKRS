@@ -476,7 +476,7 @@ export default function CheckinPage() {
           type="button"
           onClick={handleSave}
           disabled={saving || !activePeriod}
-          aria-label="Guardar check-in"
+          aria-label="Reportar actualización"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -496,7 +496,7 @@ export default function CheckinPage() {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M5 13l4 4L19 7" />
           </svg>
-          {saving ? 'Guardando…' : 'Guardar check-in'}
+          {saving ? 'Enviando…' : 'Reportar actualización'}
         </button>
       </div>
 
@@ -601,14 +601,13 @@ export default function CheckinPage() {
             {/* Free-form thought captured as the check-in's summary —
                 persisted to `checkins.summary` on save and surfaced on
                 the activity timeline as the quote attached to the
-                "hizo check-in" event. */}
+                "hizo check-in" event. Transparent / no card chrome so
+                the block floats on the page bg; the textarea itself
+                still has a border so the input target stays obvious. */}
             <div
-              className="Polaris-Card"
               style={{
-                borderRadius: '8px',
-                border: '1px solid var(--color-border)',
-                backgroundColor: 'white',
-                padding: '1.2rem 1.6rem',
+                background: 'transparent',
+                padding: '0 0 0.4rem',
               }}
             >
               <label
@@ -764,12 +763,12 @@ function MyTasksColumn({
   const APPROX_ROW_HEIGHT = '8rem';
 
   return (
+    // Transparent card — matches the page bg. Divider lines remain
+    // between rows so the list still reads as a grouped unit, but the
+    // surrounding white panel + border is gone.
     <div
-      className="Polaris-Card"
       style={{
-        borderRadius: '8px',
-        border: '1px solid var(--color-border)',
-        backgroundColor: 'white',
+        background: 'transparent',
       }}
     >
       <div
@@ -777,9 +776,9 @@ function MyTasksColumn({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          padding: '1.2rem 1.6rem',
-          borderBottom: '1px solid #f1f2f4',
-          backgroundColor: '#fafbfb',
+          padding: '0 0 1rem',
+          borderBottom: '1px solid #edeff2',
+          background: 'transparent',
         }}
       >
         <div>
@@ -838,13 +837,19 @@ function MyTasksColumn({
               <li
                 key={t.id}
                 className="anim-row-in"
+                // Completed rows fade to ~65% so the whole block (title,
+                // objective link, status chip, Terminada button) reads
+                // as "done & parked" at a glance. `queued` rows keep a
+                // faint lilac wash so a user who's about to mark a task
+                // complete on save can see what's pending.
                 style={{
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: '0.8rem',
-                  padding: '1rem 1.6rem',
-                  borderBottom: '1px solid #f4f6f8',
-                  backgroundColor: queued ? '#f4f5fc' : 'white',
+                  padding: '1rem 0',
+                  borderBottom: '1px solid #edeff2',
+                  backgroundColor: queued ? 'rgba(92,106,196,0.05)' : 'transparent',
+                  opacity: isDone && !queued ? 0.65 : 1,
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -883,7 +888,10 @@ function MyTasksColumn({
                         padding: 0,
                         font: 'inherit',
                         fontSize: '1.1rem',
-                        color: '#637381',
+                        // Done rows get a lighter tone on the objective
+                        // label so the whole secondary line reads as
+                        // subdued along with the title.
+                        color: isDone ? '#919eab' : '#637381',
                         cursor: 'pointer',
                         textAlign: 'left',
                         maxWidth: '100%',
@@ -912,7 +920,10 @@ function MyTasksColumn({
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        Objetivo: <span style={{ color: '#454f5b' }}>{t.objective.title}</span>
+                        Objetivo:{' '}
+                        <span style={{ color: isDone ? '#919eab' : '#454f5b' }}>
+                          {t.objective.title}
+                        </span>
                       </span>
                     </button>
                   ) : (
@@ -1502,22 +1513,6 @@ function CheckinHero({
         background: 'transparent',
       }}
     >
-      {/* Eyebrow: "PERÍODO Q2 · 01 ABR → 30 JUN" */}
-      <div
-        style={{
-          fontSize: '1.15rem',
-          fontWeight: 600,
-          letterSpacing: '0.14em',
-          textTransform: 'uppercase',
-          color: '#637381',
-          marginBottom: '1.6rem',
-          fontFamily:
-            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        }}
-      >
-        Período {periodName} · {formatShortDateEs(periodStart)} → {formatShortDateEs(periodEnd)}
-      </div>
-
       <h1
         style={{
           margin: 0,
