@@ -7,7 +7,6 @@ import { NotificationBell } from './notification-bell';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { useSidebarStore } from '@/stores/sidebar-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
-import { useCheckinSaveStore } from '@/stores/checkin-save-store';
 import { writeImpersonationTarget } from '@/lib/impersonation';
 import type { Profile } from '@/types';
 import { useState, useRef, useEffect } from 'react';
@@ -30,15 +29,10 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
   const isImpersonating = useWorkspaceStore((s) => s.isImpersonating);
   const exitImpersonation = useWorkspaceStore((s) => s.exitImpersonation);
   const pathname = usePathname() ?? '';
+  // On the /check-in route the page shows its own purple "Guardar
+  // check-in" button in the header, so the topbar suppresses its
+  // middle CTA entirely to avoid a duplicate affordance.
   const onCheckinPage = pathname === `/${workspaceSlug}/check-in`;
-
-  // Register-once consumer of the check-in page's save handler. On the
-  // /check-in route the topbar renders a white "Guardar check-in" button
-  // that invokes this handler; everywhere else the button is the regular
-  // indigo Check-in CTA.
-  const checkinSaveHandler = useCheckinSaveStore((s) => s.handler);
-  const checkinSaveSaving = useCheckinSaveStore((s) => s.saving);
-  const checkinSaveDisabled = useCheckinSaveStore((s) => s.disabled);
 
   // In impersonation mode the whole topbar flips to a near-black fill so
   // admins always know at a glance they're not looking at their own view.
@@ -170,10 +164,10 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
         )}
       </div>
 
-      {/* Center zone. Two variants:
-          - Everywhere else: indigo "Check-in" pill routing to /check-in.
-          - On /check-in: white "Guardar check-in" button that invokes
-            the save handler the page registered in CheckinSaveStore. */}
+      {/* Center zone: indigo "Check-in" CTA — routes to /check-in from
+          anywhere else. Hidden on /check-in itself since the page
+          already shows its own purple "Guardar check-in" button in the
+          header and a duplicate CTA would be confusing. */}
       {workspaceSlug && !onCheckinPage && (
         <Link
           href={`/${workspaceSlug}/check-in`}
@@ -215,50 +209,6 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
             <path d="M5 12h14M13 5l7 7-7 7" />
           </svg>
         </Link>
-      )}
-
-      {workspaceSlug && onCheckinPage && (
-        <button
-          type="button"
-          onClick={() => {
-            if (!checkinSaveHandler || checkinSaveDisabled || checkinSaveSaving) return;
-            void checkinSaveHandler();
-          }}
-          disabled={!checkinSaveHandler || checkinSaveDisabled || checkinSaveSaving}
-          style={{
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            transform: 'translate(-50%, -50%)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.7rem',
-            padding: '0.7rem 1.8rem',
-            borderRadius: '999px',
-            background: '#ffffff',
-            border: '1px solid #ffffff',
-            color: '#026fff',
-            fontSize: '1.56rem',
-            fontWeight: 600,
-            lineHeight: 1,
-            cursor:
-              !checkinSaveHandler || checkinSaveDisabled || checkinSaveSaving
-                ? 'not-allowed'
-                : 'pointer',
-            opacity:
-              !checkinSaveHandler || checkinSaveDisabled || checkinSaveSaving ? 0.65 : 1,
-            transition: 'opacity 120ms ease',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
-          }}
-        >
-          {/* Bullseye in blue to match the Guardar text */}
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" />
-            <circle cx="12" cy="12" r="5" />
-            <circle cx="12" cy="12" r="1.5" />
-          </svg>
-          {checkinSaveSaving ? 'Guardando…' : 'Guardar check-in'}
-        </button>
       )}
 
       {/* Right: Help + Notifications + User */}

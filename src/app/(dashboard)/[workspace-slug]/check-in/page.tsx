@@ -15,7 +15,6 @@ import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-p
 import { TaskForm } from '@/components/tasks/task-form';
 import { ActivityList } from '@/components/layout/activity-list';
 import { useActivityFeed, type EntityRef } from '@/hooks/use-activity-feed';
-import { useCheckinSaveStore } from '@/stores/checkin-save-store';
 import type { Department, KPI, Objective, ObjectiveStatus, Task } from '@/types';
 
 // ---------- Types ----------
@@ -412,25 +411,8 @@ export default function CheckinPage() {
     setSaving(false);
   }
 
-  // ── Register `handleSave` with the topbar's "Guardar check-in" button.
-  // The topbar is a layout component that doesn't know about this page's
-  // state, so we bridge via a zustand store: the topbar reads the handler
-  // + saving/disabled flags and fires the callback on click. Re-runs
-  // whenever the pending-edit maps change so the topbar's disabled state
-  // tracks "is there anything to save?". ─────────────────────────────
-  const registerSaveHandler = useCheckinSaveStore((s) => s.registerHandler);
-  const nothingPending =
-    objectiveEdits.size === 0 && tasksToComplete.size === 0 && !thought.trim();
-  useEffect(() => {
-    registerSaveHandler(() => handleSave(), {
-      saving,
-      disabled: nothingPending || !activePeriod,
-    });
-    return () => registerSaveHandler(null);
-    // handleSave references many state slices but we don't need
-    // exhaustive deps; the store reads the latest closure every call.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registerSaveHandler, saving, nothingPending, activePeriod?.id]);
+  // Save button is rendered in-page (see the purple "Guardar check-in"
+  // next to the daily title) so no topbar bridge is needed.
 
   const title = formatCheckinTitle(new Date());
 
@@ -471,9 +453,37 @@ export default function CheckinPage() {
             </p>
           </div>
         </div>
-        {/* Save affordance lives in the topbar — see the white "Guardar
-            check-in" button registered via CheckinSaveStore — so we no
-            longer render a button in the page header. */}
+        {/* Primary "Guardar check-in" action — purple, filled, with a
+            check icon. Lives in the page header (to the right of the
+            daily title block) per the design mock. The topbar
+            suppresses its own middle CTA on /check-in to avoid a
+            duplicate affordance. */}
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !activePeriod}
+          aria-label="Guardar check-in"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.8rem',
+            padding: '1.1rem 2rem',
+            fontSize: '1.5rem',
+            fontWeight: 600,
+            color: 'white',
+            backgroundColor: saving || !activePeriod ? '#8c92c4' : '#5c6ac4',
+            border: 'none',
+            borderRadius: '10px',
+            cursor: saving || !activePeriod ? 'not-allowed' : 'pointer',
+            boxShadow: '0 1px 2px rgba(15,24,48,0.08)',
+            lineHeight: 1,
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M5 13l4 4L19 7" />
+          </svg>
+          {saving ? 'Guardando…' : 'Guardar check-in'}
+        </button>
       </div>
 
       {saveError && (
