@@ -47,7 +47,7 @@ const MONTHS_ES_ABBR = [
 ];
 
 function formatCheckinTitle(d: Date): string {
-  return `Check-in del día ${d.getDate()} - ${MONTHS_ES[d.getMonth()]}`;
+  return `Check-in del día ${d.getDate()} de ${MONTHS_ES[d.getMonth()]}`;
 }
 
 /** "01 ABR" style date, for the period start/end labels in the hero. */
@@ -440,38 +440,42 @@ export default function CheckinPage() {
         />
       )}
 
-      {/* Day header — centered as a group on the page width (calendar
-          badge + daily title block + Guardar button sit together,
-          centered horizontally) rather than spreading to the left /
-          right edges. Matches the design mock where the row reads as
-          a single centered unit. */}
+      {/* Day header — calendar badge + daily title sit centered on the
+          page width as a single unit. The primary "Reportar
+          actualización" CTA moved out of this row into its own
+          centered row below (next block) per the design mock. */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          gap: '3.2rem',
-          marginBottom: '2.4rem',
+          gap: '1.6rem',
+          marginBottom: '1.4rem',
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.6rem' }}>
-          {/* Calendar date badge — visual anchor for the daily title */}
-          <CalendarDateBadge date={new Date()} />
-          <div>
-            <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>{title}</h1>
-            <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>
-              {activePeriod
-                ? `Actualiza tus objetivos y tareas del periodo ${activePeriod.name}.`
-                : 'Sin periodo activo'}
-            </p>
-          </div>
+        {/* Calendar date badge — visual anchor for the daily title */}
+        <CalendarDateBadge date={new Date()} />
+        <div>
+          <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>{title}</h1>
+          <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>
+            {activePeriod
+              ? `Actualiza tus objetivos y tareas del periodo ${activePeriod.name}.`
+              : 'Sin periodo activo'}
+          </p>
         </div>
-        {/* Primary "Guardar check-in" action — purple, filled, with a
-            check icon. Lives in the page header (to the right of the
-            daily title block) per the design mock. The topbar
-            suppresses its own middle CTA on /check-in to avoid a
-            duplicate affordance. */}
+      </div>
+
+      {/* Primary CTA — centered on its own row below the day header.
+          No icon (per the design update); purple filled pill with the
+          "Reportar actualización" label. */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          marginBottom: '2.4rem',
+        }}
+      >
         <button
           type="button"
           onClick={handleSave}
@@ -480,8 +484,7 @@ export default function CheckinPage() {
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '0.8rem',
-            padding: '1.1rem 2rem',
+            padding: '1.1rem 2.4rem',
             fontSize: '1.5rem',
             fontWeight: 600,
             color: 'white',
@@ -493,9 +496,6 @@ export default function CheckinPage() {
             lineHeight: 1,
           }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M5 13l4 4L19 7" />
-          </svg>
           {saving ? 'Enviando…' : 'Reportar actualización'}
         </button>
       </div>
@@ -535,7 +535,10 @@ export default function CheckinPage() {
             {/* Section title — introduces the KPI-grouped tables as
                 the "your department's objectives" block. Rendered here
                 (rather than at the page level) so it tracks with the
-                left column and doesn't sit above the Mis tareas card. */}
+                left column and doesn't sit above the Mis tareas card.
+                `paddingTop` mirrors the "¿En qué estás pensando?"
+                card's top inset so the two columns' first visible
+                text baselines line up. */}
             <h2
               style={{
                 fontSize: '1.8rem',
@@ -543,6 +546,7 @@ export default function CheckinPage() {
                 color: '#212b36',
                 margin: 0,
                 lineHeight: 1.25,
+                paddingTop: '1.2rem',
               }}
             >
               Los objetivos de tu departamento
