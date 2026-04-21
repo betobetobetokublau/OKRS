@@ -21,6 +21,9 @@ import type { WorkspaceRole } from '@/types';
  */
 interface OnboardingCarouselProps {
   role: WorkspaceRole;
+  /** Real auth user id — scopes the localStorage flag so two users on
+   *  the same machine don't cross-pollute their "seen it" state. */
+  userId: string;
   onDone: () => void;
 }
 
@@ -32,26 +35,53 @@ interface Slide {
 
 const SLIDES: Slide[] = [
   {
-    title: 'Bienvenido a Kublau',
+    title: 'Bienvenido a los Okis, la plataforma de monitoreo de objetivos',
     description:
-      'Aquí tu equipo convierte objetivos en resultados medibles. Los KPIs marcan la dirección, los objetivos concretan cómo llegar, y las tareas son los pasos del día a día. Todo queda visible para todos en un solo lugar.',
+      'Los KPIs marcan la dirección y los objetivos concretan cómo llegar, con tareas como pasos del día a día. Todo queda visible para todo el equipo en un solo lugar.',
     icon: 'bullseye',
   },
   {
     title: 'Los objetivos de tu empresa',
     description:
-      'Cada objetivo tiene un responsable, un departamento y un plazo. En esta vista ves los que te tocan con su avance, estado y tareas vinculadas. Filtra por estado cuando necesites enfocarte o registrar un bloqueo.',
+      'En esta vista ves los objetivos que te tocan con su avance, estado y tareas vinculadas. Filtra por estado cuando necesites enfocarte o registrar un bloqueo.',
     icon: 'flag',
   },
   {
     title: 'Tu check-in mensual',
     description:
-      'Una vez al mes actualizas el avance de tus objetivos y tareas en una sola pantalla. Al guardar, todo queda registrado en la línea de actividad del workspace. Te avisaremos por email cuando sea tu turno.',
+      'Una vez al mes actualizas el avance de tus objetivos y tareas en una sola pantalla. Al guardar, todo queda registrado en la línea de actividad del workspace.',
     icon: 'calendar-check',
   },
 ];
 
-export function OnboardingCarousel({ role, onDone }: OnboardingCarouselProps) {
+// localStorage key used as a belt-and-suspenders persistence layer on
+// top of `profiles.onboarded_at`. If the DB column isn't present yet
+// (migration not applied) or the POST fails, this flag still prevents
+// the carousel from re-firing on reload. Per-user key so two accounts
+// on the same machine don't leak.
+const STORAGE_KEY_PREFIX = 'kublau:onboarded:';
+function storageKeyFor(userId: string): string {
+  return STORAGE_KEY_PREFIX + userId;
+}
+export function readLocalOnboarded(userId: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(storageKeyFor(userId)) === '1';
+  } catch {
+    return false;
+  }
+}
+function writeLocalOnboarded(userId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(storageKeyFor(userId), '1');
+  } catch {
+    // private mode / disabled storage — fall through; the server-side
+    // flag is the primary source of truth anyway.
+  }
+}
+
+export function OnboardingCarousel({ role, userId, onDone }: OnboardingCarouselProps) {
   const router = useRouter();
   const params = useParams();
   const workspaceSlug = (params['workspace-slug'] as string) || '';
@@ -74,11 +104,11 @@ export function OnboardingCarousel({ role, onDone }: OnboardingCarouselProps) {
   const complete = useCallback(async () => {
     if (completing) return;
     setCompleting(true);
+    // Write the localStorage flag FIRST so even if the POST hangs or
+    // the DB column isn't present yet (migration not applied), a
+    // refresh won't re-surface the carousel.
+    writeLocalOnboarded(userId);
     try {
-      // Fire-and-forget semantics are fine: the parent clears the gate
-      // via `onDone` regardless so the user isn't blocked if the server
-      // is flaky. A failed POST just means they'll see the carousel
-      // again on the next refresh.
       await fetch('/api/onboarding/completar', { method: 'POST' });
     } catch (err) {
       console.error('[onboarding] completar failed:', err);
@@ -86,7 +116,7 @@ export function OnboardingCarousel({ role, onDone }: OnboardingCarouselProps) {
       onDone();
       if (finalLanding) router.push(finalLanding);
     }
-  }, [completing, onDone, finalLanding, router]);
+  }, [completing, onDone, finalLanding, router, userId]);
 
   function next() {
     if (isLast) {

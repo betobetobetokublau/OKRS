@@ -197,6 +197,23 @@ function ActivityIcon({ kind }: { kind: ActivityEvent['kind'] }) {
             <path d="M9 16l2 2 4-4" />
           </>
         );
+      case 'checkin_progress':
+        // trending-up — mirrors the progress_log icon; the label
+        // differentiates the two at read time.
+        return (
+          <>
+            <path d="M3 17l6-6 4 4 8-8" />
+            <path d="M14 7h7v7" />
+          </>
+        );
+      case 'checkin_status':
+        // refresh-cw — signals a state transition
+        return (
+          <>
+            <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+            <path d="M21 3v5h-5" />
+          </>
+        );
       default:
         return <circle cx="12" cy="12" r="4" />;
     }
@@ -333,6 +350,25 @@ function ActivityText({
     );
   }
 
+  if (kind === 'checkin_progress' && event.target) {
+    const hasPct = typeof event.progressPct === 'number';
+    return (
+      <>
+        <b>{actor}</b> actualizó progreso de <EntityLink entity={event.target} />
+        {hasPct ? <> a <b>{Math.round(event.progressPct as number)}%</b></> : null}
+      </>
+    );
+  }
+
+  if (kind === 'checkin_status' && event.target) {
+    return (
+      <>
+        <b>{actor}</b> cambió estado de <EntityLink entity={event.target} />
+        {event.statusLabel ? <> a <b>{event.statusLabel}</b></> : null}
+      </>
+    );
+  }
+
   return <span>{actor}</span>;
 }
 
@@ -355,8 +391,10 @@ function accentFor(kind: ActivityEvent['kind']): string {
     case 'comment':
       return '#637381';
     case 'progress_log':
+    case 'checkin_progress':
       return '#47c1bf';
     case 'checkin':
+    case 'checkin_status':
       return '#5c6ac4';
     default:
       return '#dfe3e8';
