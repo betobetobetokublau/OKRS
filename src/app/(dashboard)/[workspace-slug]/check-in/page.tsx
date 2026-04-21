@@ -532,6 +532,21 @@ export default function CheckinPage() {
         >
           {/* Left column: per-KPI tables */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {/* Section title — introduces the KPI-grouped tables as
+                the "your department's objectives" block. Rendered here
+                (rather than at the page level) so it tracks with the
+                left column and doesn't sit above the Mis tareas card. */}
+            <h2
+              style={{
+                fontSize: '1.8rem',
+                fontWeight: 600,
+                color: '#212b36',
+                margin: 0,
+                lineHeight: 1.25,
+              }}
+            >
+              Los objetivos de tu departamento
+            </h2>
             {objectives.length === 0 ? (
               <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
                 <p style={{ color: '#637381', fontSize: '1.4rem' }}>
