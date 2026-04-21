@@ -42,8 +42,18 @@ const MONTHS_ES = [
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ];
 
+const MONTHS_ES_ABBR = [
+  'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
+  'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC',
+];
+
 function formatCheckinTitle(d: Date): string {
   return `Check-in del día ${d.getDate()} - ${MONTHS_ES[d.getMonth()]}`;
+}
+
+/** "01 ABR" style date, for the period start/end labels in the hero. */
+function formatShortDateEs(d: Date): string {
+  return `${String(d.getDate()).padStart(2, '0')} ${MONTHS_ES_ABBR[d.getMonth()]}`;
 }
 
 // ---------- Page ----------
@@ -72,6 +82,10 @@ export default function CheckinPage() {
   // session. Saved on the `checkins.summary` field and surfaced in the
   // activity timeline as the check-in event's quote.
   const [thought, setThought] = useState<string>('');
+  // Total check-ins this user has done during the current period.
+  // Feeds the hero ("Llevas N checkins en M meses"). We don't need the
+  // rows — just the count — so the query uses `head: true`.
+  const [checkinsCount, setCheckinsCount] = useState(0);
 
   // Expand state (per objective)
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -206,6 +220,15 @@ export default function CheckinPage() {
         t.objective?.period_id === activePeriod.id,
     );
     setMyAssignedTasks(filtered);
+
+    // 7) Total check-ins this user has submitted in the current period.
+    // head: true means "return no rows, just the count header" — cheap.
+    const { count: checkinsTotal } = await supabase
+      .from('checkins')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', profile.id)
+      .eq('period_id', activePeriod.id);
+    setCheckinsCount(checkinsTotal ?? 0);
 
     setLoading(false);
   }, [currentWorkspace?.id, activePeriod?.id, profile?.id]);
@@ -423,14 +446,30 @@ export default function CheckinPage() {
 
   return (
     <div>
+      {/* Period hero — stats band pinned at the top of the check-in
+          view. Only rendered when we have an active period (otherwise
+          there's nothing meaningful to count). */}
+      {activePeriod && (
+        <CheckinHero
+          periodName={activePeriod.name}
+          periodStart={new Date(activePeriod.start_date)}
+          periodEnd={new Date(activePeriod.end_date)}
+          checkinsCount={checkinsCount}
+        />
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.4rem' }}>
-        <div>
-          <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>{title}</h1>
-          <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>
-            {activePeriod
-              ? `Actualiza tus objetivos y tareas del periodo ${activePeriod.name}.`
-              : 'Sin periodo activo'}
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.6rem' }}>
+          {/* Calendar date badge — visual anchor for the daily title */}
+          <CalendarDateBadge date={new Date()} />
+          <div>
+            <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>{title}</h1>
+            <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>
+              {activePeriod
+                ? `Actualiza tus objetivos y tareas del periodo ${activePeriod.name}.`
+                : 'Sin periodo activo'}
+            </p>
+          </div>
         </div>
         {/* Save affordance lives in the topbar — see the white "Guardar
             check-in" button registered via CheckinSaveStore — so we no
@@ -1371,5 +1410,284 @@ function TaskCompleteButton({
       </svg>
       Terminada
     </button>
+  );
+}
+
+// ────────────── Check-in hero (period stats + motivational) ──────────────
+
+/**
+ * Full-width stats band that sits above the "Check-in del día …" title
+ * on the check-in view. Values are derived from the active period plus
+ * the total check-ins the current user has submitted in that period.
+ *
+ * Intentionally styled as a flat transparent section that floats on
+ * the page background (matching the Objetivos hero treatment) so it
+ * doesn't introduce a second card chrome on top of the existing ones.
+ */
+function CheckinHero({
+  periodName,
+  periodStart,
+  periodEnd,
+  checkinsCount,
+}: {
+  periodName: string;
+  periodStart: Date;
+  periodEnd: Date;
+  checkinsCount: number;
+}) {
+  const now = new Date();
+  const totalMs = Math.max(1, periodEnd.getTime() - periodStart.getTime());
+  const elapsedMs = Math.max(
+    0,
+    Math.min(totalMs, now.getTime() - periodStart.getTime()),
+  );
+  const remainingMs = Math.max(0, periodEnd.getTime() - now.getTime());
+  const DAY = 86_400_000;
+  const WEEK = 7 * DAY;
+  const daysRemaining = Math.ceil(remainingMs / DAY);
+  const weeksRemaining = Math.ceil(remainingMs / WEEK);
+  const pctElapsed = Math.round((elapsedMs / totalMs) * 100);
+  // "Llevas N checkins en M meses" — we round up so a half-month still
+  // reads as the honest elapsed duration instead of rounding down to 0
+  // on the first weeks of the period.
+  const elapsedMonths = Math.max(1, Math.round(elapsedMs / (30 * DAY)));
+
+  return (
+    <section
+      aria-label="Resumen del periodo"
+      style={{
+        textAlign: 'center',
+        padding: '2.4rem 2rem',
+        marginBottom: '2.4rem',
+        borderBottom: '1px solid var(--color-border)',
+        background: 'transparent',
+      }}
+    >
+      {/* Eyebrow: "PERÍODO Q2 · 01 ABR → 30 JUN" */}
+      <div
+        style={{
+          fontSize: '1.15rem',
+          fontWeight: 600,
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          color: '#637381',
+          marginBottom: '1.6rem',
+          fontFamily:
+            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        }}
+      >
+        Período {periodName} · {formatShortDateEs(periodStart)} → {formatShortDateEs(periodEnd)}
+      </div>
+
+      <h1
+        style={{
+          margin: 0,
+          fontSize: '3.2rem',
+          fontWeight: 700,
+          color: '#212b36',
+          letterSpacing: '-0.01em',
+          lineHeight: 1.2,
+          maxWidth: '68ch',
+          marginLeft: 'auto',
+          marginRight: 'auto',
+        }}
+      >
+        Te quedan <span style={{ color: '#5c6ac4' }}>{daysRemaining} días</span> para hacer la diferencia en {periodName}.
+      </h1>
+
+      <p
+        style={{
+          margin: '1.2rem auto 0',
+          fontSize: '1.4rem',
+          lineHeight: 1.55,
+          color: '#637381',
+          maxWidth: '66ch',
+        }}
+      >
+        Llevas <strong style={{ color: '#212b36' }}>{checkinsCount} {checkinsCount === 1 ? 'checkin' : 'checkins'}</strong>
+        {' en '}
+        <strong style={{ color: '#212b36' }}>{elapsedMonths} {elapsedMonths === 1 ? 'mes' : 'meses'}</strong>.
+        {' '}Los equipos que hacen check-in semanal cierran el trimestre{' '}
+        <strong style={{ color: '#212b36' }}>31% encima del promedio</strong>.
+      </p>
+
+      {/* Stats row: weeks-remaining / %-elapsed / timeline bar.
+          Lays out in a 3-cell grid so the bar hugs the right edge of
+          the hero while the two counters sit in their own columns. */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(120px, 1fr) minmax(120px, 1fr) minmax(200px, 1.4fr)',
+          gap: '2.8rem',
+          alignItems: 'center',
+          justifyItems: 'center',
+          maxWidth: '58rem',
+          margin: '2.4rem auto 0',
+        }}
+      >
+        <StatNumber value={weeksRemaining} unit="sem" label="Restantes" />
+        <StatNumber value={pctElapsed} unit="%" label="Transcurrido" />
+        <PeriodBar
+          pctElapsed={pctElapsed}
+          startLabel={formatShortDateEs(periodStart)}
+          endLabel={formatShortDateEs(periodEnd)}
+        />
+      </div>
+    </section>
+  );
+}
+
+function StatNumber({
+  value,
+  unit,
+  label,
+}: {
+  value: number;
+  unit: string;
+  label: string;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+        <span
+          style={{
+            fontSize: '3.6rem',
+            fontWeight: 700,
+            color: '#212b36',
+            lineHeight: 1,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {value}
+        </span>
+        <span style={{ fontSize: '1.3rem', color: '#637381', fontWeight: 500 }}>
+          {unit}
+        </span>
+      </div>
+      <span
+        style={{
+          marginTop: '0.4rem',
+          fontSize: '1.05rem',
+          fontWeight: 600,
+          color: '#919eab',
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function PeriodBar({
+  pctElapsed,
+  startLabel,
+  endLabel,
+}: {
+  pctElapsed: number;
+  startLabel: string;
+  endLabel: string;
+}) {
+  const clamped = Math.max(0, Math.min(100, pctElapsed));
+  return (
+    <div style={{ width: '100%', maxWidth: '26rem' }}>
+      <div
+        style={{
+          position: 'relative',
+          height: '0.6rem',
+          borderRadius: '999px',
+          background: '#dfe3e8',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            right: 'auto',
+            width: `${clamped}%`,
+            background: '#5c6ac4',
+            borderRadius: '999px',
+          }}
+        />
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginTop: '0.6rem',
+          fontSize: '1.1rem',
+          color: '#637381',
+          fontFamily:
+            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+          letterSpacing: '0.08em',
+        }}
+      >
+        <span>{startLabel}</span>
+        <span>{endLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Small calendar-icon badge — month abbreviation in a colored top
+ * strip, big day number below. Sits next to the "Check-in del día …"
+ * title to give the header a visual anchor.
+ */
+function CalendarDateBadge({ date }: { date: Date }) {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        width: '5.4rem',
+        height: '5.4rem',
+        borderRadius: '8px',
+        border: '1px solid var(--color-border)',
+        background: 'white',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        flexShrink: 0,
+        boxShadow: '0 1px 2px rgba(15,24,48,0.05)',
+      }}
+    >
+      <div
+        style={{
+          background: '#5c6ac4',
+          color: 'white',
+          fontSize: '1.0rem',
+          fontWeight: 700,
+          letterSpacing: '0.14em',
+          padding: '0.25rem 0',
+          textAlign: 'center',
+          textTransform: 'uppercase',
+        }}
+      >
+        {MONTHS_ES_ABBR[date.getMonth()]}
+      </div>
+      <div
+        style={{
+          flex: 1,
+          display: 'grid',
+          placeItems: 'center',
+          fontSize: '2.2rem',
+          fontWeight: 700,
+          color: '#212b36',
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {date.getDate()}
+      </div>
+    </div>
   );
 }
