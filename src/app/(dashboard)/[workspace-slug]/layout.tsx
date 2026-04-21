@@ -4,7 +4,10 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Sidebar, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
-import { OnboardingCarousel } from '@/components/onboarding/onboarding-carousel';
+import {
+  OnboardingCarousel,
+  readLocalOnboarded,
+} from '@/components/onboarding/onboarding-carousel';
 import { useWorkspace } from '@/hooks/use-workspace';
 import { useRealtime } from '@/hooks/use-realtime';
 import { useSidebarStore } from '@/stores/sidebar-store';
@@ -54,11 +57,20 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   // everyone else, so they don't need the intro). And suppress it while
   // impersonating — otherwise an admin stepping into a freshly-created
   // member's shoes would hit the carousel every time.
+  //
+  // The "already completed" test checks BOTH the DB column AND a local
+  // flag. The local flag covers the case where the onboarded_at
+  // migration hasn't been applied yet, or the POST to completar failed:
+  // either way, once the user has clicked through once we don't want
+  // to replay the carousel on every reload.
+  const alreadyOnboardedDb = profile.onboarded_at != null;
+  const alreadyOnboardedLocal = readLocalOnboarded(profile.id);
   const shouldShowOnboarding =
     !isImpersonating &&
     !onboardingDismissed &&
-    userWorkspace.role !== 'admin' &&
-    profile.onboarded_at == null;
+    !alreadyOnboardedDb &&
+    !alreadyOnboardedLocal &&
+    userWorkspace.role !== 'admin';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -88,6 +100,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
       {shouldShowOnboarding && (
         <OnboardingCarousel
           role={userWorkspace.role}
+          userId={profile.id}
           onDone={() => setOnboardingDismissed(true)}
         />
       )}

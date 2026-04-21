@@ -31,7 +31,12 @@ export type ActivityEventKind =
   | 'task_created'
   | 'task_completed'
   | 'task_blocked'
-  | 'checkin';
+  | 'checkin'
+  // Progress / status change persisted via a check-in entry. Drives the
+  // missing "Alberto cambió estado a X" / "Alberto actualizó progreso a
+  // N%" events the user was expecting after saving a check-in.
+  | 'checkin_progress'
+  | 'checkin_status';
 
 export interface EntityRef {
   type: 'kpi' | 'objective' | 'task';
@@ -48,6 +53,10 @@ export interface ActivityEvent {
   parent?: EntityRef;
   quote?: string;
   progressPct?: number;
+  /** For `checkin_status` events — the human-readable status label the
+   *  event switched TO (e.g. "En progreso"). The feed renderer shows
+   *  it verbatim. */
+  statusLabel?: string;
 }
 
 interface UseActivityFeedOptions {
@@ -109,7 +118,15 @@ async function loadActivity(
     // scope them to the caller's workspace and additionally drop any
     // event whose objective isn't in objById (loaded below per the
     // current workspace). ──────────────────────────────────────────
-    const [progressRes, commentsRes, objsRes, kpisRes, tasksRes, checkinsRes] = await Promise.all([
+    const [
+      progressRes,
+      commentsRes,
+      objsRes,
+      kpisRes,
+      tasksRes,
+      checkinsRes,
+      checkinEntriesRes,
+    ] = await Promise.all([
       supabase
         .from('progress_logs')
         .select('*')
@@ -153,22 +170,41 @@ async function loadActivity(
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
         .limit(limit),
+      // Check-in entries are the per-row diff inside a check-in
+      // session. Rows with a `new_progress` value become
+      // `checkin_progress` events; rows with a `new_status` different
+      // from `previous_status` become `checkin_status` events. The
+      // embedded `checkin:checkins!inner(...)` join filters to the
+      // current workspace and carries the actor's user_id through.
+      supabase
+        .from('checkin_entries')
+        .select(
+          '*, checkin:checkins!inner(id, user_id, workspace_id, created_at)',
+        )
+        .eq('checkin.workspace_id', workspaceId)
+        .order('created_at', { ascending: false })
+        .limit(limit * 2),
     ]);
 
     // ── Step 2: collect IDs that need a title / name lookup. ─────────
     const userIds = new Set<string>();
     const objIds = new Set<string>();
+    const kpiIds = new Set<string>();
+    const taskIdsFromEntries = new Set<string>();
 
     const addUser = (v: unknown) => typeof v === 'string' && userIds.add(v);
     const addObj = (v: unknown) => typeof v === 'string' && objIds.add(v);
+    const addKpi = (v: unknown) => typeof v === 'string' && kpiIds.add(v);
 
     (progressRes.data || []).forEach((r: any) => {
       addUser(r.user_id);
       addObj(r.objective_id);
+      addKpi(r.kpi_id);
     });
     (commentsRes.data || []).forEach((r: any) => {
       addUser(r.user_id);
       addObj(r.objective_id);
+      addKpi(r.kpi_id);
     });
     (checkinsRes.data || []).forEach((r: any) => {
       addUser(r.user_id);
@@ -179,24 +215,52 @@ async function loadActivity(
     (objsRes.data || []).forEach((r: any) => addUser(r.created_by));
     (kpisRes.data || []).forEach((r: any) => addUser(r.created_by));
     (tasksRes.data || []).forEach((r: any) => addUser(r.created_by));
+    // Check-in entries — actor lives on the parent checkin row.
+    (checkinEntriesRes.data || []).forEach((r: any) => {
+      const ck = Array.isArray(r.checkin) ? r.checkin[0] : r.checkin;
+      addUser(ck?.user_id);
+      addObj(r.objective_id);
+      if (typeof r.task_id === 'string') taskIdsFromEntries.add(r.task_id);
+    });
 
     // ── Step 3: batch lookups for entity titles. Skipped when empty. ──
-    // Objectives already loaded (the "created" stream) seed objById for
-    // free; we only fetch the ones referenced by progress_logs / comments
-    // that aren't already in that list.
+    // Objectives / KPIs / Tasks already loaded (the "created" streams)
+    // seed the maps for free; we only fetch the ones referenced by
+    // comments / progress_logs / checkin_entries that aren't already
+    // in those lists.
     const needProfiles = userIds.size > 0;
     type MinimalObj = { id: string; title: string; workspace_id: string };
+    type MinimalKpi = { id: string; title: string; workspace_id: string };
     const missingObjIds = Array.from(objIds).filter(
       (id) => !(objsRes.data || []).some((o: MinimalObj) => o.id === id),
     );
+    const missingKpiIds = Array.from(kpiIds).filter(
+      (id) => !(kpisRes.data || []).some((k: MinimalKpi) => k.id === id),
+    );
+    // Tasks referenced by check-in entries — we already know the
+    // tasks loaded in `tasksRes` are in-workspace, so subtract those
+    // first. What's left needs to be fetched; we'll filter to the
+    // same workspace via the nested objective join.
+    const missingTaskIds = Array.from(taskIdsFromEntries).filter(
+      (id) => !(tasksRes.data || []).some((t: any) => t.id === id),
+    );
 
-    const [profsRes, extraObjsRes] = await Promise.all([
+    const [profsRes, extraObjsRes, extraKpisRes, extraTasksRes] = await Promise.all([
       needProfiles
         ? supabase.from('profiles').select('id, full_name').in('id', Array.from(userIds))
         : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
       missingObjIds.length
         ? supabase.from('objectives').select('id, title, workspace_id').in('id', missingObjIds)
         : Promise.resolve({ data: [] as MinimalObj[] }),
+      missingKpiIds.length
+        ? supabase.from('kpis').select('id, title, workspace_id').in('id', missingKpiIds)
+        : Promise.resolve({ data: [] as MinimalKpi[] }),
+      missingTaskIds.length
+        ? supabase
+            .from('tasks')
+            .select('id, title, objective:objectives!inner(id, title, workspace_id)')
+            .in('id', missingTaskIds)
+        : Promise.resolve({ data: [] as any[] }),
     ]);
 
     // ── Step 4: build lookup maps. ───────────────────────────────────
@@ -223,6 +287,50 @@ async function loadActivity(
       objById.set(o.id, { id: o.id, title: o.title ?? '', workspace_id: o.workspace_id });
     });
 
+    const kpiByIdMap = new Map<string, MinimalKpi>();
+    (kpisRes.data || []).forEach((k: MinimalKpi) => {
+      if (!k?.id) return;
+      kpiByIdMap.set(k.id, {
+        id: k.id,
+        title: k.title ?? '',
+        workspace_id: k.workspace_id ?? '',
+      });
+    });
+    (extraKpisRes.data || []).forEach((k: MinimalKpi) => {
+      if (!k?.id || k.workspace_id !== workspaceId) return;
+      kpiByIdMap.set(k.id, { id: k.id, title: k.title ?? '', workspace_id: k.workspace_id });
+    });
+
+    // Task map: for checkin_entries that target tasks, we want the
+    // title + a fallback parent objective link. Seed from tasksRes
+    // (which already carries `objective:objectives!inner(...)`), top
+    // up with extraTasksRes for ids not in that initial slice.
+    const taskById = new Map<string, { id: string; title: string; objectiveId: string; objectiveTitle: string }>();
+    const normalizeJoinedObj = (raw: any) =>
+      Array.isArray(raw) ? raw[0] : raw;
+    (tasksRes.data || []).forEach((t: any) => {
+      if (!t?.id) return;
+      const obj = normalizeJoinedObj(t.objective);
+      if (!obj?.id) return;
+      taskById.set(t.id, {
+        id: t.id,
+        title: t.title ?? '',
+        objectiveId: obj.id,
+        objectiveTitle: obj.title ?? '',
+      });
+    });
+    (extraTasksRes.data || []).forEach((t: any) => {
+      if (!t?.id) return;
+      const obj = normalizeJoinedObj(t.objective);
+      if (!obj?.id || obj.workspace_id !== workspaceId) return;
+      taskById.set(t.id, {
+        id: t.id,
+        title: t.title ?? '',
+        objectiveId: obj.id,
+        objectiveTitle: obj.title ?? '',
+      });
+    });
+
     // ── Step 5: transform into a unified event list. ─────────────────
     const out: ActivityEvent[] = [];
     const actorFor = (userId: string | null | undefined) =>
@@ -235,13 +343,21 @@ async function loadActivity(
       return { type: 'objective', id: o.id, title: o.title ?? '' };
     };
 
-    // Progress log → "X actualizó progreso de Y a N%". The real schema
-    // only has objective_id — no kpi_id / task_id columns — and the
-    // numeric field is new_value (with previous_value kept for audit).
-    // Accept any common name so a future schema change doesn't break.
-    // If none is a number, the event still renders but without the %.
+    const refForKpi = (id: string | null | undefined): EntityRef | undefined => {
+      if (!id) return undefined;
+      const k = kpiByIdMap.get(id);
+      if (!k) return undefined;
+      return { type: 'kpi', id: k.id, title: k.title ?? '' };
+    };
+
+    // Progress log → "X actualizó progreso de Y a N%". Comments and
+    // progress_logs can target EITHER an objective or a KPI (see
+    // 2026-04-21-kpi-comments.sql). Prefer objective when both are
+    // set, fall back to KPI otherwise, and drop rows that resolve to
+    // neither. For the numeric field we accept any common name
+    // (new_value is canonical; progress_value was an older spelling).
     (progressRes.data || []).forEach((r: any) => {
-      const target = refForObj(r.objective_id);
+      const target = refForObj(r.objective_id) ?? refForKpi(r.kpi_id);
       if (!target) return;
       const pct = pickNumber(
         r.new_value,
@@ -260,11 +376,11 @@ async function loadActivity(
       });
     });
 
-    // Comments → "X comentó en Y" + quote. Real schema has only
-    // objective_id. The in-memory workspace filter happens via
-    // refForObj — objById is keyed on the current workspace.
+    // Comments → "X comentó en Y" + quote. Same dual-target resolution
+    // as progress logs; the in-memory workspace filter happens via the
+    // ref helpers.
     (commentsRes.data || []).forEach((r: any) => {
-      const target = refForObj(r.objective_id);
+      const target = refForObj(r.objective_id) ?? refForKpi(r.kpi_id);
       if (!target) return;
       out.push({
         id: `comment-${r.id}`,
@@ -359,7 +475,87 @@ async function loadActivity(
       });
     });
 
+    // ── Check-in entries — one row per objective/task touched inside a
+    // session. Each row can produce up to two events: a progress update
+    // (when `new_progress` is present) and a status change (when
+    // `new_status` differs from `previous_status`). This is what surfaces
+    // "Alberto actualizó progreso a 75%" and "Alberto cambió estado a
+    // En progreso" in the timeline after a check-in save.
+    (checkinEntriesRes.data || []).forEach((r: any) => {
+      if (!r?.id) return;
+      const ck = Array.isArray(r.checkin) ? r.checkin[0] : r.checkin;
+      const actor = actorFor(ck?.user_id);
+      // The entry's timestamp is the row's own created_at (set the
+      // moment the check-in saved). If absent fall back to the parent.
+      const ts = r.created_at ?? ck?.created_at;
+      const target = refForObj(r.objective_id) ?? refForTaskId(r.task_id);
+      if (!target) return;
+
+      if (typeof r.new_progress === 'number' && r.new_progress !== r.previous_progress) {
+        out.push({
+          id: `checkin-progress-${r.id}`,
+          kind: 'checkin_progress',
+          timestamp: ts,
+          actor,
+          target,
+          progressPct: r.new_progress,
+        });
+      }
+      if (typeof r.new_status === 'string' && r.new_status !== r.previous_status) {
+        out.push({
+          id: `checkin-status-${r.id}`,
+          kind: 'checkin_status',
+          timestamp: ts,
+          actor,
+          target,
+          statusLabel: humanStatus(target.type, r.new_status),
+        });
+      }
+    });
+
     // Sort desc by timestamp, clip.
     out.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
     setEvents(out.slice(0, limit));
+
+    /** Helper: resolve a task id into a ref pointing at the task (we
+     *  render status/progress events as "task 'X' en objetivo 'Y'").
+     *  Returns undefined if the task's workspace/parent-objective isn't
+     *  resolvable — the event is dropped rather than rendered without
+     *  context. */
+    function refForTaskId(id: string | null | undefined): EntityRef | undefined {
+      if (!id) return undefined;
+      const t = taskById.get(id);
+      if (!t) return undefined;
+      return { type: 'task', id: t.id, title: t.title || '' };
+    }
+}
+
+/**
+ * Map raw DB status values to the Spanish labels we surface in the UI.
+ * Matches the `objectiveStatusChip` / `taskStatusChip` vocabulary used
+ * elsewhere, kept as a small local table so the feed hook doesn't take
+ * a dependency on the chip components.
+ */
+function humanStatus(targetType: 'kpi' | 'objective' | 'task', status: string): string {
+  const objectiveLabels: Record<string, string> = {
+    in_progress: 'En progreso',
+    paused: 'Pausado',
+    deprecated: 'Descartado',
+    upcoming: 'Próximo',
+  };
+  const taskLabels: Record<string, string> = {
+    pending: 'Pendiente',
+    in_progress: 'En progreso',
+    completed: 'Completada',
+    blocked: 'Bloqueada',
+  };
+  const kpiLabels: Record<string, string> = {
+    on_track: 'On track',
+    at_risk: 'En riesgo',
+    off_track: 'Fuera de curso',
+    achieved: 'Completado',
+  };
+  const table =
+    targetType === 'task' ? taskLabels : targetType === 'kpi' ? kpiLabels : objectiveLabels;
+  return table[status] ?? status;
 }

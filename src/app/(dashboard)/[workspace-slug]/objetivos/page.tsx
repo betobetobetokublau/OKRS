@@ -487,12 +487,16 @@ function KpiSection({
         <KpiRing value={progress} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Section label — bumped from 10px → 14px per the design
+              note ("unreadable at the old size"). Keeps the uppercase
+              letter-spacing treatment so it still reads as metadata
+              rather than body copy. */}
           <div
             style={{
-              fontSize: '1.0rem',
+              fontSize: '1.4rem',
               fontWeight: 600,
-              color: '#919eab',
-              letterSpacing: '0.08em',
+              color: '#637381',
+              letterSpacing: '0.05em',
               textTransform: 'uppercase',
               marginBottom: '0.2rem',
             }}
@@ -524,6 +528,28 @@ function KpiSection({
           >
             {kpi.title}
           </button>
+          {/* Description as subtitle — surfaces the KPI's narrative
+              context right next to its title so users don't have to
+              open the detail panel to remember what it's measuring. */}
+          {kpi.description && (
+            <p
+              style={{
+                fontSize: '1.25rem',
+                color: '#637381',
+                margin: '0.2rem 0 0',
+                lineHeight: 1.45,
+                maxWidth: '70ch',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+              }}
+              title={kpi.description}
+            >
+              {kpi.description}
+            </p>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem', flexShrink: 0 }}>

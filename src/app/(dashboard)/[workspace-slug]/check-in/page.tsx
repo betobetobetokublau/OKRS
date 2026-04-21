@@ -15,6 +15,7 @@ import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-p
 import { TaskForm } from '@/components/tasks/task-form';
 import { ActivityList } from '@/components/layout/activity-list';
 import { useActivityFeed, type EntityRef } from '@/hooks/use-activity-feed';
+import { useCheckinSaveStore } from '@/stores/checkin-save-store';
 import type { Department, KPI, Objective, ObjectiveStatus, Task } from '@/types';
 
 // ---------- Types ----------
@@ -67,6 +68,10 @@ export default function CheckinPage() {
     new Map(),
   );
   const [tasksToComplete, setTasksToComplete] = useState<Set<string>>(new Set());
+  // "¿En qué estás pensando?" — free-form note for the whole check-in
+  // session. Saved on the `checkins.summary` field and surfaced in the
+  // activity timeline as the check-in event's quote.
+  const [thought, setThought] = useState<string>('');
 
   // Expand state (per objective)
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -273,6 +278,9 @@ export default function CheckinPage() {
         user_id: profile.id,
         workspace_id: currentWorkspace.id,
         period_id: activePeriod.id,
+        // Free-form note from the "¿En qué estás pensando?" card. NULL
+        // when empty so the activity feed doesn't render an empty quote.
+        summary: thought.trim() || null,
       })
       .select('id')
       .single();
@@ -310,15 +318,18 @@ export default function CheckinPage() {
       });
 
       if (edit.new_progress !== undefined && edit.new_progress !== obj.manual_progress) {
+        // Canonical column names per the real schema: `new_value` (new
+        // number), `previous_value` (audit). `workspace_id` isn't on
+        // this table — RLS scopes via objective_id → objectives — so
+        // we don't send it.
         timelineInserts.push(
           Promise.resolve(
             supabase.from('progress_logs').insert({
               user_id: profile.id,
-              period_id: activePeriod.id,
-              workspace_id: currentWorkspace.id,
               objective_id: objId,
-              progress_value: edit.new_progress,
-              note: edit.comment?.trim() || null,
+              previous_value: obj.manual_progress,
+              new_value: edit.new_progress,
+              comment: edit.comment?.trim() || null,
             }),
           ),
         );
@@ -372,10 +383,31 @@ export default function CheckinPage() {
 
     setObjectiveEdits(new Map());
     setTasksToComplete(new Set());
+    setThought('');
     setSavedToastId((n) => n + 1);
     await load();
     setSaving(false);
   }
+
+  // ── Register `handleSave` with the topbar's "Guardar check-in" button.
+  // The topbar is a layout component that doesn't know about this page's
+  // state, so we bridge via a zustand store: the topbar reads the handler
+  // + saving/disabled flags and fires the callback on click. Re-runs
+  // whenever the pending-edit maps change so the topbar's disabled state
+  // tracks "is there anything to save?". ─────────────────────────────
+  const registerSaveHandler = useCheckinSaveStore((s) => s.registerHandler);
+  const nothingPending =
+    objectiveEdits.size === 0 && tasksToComplete.size === 0 && !thought.trim();
+  useEffect(() => {
+    registerSaveHandler(() => handleSave(), {
+      saving,
+      disabled: nothingPending || !activePeriod,
+    });
+    return () => registerSaveHandler(null);
+    // handleSave references many state slices but we don't need
+    // exhaustive deps; the store reads the latest closure every call.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registerSaveHandler, saving, nothingPending, activePeriod?.id]);
 
   const title = formatCheckinTitle(new Date());
 
@@ -400,23 +432,9 @@ export default function CheckinPage() {
               : 'Sin periodo activo'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving || !activePeriod}
-          style={{
-            padding: '0.8rem 1.6rem',
-            fontSize: '1.4rem',
-            fontWeight: 600,
-            color: 'white',
-            backgroundColor: saving || !activePeriod ? '#8c92c4' : '#5c6ac4',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: saving || !activePeriod ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {saving ? 'Guardando...' : 'Guardar check-in'}
-        </button>
+        {/* Save affordance lives in the topbar — see the white "Guardar
+            check-in" button registered via CheckinSaveStore — so we no
+            longer render a button in the page header. */}
       </div>
 
       {saveError && (
@@ -499,11 +517,54 @@ export default function CheckinPage() {
             )}
           </div>
 
-          {/* Right column: Mis tareas + Actividad feed.
-              Wrapper stacks both vertically. MyTasksColumn's sticky
-              positioning applies only to itself now — the activity list
-              sits beneath it in the normal flow. */}
+          {/* Right column: ¿En qué estás pensando? + Mis tareas +
+              Actividad feed. Wrapper stacks them vertically. */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {/* Free-form thought captured as the check-in's summary —
+                persisted to `checkins.summary` on save and surfaced on
+                the activity timeline as the quote attached to the
+                "hizo check-in" event. */}
+            <div
+              className="Polaris-Card"
+              style={{
+                borderRadius: '8px',
+                border: '1px solid var(--color-border)',
+                backgroundColor: 'white',
+                padding: '1.2rem 1.6rem',
+              }}
+            >
+              <label
+                htmlFor="checkin-thought"
+                style={{
+                  display: 'block',
+                  fontSize: '1.5rem',
+                  fontWeight: 600,
+                  color: '#212b36',
+                  marginBottom: '0.8rem',
+                }}
+              >
+                ¿En qué estás pensando?
+              </label>
+              <textarea
+                id="checkin-thought"
+                value={thought}
+                onChange={(e) => setThought(e.target.value)}
+                rows={3}
+                placeholder="Agrega una nota para tu check-in…"
+                style={{
+                  width: '100%',
+                  padding: '0.8rem 1rem',
+                  fontSize: '1.3rem',
+                  color: '#212b36',
+                  border: '1px solid #dfe3e8',
+                  borderRadius: '6px',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  lineHeight: 1.45,
+                }}
+              />
+            </div>
+
             <MyTasksColumn
               tasks={myAssignedTasks}
               tasksToComplete={tasksToComplete}
@@ -606,6 +667,24 @@ function MyTasksColumn({
   onOpenObjective,
   onAddTask,
 }: MyTasksColumnProps) {
+  // Unfinished tasks (incl. queued-as-complete-but-not-yet-persisted)
+  // always render before finished ones — that's the column's practical
+  // focus: "what do I still need to do?" Within each bucket keep the
+  // original order (oldest first).
+  const sortedTasks = useMemo(() => {
+    return [...tasks].sort((a, b) => {
+      const aDone = a.status === 'completed' ? 1 : 0;
+      const bDone = b.status === 'completed' ? 1 : 0;
+      return aDone - bDone;
+    });
+  }, [tasks]);
+
+  // Each row is ~8rem tall (varies with wrapped titles). Cap the
+  // scrollable list at five rows of that typical height so tall task
+  // lists don't push the activity timeline off the page.
+  const MAX_ROWS = 5;
+  const APPROX_ROW_HEIGHT = '8rem';
+
   return (
     <div
       className="Polaris-Card"
@@ -631,6 +710,9 @@ function MyTasksColumn({
             {tasks.length} asignadas
           </p>
         </div>
+        {/* Gray outlined pill — matches the new visual language where
+            Actualizar is the one blue primary and everything else reads
+            as secondary. */}
         <button
           type="button"
           onClick={onAddTask}
@@ -638,9 +720,9 @@ function MyTasksColumn({
             padding: '0.4rem 1rem',
             fontSize: '1.2rem',
             fontWeight: 500,
-            color: '#5c6ac4',
-            backgroundColor: '#f4f5fc',
-            border: 'none',
+            color: '#637381',
+            backgroundColor: 'white',
+            border: '1px solid #dfe3e8',
             borderRadius: '4px',
             cursor: 'pointer',
           }}
@@ -654,8 +736,23 @@ function MyTasksColumn({
           No tienes tareas asignadas.
         </p>
       ) : (
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {tasks.map((t) => {
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            margin: 0,
+            // Cap the visible height at ~5 rows; scroll beyond that.
+            // Only kick in when we have more than MAX_ROWS tasks so
+            // shorter lists sit at their natural height without an
+            // unused scroll gutter.
+            maxHeight:
+              tasks.length > MAX_ROWS
+                ? `calc(${APPROX_ROW_HEIGHT} * ${MAX_ROWS})`
+                : undefined,
+            overflowY: tasks.length > MAX_ROWS ? 'auto' : 'visible',
+          }}
+        >
+          {sortedTasks.map((t) => {
             const queued = tasksToComplete.has(t.id);
             const isDone = t.status === 'completed';
             const chip = taskStatusChip(queued ? 'completed' : t.status);
@@ -672,12 +769,6 @@ function MyTasksColumn({
                   backgroundColor: queued ? '#f4f5fc' : 'white',
                 }}
               >
-                <CheckButton
-                  checked={queued || isDone}
-                  disabled={isDone}
-                  onClick={() => onToggleComplete(t)}
-                  compact
-                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <button
                     type="button"
@@ -763,6 +854,18 @@ function MyTasksColumn({
                     <StaticChip chip={chip} />
                   </div>
                 </div>
+                {/* "Terminada" — rectangular replacement for the old
+                    round check-circle, per the design update. Same gray
+                    outlined style as + Nueva tarea / + Tarea so the
+                    whole surface reads as a consistent secondary action
+                    family. Disabled (kept visually the same, but
+                    non-interactive) once the task is already
+                    completed. */}
+                <TaskCompleteButton
+                  checked={queued || isDone}
+                  disabled={isDone}
+                  onClick={() => onToggleComplete(t)}
+                />
               </li>
             );
           })}
@@ -936,7 +1039,7 @@ function CheckinKpiTable({
                           padding: '0.3rem 0.7rem',
                           fontSize: '1.2rem',
                           color: '#637381',
-                          backgroundColor: 'transparent',
+                          backgroundColor: 'white',
                           border: '1px solid #dfe3e8',
                           borderRadius: '4px',
                           cursor: 'pointer',
@@ -950,14 +1053,18 @@ function CheckinKpiTable({
                           e.stopPropagation();
                           onUpdateObjective(obj);
                         }}
+                        // Blue outline + blue text. Keeps Actualizar as
+                        // the stand-out primary action on the row without
+                        // the heavy filled purple look we used before.
                         style={{
                           padding: '0.3rem 0.9rem',
                           fontSize: '1.2rem',
-                          color: '#637381',
-                          backgroundColor: 'transparent',
-                          border: '1px solid #dfe3e8',
+                          color: '#026fff',
+                          backgroundColor: 'white',
+                          border: '1px solid #026fff',
                           borderRadius: '4px',
                           cursor: 'pointer',
+                          fontWeight: 500,
                         }}
                       >
                         Actualizar
@@ -1014,7 +1121,7 @@ function CheckinKpiTable({
                         </td>
                         <td style={cellBase}>
                           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <CheckButton
+                            <TaskCompleteButton
                               checked={queued || isDone}
                               disabled={isDone}
                               onClick={() => onToggleTaskComplete(t)}
@@ -1207,18 +1314,23 @@ function MiniProgress({ value }: { value: number }) {
   );
 }
 
-function CheckButton({
+/**
+ * Rectangular "Terminada" affordance, replaces the old circular check
+ * icon across all task rows (Mis tareas column + nested rows in the
+ * main per-KPI table). Gray outlined family (matches `+ Nueva tarea`,
+ * `+ Tarea`). When the task is already completed the button swaps to a
+ * green fill so completion state stays visually obvious without a
+ * separate "Completada" chip doing the same work twice.
+ */
+function TaskCompleteButton({
   checked,
   disabled,
   onClick,
-  compact,
 }: {
   checked: boolean;
   disabled: boolean;
   onClick: () => void;
-  compact?: boolean;
 }) {
-  const size = compact ? '2.4rem' : '3rem';
   return (
     <button
       type="button"
@@ -1226,25 +1338,38 @@ function CheckButton({
       disabled={disabled}
       aria-label={checked ? 'Completada' : 'Marcar completada'}
       style={{
-        width: size,
-        height: size,
-        minWidth: size,
         display: 'inline-flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        padding: 0,
-        border: '1px solid ' + (checked ? '#108043' : '#dfe3e8'),
-        borderRadius: '50%',
+        gap: '0.4rem',
+        padding: '0.4rem 0.9rem',
+        fontSize: '1.2rem',
+        fontWeight: 500,
+        color: checked ? '#108043' : '#637381',
         backgroundColor: checked ? '#e3f1df' : 'white',
-        color: checked ? '#108043' : '#919eab',
+        border: '1px solid ' + (checked ? '#bbe5b3' : '#dfe3e8'),
+        borderRadius: '4px',
         cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.7 : 1,
+        opacity: disabled ? 0.85 : 1,
         flexShrink: 0,
+        lineHeight: 1,
       }}
     >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M5 13l4 4L19 7" />
+      {/* Checkbox icon — outline when pending, check-filled when done */}
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="3" y="3" width="18" height="18" rx="3" />
+        {checked && <path d="M8 12l3 3 5-6" />}
       </svg>
+      Terminada
     </button>
   );
 }
