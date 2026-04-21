@@ -31,6 +31,12 @@ export interface Profile {
   full_name: string;
   avatar_url: string | null;
   must_change_password: boolean;
+  /**
+   * Null means the user has never completed the onboarding carousel;
+   * a timestamp means they dismissed it on that date. Admins skip the
+   * flow entirely so their rows stay NULL.
+   */
+  onboarded_at: string | null;
   created_at: string;
   updated_at: string;
 }
