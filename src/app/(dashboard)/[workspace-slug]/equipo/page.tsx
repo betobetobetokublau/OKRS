@@ -208,6 +208,22 @@ export default function EquipoPage() {
   async function handleRoleChange(targetUserId: string, uwId: string, newRole: WorkspaceRole) {
     if (!currentWorkspace) return;
 
+    // Defensive: trim and sanity-check before hitting the API. Zod 4's
+    // format validators reject whitespace-wrapped strings, and we've
+    // seen a "Invalid UUID" 400 that traced back to a trimmable id
+    // in the workspace store.
+    const workspaceId = String(currentWorkspace.id ?? '').trim();
+    const userId = String(targetUserId ?? '').trim();
+    if (!workspaceId || !userId) {
+      console.error('[equipo] missing ids for role change', {
+        workspaceId,
+        userId,
+        currentWorkspace,
+      });
+      alert('Falta el identificador de workspace o de usuario; recarga la página y vuelve a intentarlo.');
+      return;
+    }
+
     // Snapshot the previous role so we can roll back on failure.
     const prevRole = members.find((m) => m.userWorkspace.id === uwId)?.userWorkspace.role ?? null;
 
@@ -219,19 +235,29 @@ export default function EquipoPage() {
       ),
     );
 
+    const body = {
+      target_user_id: userId,
+      workspace_id: workspaceId,
+      role: newRole,
+    };
+
     const res = await fetch('/api/auth/cambiar-rol-usuario', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        target_user_id: targetUserId,
-        workspace_id: currentWorkspace.id,
-        role: newRole,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      const msg = body?.error || 'No se pudo cambiar el rol.';
+      const json = await res.json().catch(() => ({} as { error?: string; issues?: Array<{ path?: string[]; message?: string }> }));
+      const issues = Array.isArray(json?.issues) ? json.issues : [];
+      // Log the outgoing payload + server response so if the failure
+      // recurs we can spot which field is malformed without asking the
+      // user to re-screenshot the Network tab.
+      console.error('[equipo] role change rejected', {
+        body,
+        status: res.status,
+        response: json,
+      });
       if (prevRole) {
         setMembers((prev) =>
           prev.map((m) =>
@@ -241,10 +267,14 @@ export default function EquipoPage() {
           ),
         );
       }
-      // A lightweight alert avoids inventing a toast system here; the
-      // more serious error surface (last-admin block, forbidden) lands
-      // here with a clear Spanish message from the server.
-      alert(msg);
+      // Surface the most specific message we have. For validation
+      // errors that's the first issue; otherwise fall back to the
+      // generic `error` string from the server.
+      const detail =
+        issues[0]?.message && issues[0]?.path?.length
+          ? `${issues[0].path.join('.')}: ${issues[0].message}`
+          : null;
+      alert(detail || json?.error || 'No se pudo cambiar el rol.');
     }
   }
 
