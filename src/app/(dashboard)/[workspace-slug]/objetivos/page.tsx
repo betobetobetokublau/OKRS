@@ -971,15 +971,18 @@ function ObjetivosHero({
   return (
     <div
       style={{
-        // Transparent — floats on the page background (no card, no border).
-        background: 'transparent',
-        color: '#212b36',
-        padding: '0.4rem 0',
-        marginBottom: '1rem',
+        // Signature purple hero card — the flat rework below applied only
+        // to the DepartmentBars block, not to this one.
+        background: 'linear-gradient(180deg, #5c6ac4 0%, #4959bd 100%)',
+        color: '#fff',
+        borderRadius: '12px',
+        padding: '2.4rem 2.8rem',
+        marginBottom: '1.6rem',
         display: 'grid',
         gridTemplateColumns: '1fr auto',
-        gap: '2rem',
+        gap: '2.4rem',
         alignItems: 'center',
+        boxShadow: '0 10px 30px -10px rgba(73,89,189,0.25)',
       }}
     >
       <div>
@@ -988,9 +991,9 @@ function ObjetivosHero({
             fontSize: '1.1rem',
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
-            color: '#637381',
+            color: 'rgba(255,255,255,0.7)',
             fontWeight: 600,
-            marginBottom: '0.4rem',
+            marginBottom: '0.6rem',
           }}
         >
           Objetivos {periodName ? `· ${periodName}` : ''}
@@ -998,36 +1001,35 @@ function ObjetivosHero({
         <h1
           style={{
             margin: 0,
-            fontSize: '2.6rem',
+            fontSize: '3rem',
             fontWeight: 700,
             letterSpacing: '-0.015em',
             lineHeight: 1.2,
-            color: '#212b36',
           }}
         >
           <span>{total} objetivos, </span>
-          <span style={{ color: '#5c6ac4' }}>{overallAvg}%</span>
+          <span style={{ color: '#ffe082' }}>{overallAvg}%</span>
           <span> de avance medio</span>
         </h1>
         <div
           style={{
-            fontSize: '1.5rem',
-            fontWeight: 500,
-            marginTop: '0.2rem',
-            color: '#454f5b',
+            fontSize: '1.8rem',
+            fontWeight: 600,
+            marginTop: '0.4rem',
+            color: 'rgba(255,255,255,0.92)',
           }}
         >
-          {finishedCount} completados <span style={{ color: '#c4cdd5' }}>·</span>{' '}
-          {behindCount} en riesgo <span style={{ color: '#c4cdd5' }}>·</span>{' '}
+          {finishedCount} completados <span style={{ opacity: 0.5 }}>·</span>{' '}
+          {behindCount} en riesgo <span style={{ opacity: 0.5 }}>·</span>{' '}
           {blockedCount} bloqueados
         </div>
         {narrative && (
           <p
             style={{
-              margin: '0.8rem 0 0',
-              fontSize: '1.3rem',
-              lineHeight: '2rem',
-              color: '#637381',
+              margin: '1.4rem 0 0',
+              fontSize: '1.4rem',
+              lineHeight: '2.2rem',
+              color: 'rgba(255,255,255,0.85)',
               maxWidth: '62ch',
             }}
           >
@@ -1035,19 +1037,19 @@ function ObjetivosHero({
           </p>
         )}
         {canCreate && (
-          <div style={{ marginTop: '1rem' }}>
+          <div style={{ marginTop: '1.8rem' }}>
             <button
               onClick={onCreate}
               style={{
                 padding: '0.8rem 1.6rem',
                 fontSize: '1.3rem',
                 fontWeight: 600,
-                color: '#fff',
-                background: '#5c6ac4',
+                color: '#4959bd',
+                background: '#fff',
                 border: 'none',
                 borderRadius: '6px',
                 cursor: 'pointer',
-                boxShadow: '0 1px 2px rgba(15,24,48,0.08)',
+                boxShadow: '0 2px 6px rgba(15,24,48,0.1)',
               }}
             >
               + Crear Objetivo
@@ -1066,18 +1068,18 @@ function HeroRing({ value }: { value: number }) {
     <div style={{ textAlign: 'center' }}>
       <div
         style={{
-          width: '9rem',
-          height: '9rem',
+          width: '10rem',
+          height: '10rem',
           position: 'relative',
         }}
       >
         <svg viewBox="0 0 40 40" width="100%" height="100%" style={{ transform: 'rotate(-90deg)' }}>
-          <circle cx="20" cy="20" r="17" stroke="#dfe3e8" strokeWidth="4" fill="none" />
+          <circle cx="20" cy="20" r="17" stroke="rgba(255,255,255,0.22)" strokeWidth="4" fill="none" />
           <circle
             cx="20"
             cy="20"
             r="17"
-            stroke="#5c6ac4"
+            stroke="#ffe082"
             strokeWidth="4"
             fill="none"
             strokeLinecap="round"
@@ -1091,9 +1093,9 @@ function HeroRing({ value }: { value: number }) {
             inset: 0,
             display: 'grid',
             placeItems: 'center',
-            fontSize: '2.2rem',
+            fontSize: '2.4rem',
             fontWeight: 700,
-            color: '#212b36',
+            color: '#fff',
             fontVariantNumeric: 'tabular-nums',
           }}
         >
@@ -1104,7 +1106,7 @@ function HeroRing({ value }: { value: number }) {
         style={{
           marginTop: '0.4rem',
           fontSize: '1.05rem',
-          color: '#637381',
+          color: 'rgba(255,255,255,0.75)',
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
           fontWeight: 600,
@@ -1184,7 +1186,9 @@ function DepartmentBarRow({ row }: { row: HeroLeaderboardRow }) {
         alignItems: 'center',
         columnGap: '1.2rem',
         fontSize: '1.25rem',
-        padding: '0.6rem 0',
+        // Zero vertical padding — parent's rowGap is the only spacing;
+        // keeps the department list dense per the design note.
+        padding: 0,
       }}
     >
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem' }}>

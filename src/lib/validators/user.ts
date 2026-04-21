@@ -41,7 +41,16 @@ export const changePasswordAdminApiSchema = z.object({
   must_change_password: z.boolean().optional(),
 });
 
+// Body accepted by POST /api/auth/cambiar-rol-usuario. Admin updates
+// another user's role in the shared workspace.
+export const changeRoleApiSchema = z.object({
+  target_user_id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  role: z.enum(['admin', 'manager', 'member']),
+});
+
 export type CreateUserFormData = z.infer<typeof createUserSchema>;
 export type CreateUserApiInput = z.infer<typeof createUserApiSchema>;
 export type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;
 export type ChangePasswordAdminApiInput = z.infer<typeof changePasswordAdminApiSchema>;
+export type ChangeRoleApiInput = z.infer<typeof changeRoleApiSchema>;

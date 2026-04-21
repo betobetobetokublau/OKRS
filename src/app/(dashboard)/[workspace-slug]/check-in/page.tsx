@@ -613,10 +613,6 @@ function MyTasksColumn({
         borderRadius: '8px',
         border: '1px solid var(--color-border)',
         backgroundColor: 'white',
-        position: 'sticky',
-        top: '1.6rem',
-        maxHeight: 'calc(100vh - 8rem)',
-        overflowY: 'auto',
       }}
     >
       <div
@@ -627,8 +623,6 @@ function MyTasksColumn({
           padding: '1.2rem 1.6rem',
           borderBottom: '1px solid #f1f2f4',
           backgroundColor: '#fafbfb',
-          position: 'sticky',
-          top: 0,
         }}
       >
         <div>

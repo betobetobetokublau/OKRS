@@ -159,7 +159,11 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
         )}
       </div>
 
-      {/* Center: Check-in CTA (absolutely centered so left/right zones stay anchored) */}
+      {/* Center: Check-in CTA (absolutely centered so left/right zones
+          stay anchored). Flanked by a target icon on the left and an
+          arrow on the right so the affordance reads as both "a goal"
+          and "go somewhere." Label size bumped ~20% from 1.3 → 1.56rem
+          per the design note. */}
       {workspaceSlug && (
         <Link
           href={`/${workspaceSlug}/check-in`}
@@ -170,13 +174,13 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
             transform: 'translate(-50%, -50%)',
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '0.6rem',
-            padding: '0.6rem 1.4rem',
+            gap: '0.7rem',
+            padding: '0.7rem 1.6rem',
             borderRadius: '999px',
             background: 'rgba(255,255,255,0.12)',
             border: '1px solid rgba(255,255,255,0.25)',
             color: 'white',
-            fontSize: '1.3rem',
+            fontSize: '1.56rem',
             fontWeight: 500,
             textDecoration: 'none',
             lineHeight: 1,
@@ -189,10 +193,17 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
             e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 13l4 4L19 7" />
+          {/* Bullseye — signals "goal" / OKR */}
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="5" />
+            <circle cx="12" cy="12" r="1.5" />
           </svg>
           Check-in
+          {/* Right arrow — signals "go to the check-in flow" */}
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M5 12h14M13 5l7 7-7 7" />
+          </svg>
         </Link>
       )}
 
