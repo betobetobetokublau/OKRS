@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/client';
 import { NotificationBell } from './notification-bell';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { useSidebarStore } from '@/stores/sidebar-store';
+import { useWorkspaceStore } from '@/stores/workspace-store';
+import { writeImpersonationTarget } from '@/lib/impersonation';
 import type { Profile } from '@/types';
 import { useState, useRef, useEffect } from 'react';
 
@@ -24,6 +26,21 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const toggleSidebar = useSidebarStore((s) => s.toggle);
+  const isImpersonating = useWorkspaceStore((s) => s.isImpersonating);
+  const exitImpersonation = useWorkspaceStore((s) => s.exitImpersonation);
+
+  // In impersonation mode the whole topbar flips to a near-black fill so
+  // admins always know at a glance they're not looking at their own view.
+  // The translucent pills (Check-in CTA, Volver-al-admin, avatar menu)
+  // read fine against either palette.
+  const topbarBg = isImpersonating ? '#1a1a1a' : 'var(--color-topbar)';
+
+  function handleExitImpersonation() {
+    writeImpersonationTarget(null);
+    exitImpersonation();
+    // Route back to the team/users page where the admin launched from.
+    router.push(`/${workspaceSlug}/equipo`);
+  }
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -46,7 +63,7 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
       className="Polaris-TopBar"
       style={{
         height: '56px',
-        backgroundColor: 'var(--color-topbar)',
+        backgroundColor: topbarBg,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -55,6 +72,7 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
         top: 0,
         zIndex: 150,
         width: '100%',
+        transition: 'background-color 140ms ease',
       }}
     >
       {/* Left: Hamburger + Logo + workspace name */}
@@ -87,6 +105,38 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
         <span style={{ color: 'white', fontWeight: 700, fontSize: '1.6rem', letterSpacing: '-0.02em' }}>
           {workspaceName || 'kublau'}
         </span>
+
+        {/* Exit-impersonation pill. Only shown while an admin is viewing
+            as another user. Sits right next to the workspace name so the
+            escape hatch is always one click away. */}
+        {isImpersonating && (
+          <button
+            type="button"
+            onClick={handleExitImpersonation}
+            title="Volver a tu vista de administrador"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              marginLeft: '0.8rem',
+              padding: '0.5rem 1.1rem',
+              borderRadius: '999px',
+              background: '#ffe082',
+              color: '#1a1a1a',
+              border: '1px solid #f5c542',
+              fontSize: '1.25rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              lineHeight: 1,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+            Volver al admin
+          </button>
+        )}
 
         {/* Breadcrumbs (only when explicitly passed) */}
         {breadcrumbs && breadcrumbs.length > 0 && (
