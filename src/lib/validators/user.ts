@@ -43,9 +43,18 @@ export const changePasswordAdminApiSchema = z.object({
 
 // Body accepted by POST /api/auth/cambiar-rol-usuario. Admin updates
 // another user's role in the shared workspace.
+//
+// `target_user_id` / `workspace_id` are validated as non-empty strings
+// rather than strict UUIDs because zod 4's `.uuid()` is very strict and
+// any non-standard value (empty string, stray whitespace, slug-shaped
+// data drifted in from the store) triggers a cryptic 400 that's a pain
+// to diagnose client-side. The real security boundary is the downstream
+// `requireWorkspaceRole` + `user_workspaces` lookup: those fail safely
+// with 403/404 for any id that doesn't resolve to a real row, so the
+// format check wasn't buying us anything.
 export const changeRoleApiSchema = z.object({
-  target_user_id: z.string().uuid(),
-  workspace_id: z.string().uuid(),
+  target_user_id: z.string().min(1, 'target_user_id requerido'),
+  workspace_id: z.string().min(1, 'workspace_id requerido'),
   role: z.enum(['admin', 'manager', 'member']),
 });
 
