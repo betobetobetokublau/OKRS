@@ -533,12 +533,13 @@ export default function CheckinPage() {
           {/* Left column: per-KPI tables */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             {/* Section title — introduces the KPI-grouped tables as
-                the "your department's objectives" block. Rendered here
-                (rather than at the page level) so it tracks with the
-                left column and doesn't sit above the Mis tareas card.
-                `paddingTop` mirrors the "¿En qué estás pensando?"
-                card's top inset so the two columns' first visible
-                text baselines line up. */}
+                the "your department's objectives" block. Rendered
+                here (rather than at the page level) so it tracks with
+                the left column and doesn't sit above the Mis tareas
+                card. No top padding: the grid uses
+                `alignItems: 'flex-start'`, so dropping the inset makes
+                the title's top edge line up with the top edge of the
+                "¿En qué estás pensando?" card on the right column. */}
             <h2
               style={{
                 fontSize: '1.8rem',
@@ -546,7 +547,6 @@ export default function CheckinPage() {
                 color: '#212b36',
                 margin: 0,
                 lineHeight: 1.25,
-                paddingTop: '1.2rem',
               }}
             >
               Los objetivos de tu departamento
@@ -607,7 +607,14 @@ export default function CheckinPage() {
                 the activity timeline as the quote attached to the
                 "hizo check-in" event. Background is transparent so the
                 card blends with the page bg; the border + padding
-                stay so it still reads as a discrete card. */}
+                stay so it still reads as a discrete card.
+
+                `marginTop` offsets the card down by the height of the
+                left column's `<h2>` section title (1.8rem * 1.25
+                line-height = 2.25rem) plus the left column's internal
+                flex gap (2rem). That lines up this card's top corner
+                with the top corner of the first KPI table on the
+                left — not with the section title above it. */}
             <div
               className="Polaris-Card"
               style={{
@@ -615,6 +622,7 @@ export default function CheckinPage() {
                 border: '1px solid var(--color-border)',
                 backgroundColor: 'transparent',
                 padding: '1.2rem 1.6rem',
+                marginTop: '4.25rem',
               }}
             >
               <label
