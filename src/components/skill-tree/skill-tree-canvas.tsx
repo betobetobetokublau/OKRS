@@ -257,9 +257,17 @@ export function SkillTreeCanvas({
     );
   }
 
-  // ────────────── Geometry (from proposal 3B) ──────────────
+  // ────────────── Geometry ──────────────
+  // Tuned for ~16 KPIs. With that many sectors center-to-center
+  // angular spacing drops to 22.5°, so the OLD radii (labelMid≈189)
+  // placed adjacent label centers only ~74px apart — cards overlap
+  // since they render horizontally. The new radii put labelMid at
+  // ~305, giving ~119px between centers which fits a two-line split
+  // of the longest real titles without truncation. For fewer KPIs
+  // the extra radius just means more whitespace, which still reads
+  // cleanly.
   const W = 1400;
-  const H = 720;
+  const H = 1080;
   const cx = W / 2;
   const cy = H / 2;
 
@@ -267,12 +275,12 @@ export function SkillTreeCanvas({
   const gap = 2;                   // degrees between sectors
   const span = (360 - n * gap) / n;
 
-  const centerR = 60;
-  const okrR = 135;                // KPI node sits here
-  const labelRInner = 168;
-  const labelROuter = 210;
-  const barInner = 220;
-  const barOuter = 335;
+  const centerR = 70;
+  const okrR = 170;                // KPI node sits here
+  const labelRInner = 255;
+  const labelROuter = 355;
+  const barInner = 375;
+  const barOuter = 505;
 
   return (
     <div
@@ -326,11 +334,18 @@ export function SkillTreeCanvas({
           const barGap = 1.2;
           const barSpan = bars.length > 0 ? (span - (bars.length - 1) * barGap) / bars.length : span;
 
-          const [labelCx, labelCy] = polar(cx, cy, (labelRInner + labelROuter) / 2, amid);
+          const labelMidR = (labelRInner + labelROuter) / 2;
+          const [labelCx, labelCy] = polar(cx, cy, labelMidR, amid);
 
-          // Pick a character width for title wrapping based on sector arc width.
-          const labelArcWidthPx = ((a2 - a1) - 2) * (Math.PI / 180) * labelROuter;
-          const maxChars = Math.max(12, Math.floor(labelArcWidthPx / (11 * 0.55)));
+          // Slot width = actual horizontal distance between adjacent
+          // label card centers (minus an 8px breathing gap). This is
+          // what really bounds each card since labels are rendered
+          // horizontally, not along the arc — using arc width
+          // overestimates and produces overlapping cards when many
+          // KPIs crowd the ring.
+          const adjCenterDist = 2 * labelMidR * Math.sin(Math.PI / n);
+          const slotW = Math.max(70, adjCenterDist - 8);
+          const maxChars = Math.max(10, Math.floor((slotW - 20) / (11 * 0.55)));
           const lines = splitTitle(okr.short, maxChars);
 
           return (
@@ -417,16 +432,16 @@ export function SkillTreeCanvas({
               })}
 
               {/* KPI circle + progress ring */}
-              <circle cx={nx} cy={ny} r={26} fill="#FFFFFF" stroke={color} strokeWidth={isFocused ? 3 : 2} />
-              <circle cx={nx} cy={ny} r={30} fill="none" stroke="#EFF2F7" strokeWidth={3} />
+              <circle cx={nx} cy={ny} r={30} fill="#FFFFFF" stroke={color} strokeWidth={isFocused ? 3 : 2} />
+              <circle cx={nx} cy={ny} r={34} fill="none" stroke="#EFF2F7" strokeWidth={3} />
               <circle
                 cx={nx}
                 cy={ny}
-                r={30}
+                r={34}
                 fill="none"
                 stroke={color}
                 strokeWidth={3}
-                strokeDasharray={`${(okr.progress / 100) * 2 * Math.PI * 30} ${2 * Math.PI * 30}`}
+                strokeDasharray={`${(okr.progress / 100) * 2 * Math.PI * 34} ${2 * Math.PI * 34}`}
                 strokeLinecap="round"
                 transform={`rotate(-90 ${nx} ${ny})`}
               />
@@ -434,7 +449,7 @@ export function SkillTreeCanvas({
                 x={nx}
                 y={ny + 5}
                 textAnchor="middle"
-                fontSize="13"
+                fontSize="15"
                 fontWeight={800}
                 fill="#0F1830"
                 style={{ pointerEvents: 'none' }}
@@ -455,7 +470,9 @@ export function SkillTreeCanvas({
                   ...lines.map((l) => l.length * fontTitle * 0.55),
                   (okr.category.length + 2) * fontKpi * 0.6,
                 );
-                const cardW = Math.min(180, Math.max(90, widest + padX * 2));
+                // Clamp the card to the real slot width so neighbors
+                // can't overlap when titles run long.
+                const cardW = Math.min(slotW, Math.max(90, widest + padX * 2));
                 const cardH = lines.length * lineH + lineH + padY * 2 - 2;
                 const cardX = labelCx - cardW / 2;
                 const cardY = labelCy - 4 - lineH + padY - 2;
@@ -519,10 +536,10 @@ export function SkillTreeCanvas({
           strokeLinecap="round"
           transform={`rotate(-90 ${cx} ${cy})`}
         />
-        <text x={cx} y={cy - 6} textAnchor="middle" fontSize="11" fill="#6B7691" letterSpacing="1.5" fontWeight={600}>
+        <text x={cx} y={cy - 8} textAnchor="middle" fontSize="12" fill="#6B7691" letterSpacing="1.5" fontWeight={600}>
           TOTAL
         </text>
-        <text x={cx} y={cy + 16} textAnchor="middle" fontSize="22" fontWeight={800} fill="#0F1830">
+        <text x={cx} y={cy + 18} textAnchor="middle" fontSize="24" fontWeight={800} fill="#0F1830">
           {overall}%
         </text>
       </svg>
