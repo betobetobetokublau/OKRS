@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { useObjectivesTable } from '@/hooks/use-objectives-table';
 import { ObjectivesTable } from '@/components/objectives/objectives-table';
@@ -156,10 +156,57 @@ export default function ObjetivosPage() {
     return { map, orphans };
   }, [filteredRows]);
 
+  // FLIP animation state. `flipSnapshot` caches the bounding rect of
+  // every KPI section keyed by its `data-flip-key` attribute right
+  // before we call setKpis(). After React paints the new order, the
+  // useLayoutEffect below reads the new rects, computes each card's
+  // delta, and plays a translate(dx,dy) → translate(0,0) transition
+  // so cards visibly slide to their new positions.
+  //
+  // Works for both the detailed list view and the 3-col resumida grid
+  // because the same [data-flip-key] attribute is attached to each
+  // section root regardless of layout.
+  const flipSnapshot = useRef<Map<string, DOMRect>>(new Map());
+
+  function captureFlip() {
+    const els = document.querySelectorAll<HTMLElement>('[data-flip-key]');
+    const snap = new Map<string, DOMRect>();
+    els.forEach((el) => {
+      const key = el.dataset.flipKey;
+      if (key) snap.set(key, el.getBoundingClientRect());
+    });
+    flipSnapshot.current = snap;
+  }
+
+  useLayoutEffect(() => {
+    if (flipSnapshot.current.size === 0) return;
+    const els = document.querySelectorAll<HTMLElement>('[data-flip-key]');
+    els.forEach((el) => {
+      const key = el.dataset.flipKey;
+      if (!key) return;
+      const prev = flipSnapshot.current.get(key);
+      if (!prev) return;
+      const next = el.getBoundingClientRect();
+      const dx = prev.left - next.left;
+      const dy = prev.top - next.top;
+      if (dx === 0 && dy === 0) return;
+      el.style.transition = 'none';
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      // Force a reflow so the browser commits the "invert" transform
+      // before we clear it — without this the transition is skipped.
+      void el.offsetHeight;
+      el.style.transition = 'transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1)';
+      el.style.transform = '';
+    });
+    flipSnapshot.current = new Map();
+  }, [kpis]);
+
   async function moveKpi(kpiId: string, direction: -1 | 1) {
     const idx = kpis.findIndex((k) => k.id === kpiId);
     const target = idx + direction;
     if (idx === -1 || target < 0 || target >= kpis.length) return;
+    // Snapshot BEFORE the DOM updates so FLIP has a valid "first".
+    captureFlip();
     const reordered = [...kpis];
     const [item] = reordered.splice(idx, 1);
     reordered.splice(target, 0, item);
@@ -526,6 +573,7 @@ function KpiSection({
     return (
       <div
         className="Polaris-Card"
+        data-flip-key={kpi.id}
         style={{
           borderRadius: '8px',
           border: '1px solid var(--color-border)',
@@ -533,6 +581,11 @@ function KpiSection({
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
+          // Override the global `.Polaris-Card + .Polaris-Card { margin-top: 2rem }`
+          // rule so every card in the grid aligns to the same top Y.
+          // Without this, the 2nd+ card in each row sits 2rem lower
+          // than the first.
+          marginTop: 0,
         }}
       >
         {/* Top band — ring left, status pill right. Gives the card a
@@ -576,12 +629,14 @@ function KpiSection({
               padding: 0,
               margin: 0,
               font: 'inherit',
-              fontSize: '1.5rem',
+              // 30% larger than the detailed-view inline title (1.5 -> 1.95)
+              // so KPI names read as the primary element of the card.
+              fontSize: '1.95rem',
               fontWeight: 600,
               color: '#212b36',
               cursor: 'pointer',
               textAlign: 'left',
-              lineHeight: 1.3,
+              lineHeight: 1.25,
               maxWidth: '100%',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -656,11 +711,13 @@ function KpiSection({
   return (
     <div
       className="Polaris-Card"
+      data-flip-key={kpi.id}
       style={{
         borderRadius: '8px',
         border: '1px solid var(--color-border)',
         backgroundColor: 'white',
         overflow: 'hidden',
+        marginTop: 0,
       }}
     >
       {/* Header: ring + title block + summary + reorder */}
@@ -990,6 +1047,7 @@ function OrphanSection({
     return (
       <div
         className="Polaris-Card"
+        data-flip-key="__orphans__"
         style={{
           borderRadius: '8px',
           border: '1px solid var(--color-border)',
@@ -997,6 +1055,7 @@ function OrphanSection({
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
+          marginTop: 0,
         }}
       >
         <div style={{ flex: 1, padding: '1.2rem 1.4rem' }}>
@@ -1014,10 +1073,13 @@ function OrphanSection({
           </div>
           <div
             style={{
-              fontSize: '1.5rem',
+              // Matches the KPI-card title scale in collapsed mode so
+              // both section types read at the same visual weight when
+              // they sit side-by-side in the grid.
+              fontSize: '1.95rem',
               fontWeight: 600,
               color: '#212b36',
-              lineHeight: 1.3,
+              lineHeight: 1.25,
             }}
           >
             Objetivos huérfanos
@@ -1061,11 +1123,13 @@ function OrphanSection({
   return (
     <div
       className="Polaris-Card"
+      data-flip-key="__orphans__"
       style={{
         borderRadius: '8px',
         border: '1px solid var(--color-border)',
         backgroundColor: 'white',
         overflow: 'hidden',
+        marginTop: 0,
       }}
     >
       <div
