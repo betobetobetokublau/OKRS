@@ -5,12 +5,19 @@ import { z } from 'zod';
 // via `changePasswordSchema`.
 export const API_MIN_PASSWORD_LEN = 6;
 
+// `workspace_id` and `department_ids` are validated as non-empty strings
+// rather than strict UUIDs for the same reason `changeRoleApiSchema` is
+// below: zod 4's `.uuid()` rejects anything non-standard and surfaces an
+// opaque 400 ("Invalid UUID") that's painful to diagnose client-side.
+// The real security boundary is the downstream FK constraints +
+// `requireWorkspaceRole` lookup: bad ids fail safely with 403/500 for
+// rows that don't resolve.
 export const createUserSchema = z.object({
   email: z.string().email('Email inválido'),
   full_name: z.string().min(1, 'El nombre es obligatorio').max(100, 'Máximo 100 caracteres'),
   role: z.enum(['admin', 'manager', 'member']).default('member'),
-  department_ids: z.array(z.string().uuid()).optional(),
-  workspace_id: z.string().uuid(),
+  department_ids: z.array(z.string().min(1, 'department_id requerido')).optional(),
+  workspace_id: z.string().min(1, 'workspace_id requerido'),
 });
 
 export const changePasswordSchema = z.object({
