@@ -58,6 +58,11 @@ export default function ObjetivosPage() {
   const [filterStatus, setFilterStatus] = useState<ObjectiveStatus | 'all'>('all');
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
   const [activeTab, setActiveTab] = useState<'listado' | 'gantt' | 'metricas' | 'tree'>('listado');
+  // "Vista resumida" collapses every KpiSection / OrphanSection to just
+  // its header (hides the ObjectivesTable underneath). Useful when the
+  // user wants to scan KPI progress at a glance without scrolling past
+  // every objective row. Only applies to the Listado tab.
+  const [collapsedListado, setCollapsedListado] = useState(false);
 
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
   const canReorder = canEdit;
@@ -327,8 +332,10 @@ export default function ObjetivosPage() {
       )}
 
       {activeTab === 'listado' && <>
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '2rem' }}>
+      {/* Filters row — status pills on the left, vista toggle pinned to
+          the right with `marginLeft: auto` so it floats against the
+          right edge regardless of how many status pills are visible. */}
+      <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '2rem', alignItems: 'center' }}>
         {(['all', 'in_progress', 'upcoming', 'paused', 'deprecated'] as const).map((s) => {
           const labels = { all: 'Todos', in_progress: 'En progreso', upcoming: 'Próximos', paused: 'Pausados', deprecated: 'Deprecados' };
           return (
@@ -350,6 +357,29 @@ export default function ObjetivosPage() {
             </button>
           );
         })}
+        <button
+          type="button"
+          onClick={() => setCollapsedListado((v) => !v)}
+          aria-pressed={collapsedListado}
+          title={collapsedListado ? 'Expandir todas las secciones' : 'Colapsar todas las secciones'}
+          style={{
+            marginLeft: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            padding: '0.4rem 1.2rem',
+            fontSize: '1.3rem',
+            fontWeight: 500,
+            color: '#454f5b',
+            backgroundColor: 'white',
+            border: '1px solid #dfe3e8',
+            borderRadius: '20px',
+            cursor: 'pointer',
+          }}
+        >
+          <VistaToggleIcon collapsed={collapsedListado} />
+          {collapsedListado ? 'Vista detallada' : 'Vista resumida'}
+        </button>
       </div>
 
       {loading ? (
@@ -380,6 +410,7 @@ export default function ObjetivosPage() {
                 canEdit={canEdit}
                 onChanged={refreshAll}
                 onOpenPanel={setPanelTarget}
+                collapsed={collapsedListado}
               />
             );
           })}
@@ -392,6 +423,7 @@ export default function ObjetivosPage() {
               canEdit={canEdit}
               onChanged={refreshAll}
               onOpenPanel={setPanelTarget}
+              collapsed={collapsedListado}
             />
           )}
         </div>
@@ -432,6 +464,8 @@ interface KpiSectionProps {
   canEdit: boolean;
   onChanged: () => void;
   onOpenPanel: (t: PanelTarget) => void;
+  /** When true, hides the ObjectivesTable and shows only the header. */
+  collapsed?: boolean;
 }
 
 function KpiSection({
@@ -446,6 +480,7 @@ function KpiSection({
   canEdit,
   onChanged,
   onOpenPanel,
+  collapsed = false,
 }: KpiSectionProps) {
   // Derived: roll-up progress computed from the linked objectives (respects
   // manual/auto/hybrid mode). Counts drive the per-KPI summary line.
@@ -480,7 +515,7 @@ function KpiSection({
           alignItems: 'center',
           gap: '1.6rem',
           padding: '1.6rem 2rem',
-          borderBottom: '1px solid #f1f2f4',
+          borderBottom: collapsed ? 'none' : '1px solid #f1f2f4',
           backgroundColor: '#fafbfb',
         }}
       >
@@ -579,15 +614,17 @@ function KpiSection({
         </div>
       </div>
 
-      <ObjectivesTable
-        rows={rows}
-        departments={departments}
-        workspaceId={kpi.workspace_id}
-        canEdit={canEdit}
-        onChanged={onChanged}
-        onOpenPanel={onOpenPanel}
-        emptyLabel="No hay objetivos vinculados a este KPI."
-      />
+      {!collapsed && (
+        <ObjectivesTable
+          rows={rows}
+          departments={departments}
+          workspaceId={kpi.workspace_id}
+          canEdit={canEdit}
+          onChanged={onChanged}
+          onOpenPanel={onOpenPanel}
+          emptyLabel="No hay objetivos vinculados a este KPI."
+        />
+      )}
     </div>
   );
 }
@@ -691,6 +728,50 @@ function KpiStatusPill({ status }: { status: KPIStatus }) {
   );
 }
 
+/**
+ * Icon for the Listado "Vista resumida" / "Vista detallada" toggle.
+ *
+ * - collapsed=false (current state is detailed) → shows a "compress"
+ *   glyph: a horizontal bar above a line (cards collapsed into
+ *   headers). Clicking will switch the view TO the summary layout,
+ *   so the icon previews that outcome.
+ * - collapsed=true (current state is summary) → shows an "expand"
+ *   glyph: a header bar above three stacked rows, hinting that
+ *   clicking will rewind to the full tables.
+ */
+function VistaToggleIcon({ collapsed }: { collapsed: boolean }) {
+  const common = {
+    width: 14,
+    height: 14,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+  if (collapsed) {
+    // Click will expand → icon shows an expanded list (header + rows).
+    return (
+      <svg {...common}>
+        <rect x="3" y="3" width="18" height="4" rx="1" />
+        <path d="M3 11h18" />
+        <path d="M3 15h18" />
+        <path d="M3 19h18" />
+      </svg>
+    );
+  }
+  // Click will collapse → icon shows only headers stacked.
+  return (
+    <svg {...common}>
+      <rect x="3" y="3" width="18" height="4" rx="1" />
+      <rect x="3" y="11" width="18" height="4" rx="1" />
+      <rect x="3" y="19" width="18" height="2" rx="1" />
+    </svg>
+  );
+}
+
 function ReorderButton({
   direction,
   disabled,
@@ -736,6 +817,7 @@ function OrphanSection({
   canEdit,
   onChanged,
   onOpenPanel,
+  collapsed = false,
 }: {
   rows: ReturnType<typeof useObjectivesTable>['rows'];
   departments: Department[];
@@ -743,6 +825,7 @@ function OrphanSection({
   canEdit: boolean;
   onChanged: () => void;
   onOpenPanel: (t: PanelTarget) => void;
+  collapsed?: boolean;
 }) {
   return (
     <div
@@ -757,7 +840,7 @@ function OrphanSection({
       <div
         style={{
           padding: '1.2rem 1.6rem',
-          borderBottom: '1px solid #f1f2f4',
+          borderBottom: collapsed ? 'none' : '1px solid #f1f2f4',
           backgroundColor: '#fafbfb',
           fontSize: '1.6rem',
           fontWeight: 600,
@@ -766,14 +849,16 @@ function OrphanSection({
       >
         Sin KPI asignado
       </div>
-      <ObjectivesTable
-        rows={rows}
-        departments={departments}
-        workspaceId={workspaceId}
-        canEdit={canEdit}
-        onChanged={onChanged}
-        onOpenPanel={onOpenPanel}
-      />
+      {!collapsed && (
+        <ObjectivesTable
+          rows={rows}
+          departments={departments}
+          workspaceId={workspaceId}
+          canEdit={canEdit}
+          onChanged={onChanged}
+          onOpenPanel={onOpenPanel}
+        />
+      )}
     </div>
   );
 }
