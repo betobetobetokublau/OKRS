@@ -393,7 +393,26 @@ export default function ObjetivosPage() {
           <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay KPIs ni objetivos en este periodo.</p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2.4rem' }}>
+        // Vista detallada renders sections top-to-bottom with their full
+        // tables. Vista resumida swaps the container to a 3-column grid
+        // of compact summary cards — KpiSection and OrphanSection both
+        // branch internally on `collapsed` to render the compact form.
+        <div
+          style={
+            collapsedListado
+              ? {
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  gap: '1.6rem',
+                  alignItems: 'stretch',
+                }
+              : {
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2.4rem',
+                }
+          }
+        >
           {kpis.map((kpi, idx) => {
             const kpiRows = rowsByKpi.map.get(kpi.id) || [];
             return (
@@ -497,6 +516,142 @@ function KpiSection({
   const responsibleDept = kpi.responsible_department_id
     ? departments.find((d) => d.id === kpi.responsible_department_id)
     : null;
+
+  // Vista resumida — render a compact card designed to sit in a 3-col
+  // grid. All the interactive elements from the detailed view are
+  // preserved (title button opens the detail panel; reorder buttons
+  // reorder; status pill stays decorative as in detailed mode) but
+  // re-stacked for the narrower footprint.
+  if (collapsed) {
+    return (
+      <div
+        className="Polaris-Card"
+        style={{
+          borderRadius: '8px',
+          border: '1px solid var(--color-border)',
+          backgroundColor: 'white',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {/* Top band — ring left, status pill right. Gives the card a
+            visual anchor at the very top and keeps the status chip in
+            a predictable slot for scanning across a grid. */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.8rem',
+            padding: '1.2rem 1.4rem 0.4rem',
+          }}
+        >
+          <KpiRing value={progress} />
+          <KpiStatusPill status={kpi.status} />
+        </div>
+
+        {/* Title block — eyebrow "KPI · DEPT", clickable title, and
+            the optional description. Same elements as the detailed
+            header but vertically stacked. */}
+        <div style={{ flex: 1, padding: '0.6rem 1.4rem 1rem', minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              color: '#637381',
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              marginBottom: '0.3rem',
+            }}
+          >
+            KPI{responsibleDept ? ` · ${responsibleDept.name}` : ''}
+          </div>
+          <button
+            type="button"
+            onClick={() => onOpenPanel({ type: 'kpi', id: kpi.id })}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              margin: 0,
+              font: 'inherit',
+              fontSize: '1.5rem',
+              fontWeight: 600,
+              color: '#212b36',
+              cursor: 'pointer',
+              textAlign: 'left',
+              lineHeight: 1.3,
+              maxWidth: '100%',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+            }}
+            title={kpi.title}
+          >
+            {kpi.title}
+          </button>
+          {kpi.description && (
+            <p
+              style={{
+                fontSize: '1.15rem',
+                color: '#637381',
+                margin: '0.4rem 0 0',
+                lineHeight: 1.45,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+              }}
+              title={kpi.description}
+            >
+              {kpi.description}
+            </p>
+          )}
+        </div>
+
+        {/* Stats strip — 3 equal cells with vertical dividers. Mirrors
+            the "N · M · K" inline summary from the detailed header
+            but broken out so each number is its own labeled chunk. */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            borderTop: '1px solid #f1f2f4',
+            backgroundColor: '#fafbfb',
+          }}
+        >
+          <KpiStatCell value={rows.length} label="Objetivos" />
+          <KpiStatCell value={inProgressCount} label="En progreso" withDivider />
+          <KpiStatCell
+            value={atRiskCount}
+            label="En riesgo"
+            warning={atRiskCount > 0}
+            withDivider
+          />
+        </div>
+
+        {canReorder && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '0.4rem',
+              padding: '0.6rem 0.8rem',
+              borderTop: '1px solid #f1f2f4',
+              backgroundColor: '#fafbfb',
+            }}
+          >
+            <ReorderButton direction="up" disabled={isFirst} onClick={onMoveUp} />
+            <ReorderButton direction="down" disabled={isLast} onClick={onMoveDown} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -827,6 +982,82 @@ function OrphanSection({
   onOpenPanel: (t: PanelTarget) => void;
   collapsed?: boolean;
 }) {
+  // Vista resumida — compact card so this section fits the same 3-col
+  // grid as KpiSection. Shape mirrors the KPI card (eyebrow + title +
+  // stats strip) minus the ring/status pill since orphans have no KPI
+  // progress roll-up to show.
+  if (collapsed) {
+    return (
+      <div
+        className="Polaris-Card"
+        style={{
+          borderRadius: '8px',
+          border: '1px solid var(--color-border)',
+          backgroundColor: 'white',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <div style={{ flex: 1, padding: '1.2rem 1.4rem' }}>
+          <div
+            style={{
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              color: '#637381',
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              marginBottom: '0.3rem',
+            }}
+          >
+            Sin KPI
+          </div>
+          <div
+            style={{
+              fontSize: '1.5rem',
+              fontWeight: 600,
+              color: '#212b36',
+              lineHeight: 1.3,
+            }}
+          >
+            Objetivos huérfanos
+          </div>
+          <p
+            style={{
+              fontSize: '1.15rem',
+              color: '#637381',
+              margin: '0.4rem 0 0',
+              lineHeight: 1.45,
+            }}
+          >
+            Objetivos no vinculados a ningún KPI.
+          </p>
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            borderTop: '1px solid #f1f2f4',
+            backgroundColor: '#fafbfb',
+          }}
+        >
+          <KpiStatCell value={rows.length} label="Objetivos" />
+          <KpiStatCell
+            value={rows.filter((r) => r.status === 'in_progress').length}
+            label="En progreso"
+            withDivider
+          />
+          <KpiStatCell
+            value={rows.filter((r) => isBehindSchedule(r)).length}
+            label="En riesgo"
+            warning={rows.some((r) => isBehindSchedule(r))}
+            withDivider
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="Polaris-Card"
@@ -840,7 +1071,7 @@ function OrphanSection({
       <div
         style={{
           padding: '1.2rem 1.6rem',
-          borderBottom: collapsed ? 'none' : '1px solid #f1f2f4',
+          borderBottom: '1px solid #f1f2f4',
           backgroundColor: '#fafbfb',
           fontSize: '1.6rem',
           fontWeight: 600,
@@ -849,16 +1080,66 @@ function OrphanSection({
       >
         Sin KPI asignado
       </div>
-      {!collapsed && (
-        <ObjectivesTable
-          rows={rows}
-          departments={departments}
-          workspaceId={workspaceId}
-          canEdit={canEdit}
-          onChanged={onChanged}
-          onOpenPanel={onOpenPanel}
-        />
-      )}
+      <ObjectivesTable
+        rows={rows}
+        departments={departments}
+        workspaceId={workspaceId}
+        canEdit={canEdit}
+        onChanged={onChanged}
+        onOpenPanel={onOpenPanel}
+      />
+    </div>
+  );
+}
+
+/**
+ * Single numeric stat cell used in the Vista resumida card footers.
+ * Renders the value big and the label small/uppercase beneath. Optional
+ * vertical divider on the left to separate from the previous cell; the
+ * `warning` flag turns the value red (used for non-zero "en riesgo").
+ */
+function KpiStatCell({
+  value,
+  label,
+  warning = false,
+  withDivider = false,
+}: {
+  value: number;
+  label: string;
+  warning?: boolean;
+  withDivider?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        padding: '0.8rem 0.4rem',
+        textAlign: 'center',
+        borderLeft: withDivider ? '1px solid #f1f2f4' : 'none',
+      }}
+    >
+      <div
+        style={{
+          fontSize: '1.8rem',
+          fontWeight: 700,
+          color: warning ? '#bf0711' : '#212b36',
+          fontVariantNumeric: 'tabular-nums',
+          lineHeight: 1.1,
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          fontSize: '0.95rem',
+          fontWeight: 600,
+          color: '#637381',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          marginTop: '0.2rem',
+        }}
+      >
+        {label}
+      </div>
     </div>
   );
 }
