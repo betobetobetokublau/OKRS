@@ -650,8 +650,6 @@ function KpiSection({
               padding: 0,
               margin: 0,
               font: 'inherit',
-              // 30% larger than the detailed-view inline title (1.5 -> 1.95)
-              // so KPI names read as the primary element of the card.
               fontSize: '1.95rem',
               fontWeight: 600,
               color: '#212b36',
@@ -659,15 +657,25 @@ function KpiSection({
               textAlign: 'left',
               lineHeight: 1.25,
               maxWidth: '100%',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
             }}
             title={kpi.title}
           >
-            {kpi.title}
+            <span
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                minWidth: 0,
+              }}
+            >
+              {kpi.title}
+            </span>
+            <TitleArrow />
           </button>
           {kpi.description && (
             <p
@@ -786,15 +794,24 @@ function KpiSection({
               cursor: 'pointer',
               textAlign: 'left',
               lineHeight: 1.25,
-              display: 'block',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
               maxWidth: '100%',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
             }}
             title={kpi.title}
           >
-            {kpi.title}
+            <span
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                minWidth: 0,
+              }}
+            >
+              {kpi.title}
+            </span>
+            <TitleArrow />
           </button>
           {/* Description as subtitle — surfaces the KPI's narrative
               context right next to its title so users don't have to
@@ -959,6 +976,36 @@ function KpiStatusPill({ status }: { status: KPIStatus }) {
       />
       {s.label}
     </span>
+  );
+}
+
+/**
+ * Small right-chevron rendered next to every clickable KPI / objective
+ * title as a "this opens" affordance. Inherits the parent's text color
+ * so it reads as part of the title. When `opacity` is controlled from
+ * the outside (e.g. shown only on row hover) the svg uses currentColor
+ * and fades smoothly.
+ */
+function TitleArrow({ opacity = 1 }: { opacity?: number }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{
+        flexShrink: 0,
+        opacity,
+        transition: 'opacity 140ms ease, transform 140ms ease',
+      }}
+      aria-hidden
+    >
+      <path d="M9 5l7 7-7 7" />
+    </svg>
   );
 }
 

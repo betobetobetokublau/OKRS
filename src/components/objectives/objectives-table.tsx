@@ -265,18 +265,21 @@ function AddObjectiveRow({
           }}
         >
           <svg
-            width="14"
-            height="14"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.4"
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden
           >
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 8v8M8 12h8" />
+            {/* Bare cross — no enclosing circle — so it reads as a
+                stronger "add" glyph at this row's small size. Spans
+                the full viewBox so it looks bigger than the previous
+                circled plus. */}
+            <path d="M12 4v16M4 12h16" />
           </svg>
           Agregar objetivo
         </span>
@@ -314,12 +317,23 @@ function ObjectiveRowGroup({
   onChanged,
   onOpenPanel,
 }: ObjectiveRowGroupProps) {
+  const [hover, setHover] = useState(false);
+  // Pick a slightly grayish background on hover so the row feels
+  // interactive. Keeps the expanded-row lift (`#f9fafb`) when already
+  // expanded so the two states don't fight.
+  const bg = hover ? '#f4f6f8' : expanded ? '#f9fafb' : 'white';
   return (
     <>
       <tr
         className="anim-row-in"
         onClick={hasTasks ? onToggle : undefined}
-        style={{ cursor: hasTasks ? 'pointer' : 'default', backgroundColor: expanded ? '#f9fafb' : 'white' }}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{
+          cursor: hasTasks ? 'pointer' : 'default',
+          backgroundColor: bg,
+          transition: 'background-color 120ms ease',
+        }}
       >
         <td style={cellBase}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -327,6 +341,28 @@ function ObjectiveRowGroup({
             <TitleButton onClick={() => onOpenPanel({ type: 'objective', id: obj.id })} strong>
               {obj.title}
             </TitleButton>
+            {/* Right-arrow affordance — visible only while the row is
+                hovered so idle rows stay clean. Inherits color so it
+                matches the title. */}
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#454f5b"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{
+                flexShrink: 0,
+                opacity: hover ? 1 : 0,
+                transform: hover ? 'translateX(0)' : 'translateX(-2px)',
+                transition: 'opacity 140ms ease, transform 140ms ease',
+              }}
+              aria-hidden
+            >
+              <path d="M9 5l7 7-7 7" />
+            </svg>
           </div>
         </td>
         <td style={cellBase}><TypeBadge type="objective" /></td>
