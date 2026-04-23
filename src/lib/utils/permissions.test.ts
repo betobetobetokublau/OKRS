@@ -5,6 +5,7 @@ import {
   canManageTeam,
   canManagePeriods,
   canManageContent,
+  canManageObjectives,
   canExportPdf,
   getRoleLabel,
 } from './permissions';
@@ -56,6 +57,12 @@ describe('content + pdf gates', () => {
     expect(canExportPdf('admin')).toBe(true);
     expect(canExportPdf('manager')).toBe(true);
     expect(canExportPdf('member')).toBe(false);
+  });
+
+  it('canManageObjectives allows every role (member+)', () => {
+    expect(canManageObjectives('admin')).toBe(true);
+    expect(canManageObjectives('manager')).toBe(true);
+    expect(canManageObjectives('member')).toBe(true);
   });
 });
 

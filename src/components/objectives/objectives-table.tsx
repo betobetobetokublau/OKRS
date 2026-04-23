@@ -114,6 +114,13 @@ interface ObjectivesTableProps {
   onChanged: () => void;
   onOpenPanel: (t: PanelTarget) => void;
   emptyLabel?: string;
+  /**
+   * When provided AND `canEdit` is true, an Asana-style "+ Agregar
+   * objetivo" row renders at the bottom of the table. Click fires the
+   * callback so the parent can open its ObjectiveForm pre-filled with
+   * the right KPI link.
+   */
+  onAddObjective?: () => void;
 }
 
 /**
@@ -130,6 +137,7 @@ export function ObjectivesTable({
   onChanged,
   onOpenPanel,
   emptyLabel = 'No hay objetivos.',
+  onAddObjective,
 }: ObjectivesTableProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -205,9 +213,75 @@ export function ObjectivesTable({
               />
             );
           })}
+
+          {canEdit && onAddObjective && (
+            <AddObjectiveRow onClick={onAddObjective} cellBase={cellBase} />
+          )}
         </tbody>
       </table>
     </div>
+  );
+}
+
+// ---------- Add-objective row ----------
+
+/**
+ * Asana-style "Add task..." row, adapted for objectives. Sits at the
+ * bottom of the table under the last ObjectiveRowGroup; clicking
+ * anywhere in the row triggers the parent's `onAddObjective` callback.
+ * Muted text color + hover lift gives it the "inline action" feel
+ * without competing with real data rows.
+ */
+function AddObjectiveRow({
+  onClick,
+  cellBase,
+}: {
+  onClick: () => void;
+  cellBase: React.CSSProperties;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <tr
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        cursor: 'pointer',
+        backgroundColor: hover ? '#f9fafb' : 'white',
+        transition: 'background-color 120ms ease',
+      }}
+    >
+      <td colSpan={5} style={{ ...cellBase, borderBottom: 'none' }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            fontSize: '1.3rem',
+            color: hover ? '#5c6ac4' : '#919eab',
+            fontWeight: 500,
+            transition: 'color 120ms ease',
+            paddingLeft: '1.6rem',
+          }}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 8v8M8 12h8" />
+          </svg>
+          Agregar objetivo
+        </span>
+      </td>
+    </tr>
   );
 }
 

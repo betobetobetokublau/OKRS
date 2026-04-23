@@ -9,7 +9,7 @@ import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-p
 import { ObjectivesGantt } from '@/components/objectives/objectives-gantt';
 import { SkillTreeCanvas } from '@/components/skill-tree/skill-tree-canvas';
 import { createClient } from '@/lib/supabase/client';
-import { canManageContent } from '@/lib/utils/permissions';
+import { canManageContent, canManageObjectives } from '@/lib/utils/permissions';
 import { calculateKpiProgress } from '@/lib/utils/progress';
 import type { Department, KPI, KPIStatus, ObjectiveStatus } from '@/types';
 import type { ObjectiveRow } from '@/hooks/use-objectives-table';
@@ -54,7 +54,12 @@ export default function ObjetivosPage() {
   const { rows, loading, refetch } = useObjectivesTable(currentWorkspace?.id, activePeriod?.id);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [kpis, setKpis] = useState<KPI[]>([]);
-  const [showCreate, setShowCreate] = useState(false);
+  // `createFor` drives the ObjectiveForm modal.
+  //  - undefined → modal closed
+  //  - null      → modal open with no KPI pre-selected (hero CTA path)
+  //  - string    → modal open with this KPI id pre-linked (per-table
+  //                "+ Agregar objetivo" row path)
+  const [createFor, setCreateFor] = useState<string | null | undefined>(undefined);
   const [filterStatus, setFilterStatus] = useState<ObjectiveStatus | 'all'>('all');
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
   const [activeTab, setActiveTab] = useState<'listado' | 'gantt' | 'metricas' | 'tree'>('listado');
@@ -64,8 +69,15 @@ export default function ObjetivosPage() {
   // every objective row. Only applies to the Listado tab.
   const [collapsedListado, setCollapsedListado] = useState(false);
 
-  const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
-  const canReorder = canEdit;
+  // Two-tier permissions: members can create/edit objectives + tasks
+  // (the operational work) but KPI structural edits stay gated to
+  // manager+. Both the inline ObjectivesTable affordances and the
+  // ObjectiveForm's "create" path key off `canEdit`; the KPI detail
+  // panel receives `canEditKpi` separately.
+  const canEdit = Boolean(userWorkspace && canManageObjectives(userWorkspace.role));
+  const canEditKpi = Boolean(userWorkspace && canManageContent(userWorkspace.role));
+  // Reordering KPIs is an org-structure action — keep it manager+.
+  const canReorder = canEditKpi;
 
   useEffect(() => {
     async function loadMeta() {
@@ -258,7 +270,7 @@ export default function ObjetivosPage() {
             blockedCount={metrics.blockedCount}
             leaderboard={metrics.leaderboard}
             canCreate={Boolean(canEdit && activePeriod)}
-            onCreate={() => setShowCreate(true)}
+            onCreate={() => setCreateFor(null)}
           />
 
           {/* Per-department progress bars */}
@@ -477,6 +489,7 @@ export default function ObjetivosPage() {
                 onChanged={refreshAll}
                 onOpenPanel={setPanelTarget}
                 collapsed={collapsedListado}
+                onAddObjective={() => setCreateFor(kpi.id)}
               />
             );
           })}
@@ -490,18 +503,20 @@ export default function ObjetivosPage() {
               onChanged={refreshAll}
               onOpenPanel={setPanelTarget}
               collapsed={collapsedListado}
+              onAddObjective={() => setCreateFor(null)}
             />
           )}
         </div>
       )}
       </>}
 
-      {showCreate && activePeriod && currentWorkspace && (
+      {createFor !== undefined && activePeriod && currentWorkspace && (
         <ObjectiveForm
           workspaceId={currentWorkspace.id}
           periodId={activePeriod.id}
-          onClose={() => setShowCreate(false)}
-          onSaved={() => { setShowCreate(false); refetch(); }}
+          onClose={() => setCreateFor(undefined)}
+          onSaved={() => { setCreateFor(undefined); refetch(); }}
+          initialData={createFor ? { kpi_ids: [createFor] } : undefined}
         />
       )}
 
@@ -509,6 +524,7 @@ export default function ObjetivosPage() {
         target={panelTarget}
         departments={departments}
         canEdit={canEdit}
+        canEditKpi={canEditKpi}
         onClose={() => setPanelTarget(null)}
         onChanged={refreshAll}
       />
@@ -532,6 +548,10 @@ interface KpiSectionProps {
   onOpenPanel: (t: PanelTarget) => void;
   /** When true, hides the ObjectivesTable and shows only the header. */
   collapsed?: boolean;
+  /** When provided, the ObjectivesTable renders its "+ Agregar objetivo"
+   *  footer row and calls this on click so the parent can open its
+   *  ObjectiveForm pre-linked to this KPI. */
+  onAddObjective?: () => void;
 }
 
 function KpiSection({
@@ -547,6 +567,7 @@ function KpiSection({
   onChanged,
   onOpenPanel,
   collapsed = false,
+  onAddObjective,
 }: KpiSectionProps) {
   // Derived: roll-up progress computed from the linked objectives (respects
   // manual/auto/hybrid mode). Counts drive the per-KPI summary line.
@@ -835,6 +856,7 @@ function KpiSection({
           onChanged={onChanged}
           onOpenPanel={onOpenPanel}
           emptyLabel="No hay objetivos vinculados a este KPI."
+          onAddObjective={onAddObjective}
         />
       )}
     </div>
@@ -1030,6 +1052,7 @@ function OrphanSection({
   onChanged,
   onOpenPanel,
   collapsed = false,
+  onAddObjective,
 }: {
   rows: ReturnType<typeof useObjectivesTable>['rows'];
   departments: Department[];
@@ -1038,6 +1061,7 @@ function OrphanSection({
   onChanged: () => void;
   onOpenPanel: (t: PanelTarget) => void;
   collapsed?: boolean;
+  onAddObjective?: () => void;
 }) {
   // Vista resumida — compact card so this section fits the same 3-col
   // grid as KpiSection. Shape mirrors the KPI card (eyebrow + title +
@@ -1151,6 +1175,7 @@ function OrphanSection({
         canEdit={canEdit}
         onChanged={onChanged}
         onOpenPanel={onOpenPanel}
+        onAddObjective={onAddObjective}
       />
     </div>
   );

@@ -15,7 +15,14 @@ export type PanelTarget =
 interface OkrDetailPanelProps {
   target: PanelTarget;
   departments: Department[];
+  /** Gates editing of the content shown — objectives + tasks.
+   *  Members generally qualify (see `canManageObjectives`). */
   canEdit: boolean;
+  /** Optional stricter permission for editing the KPI detail body.
+   *  Defaults to `canEdit` for backward-compat, but callers that let
+   *  members edit objectives while reserving KPI edits to manager+
+   *  should pass this explicitly. */
+  canEditKpi?: boolean;
   onClose: () => void;
   onChanged: () => void;
 }
@@ -26,7 +33,8 @@ const CLOSE_ICON = 'M6 18L18 6M6 6l12 12';
  * Slide-in right-side panel showing the detail body for the selected OKR entity.
  * Closes on ESC, backdrop click, or the X button.
  */
-export function OkrDetailPanel({ target, departments, canEdit, onClose, onChanged }: OkrDetailPanelProps) {
+export function OkrDetailPanel({ target, departments, canEdit, canEditKpi, onClose, onChanged }: OkrDetailPanelProps) {
+  const kpiEditAllowed = canEditKpi ?? canEdit;
   // `shown` drives whether the DOM is mounted; `closing` triggers the exit
   // animation. On close we don't unmount until the exit keyframe finishes,
   // so the panel visibly slides out (vs. the old transition-on-state-change
@@ -147,7 +155,7 @@ export function OkrDetailPanel({ target, departments, canEdit, onClose, onChange
             <KpiDetailPanelBody
               kpiId={shown.id}
               departments={departments}
-              canEdit={canEdit}
+              canEdit={kpiEditAllowed}
               onChanged={onChanged}
             />
           )}

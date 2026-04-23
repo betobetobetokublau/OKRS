@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/stores/workspace-store';
-import { canManageContent } from '@/lib/utils/permissions';
+import { canManageContent, canManageObjectives } from '@/lib/utils/permissions';
 import { calculateObjectiveProgress } from '@/lib/utils/progress';
 import {
   objectiveStatusChip,
@@ -96,7 +96,11 @@ export default function CheckinPage() {
   // Side panel state
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
 
-  const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
+  // Check-in is an operational flow — members should be able to edit
+  // objectives/tasks through the slide-in panel. KPI edits from this
+  // same panel stay gated to manager+ via `canEditKpi`.
+  const canEdit = Boolean(userWorkspace && canManageObjectives(userWorkspace.role));
+  const canEditKpi = Boolean(userWorkspace && canManageContent(userWorkspace.role));
 
   // Activity feed shown under "Mis tareas". Same data source as the bell
   // slide-in; embedded look is flat — no card bg, subtle row dividers only.
@@ -733,6 +737,7 @@ export default function CheckinPage() {
         target={panelTarget}
         departments={departments}
         canEdit={canEdit}
+        canEditKpi={canEditKpi}
         onClose={() => setPanelTarget(null)}
         onChanged={load}
       />
