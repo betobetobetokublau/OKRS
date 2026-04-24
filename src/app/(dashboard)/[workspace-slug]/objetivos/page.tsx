@@ -5,6 +5,7 @@ import { useWorkspaceStore } from '@/stores/workspace-store';
 import { useObjectivesTable } from '@/hooks/use-objectives-table';
 import { ObjectivesTable } from '@/components/objectives/objectives-table';
 import { ObjectiveForm } from '@/components/objectives/objective-form';
+import { ObjectivesOverview } from '@/components/objectives/objectives-overview';
 import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
 import { ObjectivesGantt } from '@/components/objectives/objectives-gantt';
 import { SkillTreeCanvas } from '@/components/skill-tree/skill-tree-canvas';
@@ -62,7 +63,7 @@ export default function ObjetivosPage() {
   const [createFor, setCreateFor] = useState<string | null | undefined>(undefined);
   const [filterStatus, setFilterStatus] = useState<ObjectiveStatus | 'all'>('all');
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
-  const [activeTab, setActiveTab] = useState<'listado' | 'gantt' | 'metricas' | 'tree'>('listado');
+  const [activeTab, setActiveTab] = useState<'listado' | 'gantt' | 'metricas' | 'tree' | 'overview'>('listado');
   // "Vista resumida" collapses every KpiSection / OrphanSection to just
   // its header (hides the ObjectivesTable underneath). Useful when the
   // user wants to scan KPI progress at a glance without scrolling past
@@ -302,6 +303,9 @@ export default function ObjetivosPage() {
         <TabButton active={activeTab === 'tree'} onClick={() => setActiveTab('tree')}>
           Skill Tree
         </TabButton>
+        <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')}>
+          Overview
+        </TabButton>
       </div>
 
       {activeTab === 'gantt' && (
@@ -345,6 +349,25 @@ export default function ObjetivosPage() {
                 }}
               />
             </div>
+          )}
+        </>
+      )}
+
+      {activeTab === 'overview' && (
+        <>
+          {!activePeriod ? (
+            <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+              <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
+            </div>
+          ) : loading ? (
+            <p style={{ color: '#637381', textAlign: 'center', padding: '4rem' }}>Cargando overview...</p>
+          ) : (
+            <ObjectivesOverview
+              kpis={kpis}
+              departments={departments}
+              rows={rows}
+              onOpenPanel={setPanelTarget}
+            />
           )}
         </>
       )}
