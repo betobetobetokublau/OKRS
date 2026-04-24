@@ -136,8 +136,8 @@ export function ObjectivesOverview({
   const bot = areas.slice(splitAt);
   const totalKpis = Math.max(1, areas.reduce((s, a) => s + a.kpis.length, 0));
   const topKpiCount = Math.max(1, top.reduce((s, a) => s + a.kpis.length, 0));
-  const botKpiCount = Math.max(1, bot.reduce((s, a) => s + a.kpis.length, 0));
-  // Row heights = fraction of total KPIs — bigger row of areas gets more space.
+  // Row heights = fraction of total KPIs — the row carrying more KPIs
+  // gets more vertical space, so large areas don't get squeezed.
   const topHeightFrac = bot.length === 0 ? 1 : topKpiCount / totalKpis;
   const botHeightFrac = 1 - topHeightFrac;
 
