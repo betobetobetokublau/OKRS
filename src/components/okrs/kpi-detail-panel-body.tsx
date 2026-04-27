@@ -152,7 +152,7 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
       ),
     },
     {
-      label: 'Departamentos',
+      label: 'Departamentos relacionados',
       value:
         linkedDepartments.length > 0 ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>

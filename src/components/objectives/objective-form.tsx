@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { AnimatedModal } from '@/components/common/animated-modal';
+import { SearchableChecklist } from '@/components/common/searchable-checklist';
 import type { Department, Profile, KPI, ProgressMode, ObjectiveStatus } from '@/types';
 
 interface ObjectiveFormProps {
@@ -184,7 +185,7 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
 
             <div>
               <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (usuario)</label>
-              <select value={form.responsible_user_id} onChange={e => setForm(p => ({ ...p, responsible_user_id: e.target.value, responsible_department_id: e.target.value ? '' : p.responsible_department_id }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <select value={form.responsible_user_id} onChange={e => setForm(p => ({ ...p, responsible_user_id: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
                 <option value="">Sin asignar</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
               </select>
@@ -192,14 +193,14 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
 
             <div>
               <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (departamento)</label>
-              <select value={form.responsible_department_id} onChange={e => setForm(p => ({ ...p, responsible_department_id: e.target.value, responsible_user_id: e.target.value ? '' : p.responsible_user_id }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <select value={form.responsible_department_id} onChange={e => setForm(p => ({ ...p, responsible_department_id: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
                 <option value="">Sin asignar</option>
                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Departamentos</label>
+              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Departamentos relacionados</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.8rem' }}>
                 {departments.map(d => (
                   <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '1.3rem', cursor: 'pointer' }}>
@@ -212,15 +213,20 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
 
             <div>
               <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>KPIs vinculados</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '150px', overflowY: 'auto' }}>
-                {kpis.map(k => (
-                  <label key={k.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '1.3rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={form.kpi_ids.includes(k.id)} onChange={e => setForm(p => ({ ...p, kpi_ids: e.target.checked ? [...p.kpi_ids, k.id] : p.kpi_ids.filter(id => id !== k.id) }))} />
-                    {k.title}
-                  </label>
-                ))}
-                {kpis.length === 0 && <span style={{ color: '#637381', fontSize: '1.2rem' }}>No hay KPIs en este periodo</span>}
-              </div>
+              <SearchableChecklist
+                items={kpis.map((k) => ({ id: k.id, label: k.title }))}
+                selectedIds={form.kpi_ids}
+                onToggle={(id) =>
+                  setForm((p) => ({
+                    ...p,
+                    kpi_ids: p.kpi_ids.includes(id)
+                      ? p.kpi_ids.filter((x) => x !== id)
+                      : [...p.kpi_ids, id],
+                  }))
+                }
+                searchPlaceholder="Buscar KPI…"
+                emptyMessage="No hay KPIs en este periodo"
+              />
             </div>
 
             <button type="submit" disabled={saving} style={{ width: '100%', padding: '1rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: saving ? '#8c92c4' : '#5c6ac4', border: 'none', borderRadius: '4px', cursor: saving ? 'not-allowed' : 'pointer' }}>

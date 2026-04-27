@@ -10,11 +10,11 @@ import { ObjectiveForm } from '@/components/objectives/objective-form';
 import { InlineTeamSelect } from './inline-team-select';
 import { InlineStatusSelect } from './inline-status-select';
 import { InlineUserSelect } from './inline-user-select';
+import { InlineDateRange } from './inline-date-range';
 import {
   AsanaDetailShell,
   AsanaSection,
   AsanaEmpty,
-  AsanaDateRangeValue,
   type FieldRow,
   type BreadcrumbItem,
 } from './asana-detail-shell';
@@ -141,7 +141,19 @@ export function ObjectiveDetailPanelBody({
     },
     {
       label: 'Fechas',
-      value: <AsanaDateRangeValue startIso={objective.start_date} endIso={objective.end_date} />,
+      // Inline-editable for every role — same rationale as the
+      // assignee fields: planning windows are operational and
+      // shouldn't require entering the form modal.
+      value: (
+        <InlineDateRange
+          entity="objective"
+          id={objective.id}
+          startIso={objective.start_date}
+          endIso={objective.end_date}
+          canEdit
+          onChanged={refresh}
+        />
+      ),
     },
     {
       label: 'KPI(s) vinculado(s)',
@@ -188,7 +200,7 @@ export function ObjectiveDetailPanelBody({
       ),
     },
     {
-      label: 'Departamentos',
+      label: 'Departamentos relacionados',
       value:
         linkedDepartments.length > 0 ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>

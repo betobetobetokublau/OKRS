@@ -534,7 +534,7 @@ export default function ObjetivosPage() {
           the user / their department when "Asignados a mí" is
           active. */}
       <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '2rem', alignItems: 'center' }}>
-        {(['all', 'mine'] as const).map((s) => {
+        {(['mine', 'all'] as const).map((s) => {
           const labels = { all: 'Todos', mine: 'Asignados a mí' };
           return (
             <button

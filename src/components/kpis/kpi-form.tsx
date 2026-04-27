@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { AnimatedModal } from '@/components/common/animated-modal';
+import { SearchableChecklist } from '@/components/common/searchable-checklist';
 import type { Department, Profile, Objective, ProgressMode, KPIStatus } from '@/types';
 
 interface KPIFormProps {
@@ -160,7 +161,7 @@ export function KPIForm({ workspaceId, periodId, onClose, onSaved, initialData }
 
             <div>
               <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (usuario)</label>
-              <select value={form.responsible_user_id} onChange={e => setForm(p => ({ ...p, responsible_user_id: e.target.value, responsible_department_id: e.target.value ? '' : p.responsible_department_id }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <select value={form.responsible_user_id} onChange={e => setForm(p => ({ ...p, responsible_user_id: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
                 <option value="">Sin asignar</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
               </select>
@@ -168,14 +169,14 @@ export function KPIForm({ workspaceId, periodId, onClose, onSaved, initialData }
 
             <div>
               <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (departamento)</label>
-              <select value={form.responsible_department_id} onChange={e => setForm(p => ({ ...p, responsible_department_id: e.target.value, responsible_user_id: e.target.value ? '' : p.responsible_user_id }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <select value={form.responsible_department_id} onChange={e => setForm(p => ({ ...p, responsible_department_id: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
                 <option value="">Sin asignar</option>
                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Departamentos vinculados</label>
+              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Departamentos relacionados</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.8rem' }}>
                 {departments.map(d => (
                   <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '1.3rem', cursor: 'pointer' }}>
@@ -188,15 +189,20 @@ export function KPIForm({ workspaceId, periodId, onClose, onSaved, initialData }
 
             <div>
               <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Objetivos vinculados</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '150px', overflowY: 'auto' }}>
-                {objectives.map(o => (
-                  <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '1.3rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={form.objective_ids.includes(o.id)} onChange={e => setForm(p => ({ ...p, objective_ids: e.target.checked ? [...p.objective_ids, o.id] : p.objective_ids.filter(id => id !== o.id) }))} />
-                    {o.title}
-                  </label>
-                ))}
-                {objectives.length === 0 && <span style={{ color: '#637381', fontSize: '1.2rem' }}>No hay objetivos en este periodo</span>}
-              </div>
+              <SearchableChecklist
+                items={objectives.map((o) => ({ id: o.id, label: o.title }))}
+                selectedIds={form.objective_ids}
+                onToggle={(id) =>
+                  setForm((p) => ({
+                    ...p,
+                    objective_ids: p.objective_ids.includes(id)
+                      ? p.objective_ids.filter((x) => x !== id)
+                      : [...p.objective_ids, id],
+                  }))
+                }
+                searchPlaceholder="Buscar objetivo…"
+                emptyMessage="No hay objetivos en este periodo"
+              />
             </div>
 
             <button type="submit" disabled={saving} style={{ width: '100%', padding: '1rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: saving ? '#8c92c4' : '#5c6ac4', border: 'none', borderRadius: '4px', cursor: saving ? 'not-allowed' : 'pointer' }}>
