@@ -5,12 +5,12 @@ import { createClient } from '@/lib/supabase/client';
 import { ProgressBar } from '@/components/common/progress-bar';
 import { StatusBadge } from '@/components/common/status-badge';
 import { DepartmentTag } from '@/components/common/department-tag';
-import { UserAvatar } from '@/components/common/user-avatar';
 import { CommentTimeline } from '@/components/timeline/comment-timeline';
 import { KPIForm } from '@/components/kpis/kpi-form';
 import { ObjectiveForm } from '@/components/objectives/objective-form';
 import { InlineTeamSelect } from './inline-team-select';
 import { InlineStatusSelect } from './inline-status-select';
+import { InlineUserSelect } from './inline-user-select';
 import {
   AsanaDetailShell,
   AsanaSection,
@@ -118,17 +118,27 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
   const fields: FieldRow[] = [
     {
       label: 'Responsable',
-      value: kpi.responsible_user ? (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem' }}>
-          <UserAvatar user={kpi.responsible_user} size="small" />
-          <span>{kpi.responsible_user.full_name}</span>
-        </span>
-      ) : (
-        <AsanaEmpty />
+      // Inline-editable for every role — same treatment as the
+      // objective panel. Structural KPI edits stay gated behind the
+      // Editar form modal; assignment is the operational field that
+      // shouldn't require entering edit mode.
+      value: (
+        <InlineUserSelect
+          entity="kpi"
+          id={kpi.id}
+          workspaceId={kpi.workspace_id}
+          currentUserId={kpi.responsible_user_id}
+          currentUser={kpi.responsible_user}
+          canEdit
+          onChanged={refresh}
+        />
       ),
     },
     {
       label: 'Depto. responsable',
+      // Hardcoded canEdit so members (who can't manage KPI structure)
+      // can still reassign the responsible department without going
+      // through the edit modal.
       value: (
         <InlineTeamSelect
           entity="kpi"
@@ -136,7 +146,7 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
           currentDepartmentId={kpi.responsible_department_id}
           currentDepartment={kpi.responsible_department}
           departments={departments}
-          canEdit={canEdit}
+          canEdit
           onChanged={refresh}
         />
       ),

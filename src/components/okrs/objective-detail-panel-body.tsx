@@ -172,6 +172,9 @@ export function ObjectiveDetailPanelBody({
     },
     {
       label: 'Depto. responsable',
+      // Always inline-editable, like the Responsable above —
+      // assignment shouldn't require entering edit mode regardless of
+      // role.
       value: (
         <InlineTeamSelect
           entity="objective"
@@ -179,7 +182,7 @@ export function ObjectiveDetailPanelBody({
           currentDepartmentId={objective.responsible_department_id}
           currentDepartment={objective.responsible_department}
           departments={departments}
-          canEdit={canEdit}
+          canEdit
           onChanged={refresh}
         />
       ),

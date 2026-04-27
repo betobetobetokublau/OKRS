@@ -8,8 +8,9 @@ interface InlineUserSelectProps {
   /**
    * 'task'      — writes `tasks.assigned_user_id`.
    * 'objective' — writes `objectives.responsible_user_id`.
+   * 'kpi'       — writes `kpis.responsible_user_id`.
    */
-  entity: 'task' | 'objective';
+  entity: 'task' | 'objective' | 'kpi';
   id: string;
   workspaceId: string;
   currentUserId: string | null;
@@ -98,10 +99,15 @@ export function InlineUserSelect({
         .from('tasks')
         .update({ assigned_user_id: next || null })
         .eq('id', id);
-    } else {
-      // objective — `responsible_user_id` is the equivalent column.
+    } else if (entity === 'objective') {
       await supabase
         .from('objectives')
+        .update({ responsible_user_id: next || null })
+        .eq('id', id);
+    } else {
+      // kpi — same column name as objectives.
+      await supabase
+        .from('kpis')
         .update({ responsible_user_id: next || null })
         .eq('id', id);
     }
