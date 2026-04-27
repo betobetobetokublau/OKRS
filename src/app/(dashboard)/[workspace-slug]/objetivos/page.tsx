@@ -12,7 +12,7 @@ import { SkillTreeCanvas } from '@/components/skill-tree/skill-tree-canvas';
 import { createClient } from '@/lib/supabase/client';
 import { canManageContent, canManageObjectives } from '@/lib/utils/permissions';
 import { calculateKpiProgress } from '@/lib/utils/progress';
-import type { Department, KPI, KPIStatus, ObjectiveStatus } from '@/types';
+import type { Department, KPI, KPIStatus } from '@/types';
 import type { ObjectiveRow } from '@/hooks/use-objectives-table';
 
 const ARROW_UP = 'M5 15l7-7 7 7';
@@ -51,7 +51,7 @@ function isBehindSchedule(o: ObjectiveRow, now: Date = new Date()): boolean {
  * with the OKRs view). A single OkrDetailPanel backs every sub-table.
  */
 export default function ObjetivosPage() {
-  const { currentWorkspace, activePeriod, userWorkspace } = useWorkspaceStore();
+  const { currentWorkspace, activePeriod, userWorkspace, profile } = useWorkspaceStore();
   const { rows, loading, refetch } = useObjectivesTable(currentWorkspace?.id, activePeriod?.id);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [kpis, setKpis] = useState<KPI[]>([]);
@@ -61,7 +61,19 @@ export default function ObjetivosPage() {
   //  - string    → modal open with this KPI id pre-linked (per-table
   //                "+ Agregar objetivo" row path)
   const [createFor, setCreateFor] = useState<string | null | undefined>(undefined);
-  const [filterStatus, setFilterStatus] = useState<ObjectiveStatus | 'all'>('all');
+  // Listado scope filter — "all" shows every KPI/objective in the
+  // workspace, "mine" narrows to KPIs and objectives where the user
+  // is the responsible person OR a member of the responsible /
+  // linked department (mirrors the visibility rule used by the
+  // check-in page).
+  const [filterScope, setFilterScope] = useState<'all' | 'mine'>('all');
+  // Department ids the current user belongs to, plus the
+  // objective→department junction. Both feed the "asignados a mí"
+  // scope filter; loaded once per workspace/profile.
+  const [myDeptIds, setMyDeptIds] = useState<Set<string>>(new Set());
+  const [deptIdsByObjective, setDeptIdsByObjective] = useState<Map<string, Set<string>>>(
+    new Map(),
+  );
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
   const [activeTab, setActiveTab] = useState<'listado' | 'gantt' | 'metricas' | 'tree' | 'overview'>('listado');
   // "Vista resumida" collapses every KpiSection / OrphanSection to just
@@ -84,7 +96,7 @@ export default function ObjetivosPage() {
     async function loadMeta() {
       if (!currentWorkspace?.id || !activePeriod?.id) return;
       const supabase = createClient();
-      const [deptRes, kpiRes] = await Promise.all([
+      const [deptRes, kpiRes, userDeptRes, objDeptRes] = await Promise.all([
         supabase
           .from('departments')
           .select('*')
@@ -97,12 +109,42 @@ export default function ObjetivosPage() {
           .eq('period_id', activePeriod.id)
           .order('sort_order', { ascending: true })
           .order('created_at', { ascending: true }),
+        // Department membership for the current user — drives the
+        // "asignados a mí" filter. Skipped (resolves to empty array)
+        // when there's no profile.
+        profile?.id
+          ? supabase
+              .from('user_departments')
+              .select('department_id')
+              .eq('user_id', profile.id)
+          : Promise.resolve({ data: [] as Array<{ department_id: string }> }),
+        // objective_departments junction — used to detect objectives
+        // linked to one of the user's departments without being the
+        // responsible department. Workspace scoping happens through
+        // RLS; we don't filter here.
+        supabase.from('objective_departments').select('objective_id, department_id'),
       ]);
       if (deptRes.data) setDepartments(deptRes.data as Department[]);
       if (kpiRes.data) setKpis(kpiRes.data as KPI[]);
+      setMyDeptIds(
+        new Set(
+          ((userDeptRes.data || []) as Array<{ department_id: string }>).map(
+            (r) => r.department_id,
+          ),
+        ),
+      );
+      const map = new Map<string, Set<string>>();
+      ((objDeptRes.data || []) as Array<{ objective_id: string; department_id: string }>).forEach(
+        (r) => {
+          const s = map.get(r.objective_id) || new Set<string>();
+          s.add(r.department_id);
+          map.set(r.objective_id, s);
+        },
+      );
+      setDeptIdsByObjective(map);
     }
     loadMeta();
-  }, [currentWorkspace?.id, activePeriod?.id]);
+  }, [currentWorkspace?.id, activePeriod?.id, profile?.id]);
 
   // Metrics are always computed over the FULL objective list (not the
   // filtered one) so the status chips don't warp the counts.
@@ -149,8 +191,42 @@ export default function ObjetivosPage() {
     return { finishedCount, behindCount, blockedCount, overallAvg, leaderboard };
   }, [rows, departments]);
 
-  // Apply the status filter once, then group by KPI.
-  const filteredRows = filterStatus === 'all' ? rows : rows.filter((o) => o.status === filterStatus);
+  // Apply the scope filter (Todos / Asignados a mí) once, then group
+  // by KPI. An objective counts as "mine" if the user is the
+  // responsible person, the responsible department is one they
+  // belong to, the objective is linked to one of their departments
+  // through the `objective_departments` junction, OR they're the
+  // assignee on any of its tasks. Mirrors the visibility rule used
+  // on the check-in page.
+  const isObjectiveMine = useMemo(() => {
+    return (o: ObjectiveRow): boolean => {
+      if (!profile?.id) return false;
+      if (o.responsible_user_id === profile.id) return true;
+      if (o.responsible_department_id && myDeptIds.has(o.responsible_department_id))
+        return true;
+      const linked = deptIdsByObjective.get(o.id);
+      if (linked && Array.from(linked).some((id) => myDeptIds.has(id))) return true;
+      if ((o.tasks || []).some((t) => t.assigned_user_id === profile.id)) return true;
+      return false;
+    };
+  }, [profile?.id, myDeptIds, deptIdsByObjective]);
+
+  const filteredRows = filterScope === 'all' ? rows : rows.filter(isObjectiveMine);
+
+  // KPIs to render in Listado. When scope is "mine" we further hide
+  // KPI sections whose objectives all got filtered out AND which the
+  // user has no direct claim on (responsible person / responsible
+  // department) — otherwise empty section headers would clutter the
+  // view.
+  const isKpiMine = useMemo(() => {
+    return (k: KPI): boolean => {
+      if (!profile?.id) return false;
+      if (k.responsible_user_id === profile.id) return true;
+      if (k.responsible_department_id && myDeptIds.has(k.responsible_department_id))
+        return true;
+      return false;
+    };
+  }, [profile?.id, myDeptIds]);
 
   const rowsByKpi = useMemo(() => {
     const map = new Map<string, typeof filteredRows>();
@@ -414,23 +490,26 @@ export default function ObjetivosPage() {
       )}
 
       {activeTab === 'listado' && <>
-      {/* Filters row — status pills on the left, vista toggle pinned to
+      {/* Filters row — scope pills on the left, vista toggle pinned to
           the right with `marginLeft: auto` so it floats against the
-          right edge regardless of how many status pills are visible. */}
+          right edge regardless of pill count. The scope filter
+          replaces the previous status pills and limits the list to
+          the user / their department when "Asignados a mí" is
+          active. */}
       <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '2rem', alignItems: 'center' }}>
-        {(['all', 'in_progress', 'upcoming', 'paused', 'deprecated'] as const).map((s) => {
-          const labels = { all: 'Todos', in_progress: 'En progreso', upcoming: 'Próximos', paused: 'Pausados', deprecated: 'Deprecados' };
+        {(['all', 'mine'] as const).map((s) => {
+          const labels = { all: 'Todos', mine: 'Asignados a mí' };
           return (
             <button
               key={s}
-              onClick={() => setFilterStatus(s)}
+              onClick={() => setFilterScope(s)}
               style={{
                 padding: '0.4rem 1.2rem',
                 fontSize: '1.3rem',
-                fontWeight: filterStatus === s ? 600 : 400,
-                color: filterStatus === s ? '#5c6ac4' : '#637381',
-                backgroundColor: filterStatus === s ? '#f4f5fc' : 'transparent',
-                border: filterStatus === s ? '1px solid #5c6ac4' : '1px solid #dfe3e8',
+                fontWeight: filterScope === s ? 600 : 400,
+                color: filterScope === s ? '#5c6ac4' : '#637381',
+                backgroundColor: filterScope === s ? '#f4f5fc' : 'transparent',
+                border: filterScope === s ? '1px solid #5c6ac4' : '1px solid #dfe3e8',
                 borderRadius: '20px',
                 cursor: 'pointer',
               }}
@@ -497,6 +576,13 @@ export default function ObjetivosPage() {
         >
           {kpis.map((kpi, idx) => {
             const kpiRows = rowsByKpi.map.get(kpi.id) || [];
+            // In "Asignados a mí" mode, hide a KPI section when both
+            // it and its objectives are unrelated to the user — that
+            // way the view collapses cleanly to just the user's
+            // surface area instead of leaving empty headers.
+            if (filterScope === 'mine' && kpiRows.length === 0 && !isKpiMine(kpi)) {
+              return null;
+            }
             return (
               <KpiSection
                 key={kpi.id}
