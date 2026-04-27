@@ -181,9 +181,9 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
             gap: '0.7rem',
             padding: '0.7rem 1.6rem',
             borderRadius: '999px',
-            background: 'rgba(255,255,255,0.12)',
-            border: '1px solid rgba(255,255,255,0.25)',
-            color: 'white',
+            background: '#ffffff',
+            border: '1px solid var(--color-topbar)',
+            color: '#000000',
             fontSize: '1.56rem',
             fontWeight: 500,
             textDecoration: 'none',
@@ -191,10 +191,10 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
             transition: 'background 120ms ease',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.22)';
+            e.currentTarget.style.background = '#f4f6f8';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
+            e.currentTarget.style.background = '#ffffff';
           }}
         >
           {/* Bullseye — signals "goal" / OKR */}
