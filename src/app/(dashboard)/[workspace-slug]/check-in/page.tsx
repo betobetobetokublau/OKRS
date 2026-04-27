@@ -13,8 +13,6 @@ import {
 import { AnimatedModal } from '@/components/common/animated-modal';
 import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
 import { TaskForm } from '@/components/tasks/task-form';
-import { ActivityList } from '@/components/layout/activity-list';
-import { useActivityFeed, type EntityRef } from '@/hooks/use-activity-feed';
 import type { Department, KPI, Objective, ObjectiveStatus, Task } from '@/types';
 
 // ---------- Types ----------
@@ -105,24 +103,6 @@ export default function CheckinPage() {
   // same panel stay gated to manager+ via `canEditKpi`.
   const canEdit = Boolean(userWorkspace && canManageObjectives(userWorkspace.role));
   const canEditKpi = Boolean(userWorkspace && canManageContent(userWorkspace.role));
-
-  // Activity feed shown under "Mis tareas". Same data source as the bell
-  // slide-in; embedded look is flat — no card bg, subtle row dividers only.
-  const {
-    events: activityEvents,
-    loading: activityLoading,
-  } = useActivityFeed(currentWorkspace?.id);
-
-  // Embedded rows open the existing detail panel instead of navigating
-  // away (the check-in page already mounts OkrDetailPanel at the bottom).
-  const handleActivityOpen = useCallback(
-    (ref: EntityRef) => {
-      if (ref.type === 'kpi') setPanelTarget({ type: 'kpi', id: ref.id });
-      else if (ref.type === 'objective') setPanelTarget({ type: 'objective', id: ref.id });
-      else if (ref.type === 'task') setPanelTarget({ type: 'task', id: ref.id });
-    },
-    [],
-  );
 
   const load = useCallback(async () => {
     if (!currentWorkspace?.id || !activePeriod?.id || !profile?.id) return;
@@ -442,160 +422,145 @@ export default function CheckinPage() {
 
   return (
     <div>
-      {/* Page-level 2-column grid. Column 1 carries the hero, day
-          header, primary CTA, and the per-KPI tables. Column 2 carries
-          Mis tareas + the Actividad feed. The thought card was retired
-          here — it now lives inside the confirmation modal opened by
-          the CTA. */}
+      {/* Single-column container — capped at 600px and centered on the
+          page. Holds the hero, day header, primary CTA, and the
+          per-KPI tables. Mis tareas + Actividad were retired from
+          this view; the thought card now lives inside the
+          confirmation modal opened by the CTA. */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr minmax(260px, 30%)',
+          display: 'flex',
+          flexDirection: 'column',
           gap: '2rem',
-          alignItems: 'flex-start',
+          maxWidth: '600px',
+          margin: '0 auto',
         }}
       >
-        {/* Column 1 — hero + day header + CTA + objectives */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-          {activePeriod && (
-            <CheckinHero
-              periodName={activePeriod.name}
-              periodStart={new Date(activePeriod.start_date)}
-              periodEnd={new Date(activePeriod.end_date)}
-              checkinsCount={checkinsCount}
-            />
-          )}
+        {activePeriod && (
+          <CheckinHero
+            periodName={activePeriod.name}
+            periodStart={new Date(activePeriod.start_date)}
+            periodEnd={new Date(activePeriod.end_date)}
+            checkinsCount={checkinsCount}
+          />
+        )}
 
-          {/* Day header — calendar badge + daily title aligned to the
-              left edge of the column. */}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'flex-start',
-              alignItems: 'center',
-              gap: '1.6rem',
-              flexWrap: 'wrap',
-            }}
-          >
-            <CalendarDateBadge date={new Date()} />
-            <div>
-              <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>{title}</h1>
-              <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>
-                {activePeriod
-                  ? `Actualiza tus objetivos y tareas del periodo ${activePeriod.name}.`
-                  : 'Sin periodo activo'}
-              </p>
-            </div>
+        {/* Day header — calendar badge + daily title centered as a
+            single unit on the column width. */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: '1.6rem',
+            flexWrap: 'wrap',
+            textAlign: 'center',
+          }}
+        >
+          <CalendarDateBadge date={new Date()} />
+          <div>
+            <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>{title}</h1>
+            <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>
+              {activePeriod
+                ? `Actualiza tus objetivos y tareas del periodo ${activePeriod.name}.`
+                : 'Sin periodo activo'}
+            </p>
           </div>
+        </div>
 
-          {/* Primary CTA — left-aligned. Opens the confirmation modal
-              instead of saving immediately, so the user gets a
-              chance to review the queued updates and add a thought. */}
-          <div
+        {/* Primary CTA — centered. Opens the confirmation modal
+            instead of saving immediately, so the user gets a chance
+            to review the queued updates and add a thought. Sized 30%
+            larger than the standard hero button to match the new
+            design weight on this view. */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setConfirmingCheckin(true)}
+            disabled={saving || !activePeriod || !hasPendingEdits}
+            aria-label="Reportar actualización"
+            title={
+              !hasPendingEdits
+                ? 'Marca alguna actualización para reportar tu check-in'
+                : undefined
+            }
             style={{
-              display: 'flex',
-              justifyContent: 'flex-start',
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '1.43rem 3.12rem',
+              fontSize: '1.95rem',
+              fontWeight: 600,
+              color: 'white',
+              backgroundColor:
+                saving || !activePeriod || !hasPendingEdits ? '#8c92c4' : '#5c6ac4',
+              border: 'none',
+              borderRadius: '13px',
+              cursor:
+                saving || !activePeriod || !hasPendingEdits ? 'not-allowed' : 'pointer',
+              boxShadow: '0 1px 2px rgba(15,24,48,0.08)',
+              lineHeight: 1,
             }}
           >
-            <button
-              type="button"
-              onClick={() => setConfirmingCheckin(true)}
-              disabled={saving || !activePeriod || !hasPendingEdits}
-              aria-label="Reportar actualización"
-              title={
-                !hasPendingEdits
-                  ? 'Marca alguna actualización para reportar tu check-in'
-                  : undefined
-              }
+            {saving ? 'Enviando…' : 'Reportar actualización'}
+          </button>
+        </div>
+
+        {saveError && (
+          <div style={{ padding: '1rem 1.2rem', backgroundColor: '#fbeae5', color: '#bf0711', borderRadius: '4px', fontSize: '1.3rem' }}>
+            {saveError}
+          </div>
+        )}
+        {savedToastId > 0 && (
+          <div
+            key={savedToastId}
+            className="anim-fade-in"
+            style={{ padding: '1rem 1.2rem', backgroundColor: '#e3f1df', color: '#108043', borderRadius: '4px', fontSize: '1.3rem' }}
+          >
+            Check-in guardado.
+          </div>
+        )}
+
+        {loading ? (
+          <p style={{ color: '#637381', textAlign: 'center', padding: '4rem' }}>Cargando objetivos...</p>
+        ) : !activePeriod ? (
+          <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+            <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
+          </div>
+        ) : (
+          <>
+            <h2
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                padding: '1.1rem 2.4rem',
-                fontSize: '1.5rem',
+                fontSize: '1.8rem',
                 fontWeight: 600,
-                color: 'white',
-                backgroundColor:
-                  saving || !activePeriod || !hasPendingEdits ? '#8c92c4' : '#5c6ac4',
-                border: 'none',
-                borderRadius: '10px',
-                cursor:
-                  saving || !activePeriod || !hasPendingEdits ? 'not-allowed' : 'pointer',
-                boxShadow: '0 1px 2px rgba(15,24,48,0.08)',
-                lineHeight: 1,
+                color: '#212b36',
+                margin: 0,
+                lineHeight: 1.25,
               }}
             >
-              {saving ? 'Enviando…' : 'Reportar actualización'}
-            </button>
-          </div>
-
-          {saveError && (
-            <div style={{ padding: '1rem 1.2rem', backgroundColor: '#fbeae5', color: '#bf0711', borderRadius: '4px', fontSize: '1.3rem' }}>
-              {saveError}
-            </div>
-          )}
-          {savedToastId > 0 && (
-            <div
-              key={savedToastId}
-              className="anim-fade-in"
-              style={{ padding: '1rem 1.2rem', backgroundColor: '#e3f1df', color: '#108043', borderRadius: '4px', fontSize: '1.3rem' }}
-            >
-              Check-in guardado.
-            </div>
-          )}
-
-          {loading ? (
-            <p style={{ color: '#637381', textAlign: 'center', padding: '4rem' }}>Cargando objetivos...</p>
-          ) : !activePeriod ? (
-            <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-              <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
-            </div>
-          ) : (
-            <>
-              <h2
-                style={{
-                  fontSize: '1.8rem',
-                  fontWeight: 600,
-                  color: '#212b36',
-                  margin: 0,
-                  lineHeight: 1.25,
-                }}
-              >
-                Los objetivos de tu departamento
-              </h2>
-              {objectives.length === 0 ? (
-                <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-                  <p style={{ color: '#637381', fontSize: '1.4rem' }}>
-                    No tienes objetivos asignados en este periodo.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  {kpis.map((kpi) => {
-                    const rows = grouped.map.get(kpi.id) || [];
-                    if (rows.length === 0) return null;
-                    return (
-                      <CheckinKpiTable
-                        key={kpi.id}
-                        kpiId={kpi.id}
-                        kpiTitle={kpi.title}
-                        rows={rows}
-                        expanded={expanded}
-                        onToggle={toggle}
-                        objectiveEdits={objectiveEdits}
-                        tasksToComplete={tasksToComplete}
-                        onUpdateObjective={setEditingObjective}
-                        onToggleTaskComplete={toggleTaskCompletion}
-                        onOpenPanel={setPanelTarget}
-                        onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
-                      />
-                    );
-                  })}
-
-                  {grouped.orphans.length > 0 && (
+              Los objetivos de tu departamento
+            </h2>
+            {objectives.length === 0 ? (
+              <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                <p style={{ color: '#637381', fontSize: '1.4rem' }}>
+                  No tienes objetivos asignados en este periodo.
+                </p>
+              </div>
+            ) : (
+              <>
+                {kpis.map((kpi) => {
+                  const rows = grouped.map.get(kpi.id) || [];
+                  if (rows.length === 0) return null;
+                  return (
                     <CheckinKpiTable
-                      kpiId={null}
-                      kpiTitle="Sin KPI asignado"
-                      rows={grouped.orphans}
+                      key={kpi.id}
+                      kpiId={kpi.id}
+                      kpiTitle={kpi.title}
+                      rows={rows}
                       expanded={expanded}
                       onToggle={toggle}
                       objectiveEdits={objectiveEdits}
@@ -605,49 +570,28 @@ export default function CheckinPage() {
                       onOpenPanel={setPanelTarget}
                       onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
                     />
-                  )}
-                </>
-              )}
-            </>
-          )}
-        </div>
+                  );
+                })}
 
-        {/* Column 2 — Mis tareas + Actividad feed. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-          <MyTasksColumn
-            tasks={myAssignedTasks}
-            tasksToComplete={tasksToComplete}
-            onToggleComplete={toggleTaskCompletion}
-            onOpenTask={(t) => setPanelTarget({ type: 'task', id: t.id })}
-            onOpenObjective={(oid) => setPanelTarget({ type: 'objective', id: oid })}
-            onAddTask={() => setAddingTaskFor({ objectiveId: null })}
-          />
-
-          {/* Embedded activity timeline. Flat — no card bg — subtle
-              top/bottom borders only so it reads as part of the page. */}
-          <section aria-label="Actividad reciente">
-            <div
-              style={{
-                padding: '1rem 0 0.8rem',
-                borderBottom: '1px solid #edeff2',
-                marginBottom: '0.4rem',
-              }}
-            >
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#212b36' }}>
-                Actividad
-              </h2>
-              <p style={{ fontSize: '1.1rem', color: '#637381', marginTop: '0.2rem' }}>
-                Últimos movimientos del workspace
-              </p>
-            </div>
-            <ActivityList
-              events={activityEvents}
-              loading={activityLoading}
-              onOpen={handleActivityOpen}
-              variant="embed"
-            />
-          </section>
-        </div>
+                {grouped.orphans.length > 0 && (
+                  <CheckinKpiTable
+                    kpiId={null}
+                    kpiTitle="Sin KPI asignado"
+                    rows={grouped.orphans}
+                    expanded={expanded}
+                    onToggle={toggle}
+                    objectiveEdits={objectiveEdits}
+                    tasksToComplete={tasksToComplete}
+                    onUpdateObjective={setEditingObjective}
+                    onToggleTaskComplete={toggleTaskCompletion}
+                    onOpenPanel={setPanelTarget}
+                    onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
+                  />
+                )}
+              </>
+            )}
+          </>
+        )}
       </div>
 
       {confirmingCheckin && (
@@ -707,247 +651,6 @@ export default function CheckinPage() {
         onClose={() => setPanelTarget(null)}
         onChanged={load}
       />
-    </div>
-  );
-}
-
-// ---------- Left column ----------
-
-interface MyTasksColumnProps {
-  tasks: Array<Task & { objective: Objective | null }>;
-  tasksToComplete: Set<string>;
-  onToggleComplete: (t: Task) => void;
-  onOpenTask: (t: Task) => void;
-  onOpenObjective: (objectiveId: string) => void;
-  onAddTask: () => void;
-}
-
-function MyTasksColumn({
-  tasks,
-  tasksToComplete,
-  onToggleComplete,
-  onOpenTask,
-  onOpenObjective,
-  onAddTask,
-}: MyTasksColumnProps) {
-  // Unfinished tasks (incl. queued-as-complete-but-not-yet-persisted)
-  // always render before finished ones — that's the column's practical
-  // focus: "what do I still need to do?" Within each bucket keep the
-  // original order (oldest first).
-  const sortedTasks = useMemo(() => {
-    return [...tasks].sort((a, b) => {
-      const aDone = a.status === 'completed' ? 1 : 0;
-      const bDone = b.status === 'completed' ? 1 : 0;
-      return aDone - bDone;
-    });
-  }, [tasks]);
-
-  // Each row is ~8rem tall (varies with wrapped titles). Cap the
-  // scrollable list at five rows of that typical height so tall task
-  // lists don't push the activity timeline off the page.
-  const MAX_ROWS = 5;
-  const APPROX_ROW_HEIGHT = '8rem';
-
-  return (
-    // Background is transparent so the card blends with the page bg;
-    // the border + inner padding remain so the list still reads as a
-    // discrete card.
-    <div
-      className="Polaris-Card"
-      style={{
-        borderRadius: '8px',
-        border: '1px solid var(--color-border)',
-        backgroundColor: 'transparent',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '1.2rem 1.6rem',
-          borderBottom: '1px solid #f1f2f4',
-          backgroundColor: 'transparent',
-        }}
-      >
-        <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#212b36' }}>Mis tareas</h2>
-          <p style={{ fontSize: '1.1rem', color: '#637381', marginTop: '0.2rem' }}>
-            {tasks.length} asignadas
-          </p>
-        </div>
-        {/* Gray outlined pill — matches the new visual language where
-            Actualizar is the one blue primary and everything else reads
-            as secondary. */}
-        <button
-          type="button"
-          onClick={onAddTask}
-          style={{
-            padding: '0.4rem 1rem',
-            fontSize: '1.2rem',
-            fontWeight: 500,
-            color: '#637381',
-            backgroundColor: 'white',
-            border: '1px solid #dfe3e8',
-            borderRadius: '4px',
-            cursor: 'pointer',
-          }}
-        >
-          + Nueva tarea
-        </button>
-      </div>
-
-      {tasks.length === 0 ? (
-        <p style={{ padding: '2rem', color: '#637381', fontSize: '1.3rem', textAlign: 'center' }}>
-          No tienes tareas asignadas.
-        </p>
-      ) : (
-        <ul
-          style={{
-            listStyle: 'none',
-            padding: 0,
-            margin: 0,
-            // Cap the visible height at ~5 rows; scroll beyond that.
-            // Only kick in when we have more than MAX_ROWS tasks so
-            // shorter lists sit at their natural height without an
-            // unused scroll gutter.
-            maxHeight:
-              tasks.length > MAX_ROWS
-                ? `calc(${APPROX_ROW_HEIGHT} * ${MAX_ROWS})`
-                : undefined,
-            overflowY: tasks.length > MAX_ROWS ? 'auto' : 'visible',
-          }}
-        >
-          {sortedTasks.map((t) => {
-            const queued = tasksToComplete.has(t.id);
-            const isDone = t.status === 'completed';
-            const chip = taskStatusChip(queued ? 'completed' : t.status);
-            return (
-              <li
-                key={t.id}
-                className="anim-row-in"
-                // Row padding / divider preserved from the original card
-                // shape. Background is transparent so the list floats on
-                // the page bg like the rest of this column; `queued`
-                // rows keep a faint lilac wash so a user who's about to
-                // mark a task complete on save can see what's pending.
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.8rem',
-                  padding: '1rem 1.6rem',
-                  borderBottom: '1px solid #f4f6f8',
-                  backgroundColor: queued ? '#f4f5fc' : 'transparent',
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <button
-                    type="button"
-                    onClick={() => onOpenTask(t)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      margin: 0,
-                      font: 'inherit',
-                      textAlign: 'left',
-                      fontSize: '1.3rem',
-                      fontWeight: 500,
-                      color: isDone ? '#919eab' : '#212b36',
-                      textDecoration: isDone ? 'line-through' : 'none',
-                      cursor: 'pointer',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {t.title}
-                  </button>
-                  {t.objective ? (
-                    <button
-                      type="button"
-                      onClick={() => onOpenObjective(t.objective!.id)}
-                      title={`Abrir objetivo: ${t.objective.title}`}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                        marginTop: '0.3rem',
-                        background: 'none',
-                        border: 'none',
-                        padding: 0,
-                        font: 'inherit',
-                        fontSize: '1.1rem',
-                        // Done rows get a lighter tone on the objective
-                        // label so the whole secondary line reads as
-                        // subdued along with the title.
-                        color: isDone ? '#919eab' : '#637381',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        maxWidth: '100%',
-                      }}
-                    >
-                      <svg
-                        width="11"
-                        height="11"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        style={{ flexShrink: 0 }}
-                        aria-hidden
-                      >
-                        <circle cx="12" cy="12" r="10" />
-                        <circle cx="12" cy="12" r="6" />
-                        <circle cx="12" cy="12" r="2" />
-                      </svg>
-                      <span
-                        style={{
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Objetivo:{' '}
-                        <span style={{ color: isDone ? '#919eab' : '#454f5b' }}>
-                          {t.objective.title}
-                        </span>
-                      </span>
-                    </button>
-                  ) : (
-                    <span
-                      style={{
-                        display: 'block',
-                        marginTop: '0.3rem',
-                        fontSize: '1.1rem',
-                        color: '#919eab',
-                        fontStyle: 'italic',
-                      }}
-                    >
-                      Sin objetivo
-                    </span>
-                  )}
-                  <div style={{ marginTop: '0.4rem' }}>
-                    <StaticChip chip={chip} />
-                  </div>
-                </div>
-                {/* "Terminada" — rectangular replacement for the old
-                    round check-circle, per the design update. Same gray
-                    outlined style as + Nueva tarea / + Tarea so the
-                    whole surface reads as a consistent secondary action
-                    family. Disabled (kept visually the same, but
-                    non-interactive) once the task is already
-                    completed. */}
-                <TaskCompleteButton
-                  checked={queued || isDone}
-                  disabled={isDone}
-                  onClick={() => onToggleComplete(t)}
-                />
-              </li>
-            );
-          })}
-        </ul>
-      )}
     </div>
   );
 }
@@ -1757,8 +1460,8 @@ function CheckinHero({
     <section
       aria-label="Resumen del periodo"
       style={{
-        textAlign: 'left',
-        padding: '2.4rem 0',
+        textAlign: 'center',
+        padding: '2.4rem 2rem',
         marginBottom: '2.4rem',
         borderBottom: '1px solid var(--color-border)',
         background: 'transparent',
@@ -1773,6 +1476,8 @@ function CheckinHero({
           letterSpacing: '-0.01em',
           lineHeight: 1.2,
           maxWidth: '68ch',
+          marginLeft: 'auto',
+          marginRight: 'auto',
         }}
       >
         Te quedan <span style={{ color: '#5c6ac4' }}>{daysRemaining} días</span> para hacer la diferencia en {periodName}.
@@ -1780,7 +1485,7 @@ function CheckinHero({
 
       <p
         style={{
-          margin: '1.2rem 0 0',
+          margin: '1.2rem auto 0',
           fontSize: '1.4rem',
           lineHeight: 1.55,
           color: '#637381',
@@ -1794,19 +1499,17 @@ function CheckinHero({
         <strong style={{ color: '#212b36' }}>31% encima del promedio</strong>.
       </p>
 
-      {/* Stats row: weeks-remaining / %-elapsed / timeline bar. Left-
-          aligned to match the rest of the hero — counters and bar
-          stack in a 3-cell grid that hugs the left edge of the
-          column. */}
+      {/* Stats row: weeks-remaining / %-elapsed / timeline bar.
+          Lays out in a 3-cell grid centered on the column. */}
       <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'minmax(120px, 1fr) minmax(120px, 1fr) minmax(200px, 1.4fr)',
           gap: '2.8rem',
           alignItems: 'center',
-          justifyItems: 'start',
+          justifyItems: 'center',
           maxWidth: '58rem',
-          margin: '2.4rem 0 0',
+          margin: '2.4rem auto 0',
         }}
       >
         <StatNumber value={weeksRemaining} unit="sem" label="Restantes" />
@@ -1835,8 +1538,8 @@ function StatNumber({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'flex-start',
-        textAlign: 'left',
+        alignItems: 'center',
+        textAlign: 'center',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
