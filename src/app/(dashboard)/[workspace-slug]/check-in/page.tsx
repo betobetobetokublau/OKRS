@@ -92,6 +92,10 @@ export default function CheckinPage() {
   // Modal state
   const [editingObjective, setEditingObjective] = useState<ObjectiveWithTasks | null>(null);
   const [addingTaskFor, setAddingTaskFor] = useState<{ objectiveId: string | null } | null>(null);
+  // Confirmation modal — shown when the user clicks "Reportar
+  // actualización". Lists all queued updates and hosts the
+  // "¿En qué estás pensando?" textarea before the actual save runs.
+  const [confirmingCheckin, setConfirmingCheckin] = useState(false);
 
   // Side panel state
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
@@ -410,6 +414,7 @@ export default function CheckinPage() {
     setObjectiveEdits(new Map());
     setTasksToComplete(new Set());
     setThought('');
+    setConfirmingCheckin(false);
     setSavedToastId((n) => n + 1);
     await load();
     setSaving(false);
@@ -430,148 +435,167 @@ export default function CheckinPage() {
     return <div style={{ padding: '4rem', color: '#637381' }}>Cargando workspace...</div>;
   }
 
+  // Are there any pending edits queued for the check-in? Used to gate
+  // the primary CTA — opening the confirmation modal when there's
+  // nothing to confirm would just dead-end the user.
+  const hasPendingEdits = objectiveEdits.size > 0 || tasksToComplete.size > 0;
+
   return (
     <div>
-      {/* Period hero — stats band pinned at the top of the check-in
-          view. Only rendered when we have an active period (otherwise
-          there's nothing meaningful to count). */}
-      {activePeriod && (
-        <CheckinHero
-          periodName={activePeriod.name}
-          periodStart={new Date(activePeriod.start_date)}
-          periodEnd={new Date(activePeriod.end_date)}
-          checkinsCount={checkinsCount}
-        />
-      )}
-
-      {/* Day header — calendar badge + daily title sit centered on the
-          page width as a single unit. The primary "Reportar
-          actualización" CTA moved out of this row into its own
-          centered row below (next block) per the design mock. */}
+      {/* Page-level 2-column grid. Column 1 carries the hero, day
+          header, primary CTA, and the per-KPI tables. Column 2 carries
+          Mis tareas + the Actividad feed. The thought card was retired
+          here — it now lives inside the confirmation modal opened by
+          the CTA. */}
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: '1.6rem',
-          marginBottom: '1.4rem',
-          flexWrap: 'wrap',
+          display: 'grid',
+          gridTemplateColumns: '1fr minmax(260px, 30%)',
+          gap: '2rem',
+          alignItems: 'flex-start',
         }}
       >
-        {/* Calendar date badge — visual anchor for the daily title */}
-        <CalendarDateBadge date={new Date()} />
-        <div>
-          <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>{title}</h1>
-          <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>
-            {activePeriod
-              ? `Actualiza tus objetivos y tareas del periodo ${activePeriod.name}.`
-              : 'Sin periodo activo'}
-          </p>
-        </div>
-      </div>
+        {/* Column 1 — hero + day header + CTA + objectives */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          {activePeriod && (
+            <CheckinHero
+              periodName={activePeriod.name}
+              periodStart={new Date(activePeriod.start_date)}
+              periodEnd={new Date(activePeriod.end_date)}
+              checkinsCount={checkinsCount}
+            />
+          )}
 
-      {/* Primary CTA — centered on its own row below the day header.
-          No icon (per the design update); purple filled pill with the
-          "Reportar actualización" label. */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          marginBottom: '2.4rem',
-        }}
-      >
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving || !activePeriod}
-          aria-label="Reportar actualización"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            padding: '1.1rem 2.4rem',
-            fontSize: '1.5rem',
-            fontWeight: 600,
-            color: 'white',
-            backgroundColor: saving || !activePeriod ? '#8c92c4' : '#5c6ac4',
-            border: 'none',
-            borderRadius: '10px',
-            cursor: saving || !activePeriod ? 'not-allowed' : 'pointer',
-            boxShadow: '0 1px 2px rgba(15,24,48,0.08)',
-            lineHeight: 1,
-          }}
-        >
-          {saving ? 'Enviando…' : 'Reportar actualización'}
-        </button>
-      </div>
+          {/* Day header — calendar badge + daily title aligned to the
+              left edge of the column. */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-start',
+              alignItems: 'center',
+              gap: '1.6rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <CalendarDateBadge date={new Date()} />
+            <div>
+              <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>{title}</h1>
+              <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>
+                {activePeriod
+                  ? `Actualiza tus objetivos y tareas del periodo ${activePeriod.name}.`
+                  : 'Sin periodo activo'}
+              </p>
+            </div>
+          </div>
 
-      {saveError && (
-        <div style={{ padding: '1rem 1.2rem', backgroundColor: '#fbeae5', color: '#bf0711', borderRadius: '4px', marginBottom: '1.6rem', fontSize: '1.3rem' }}>
-          {saveError}
-        </div>
-      )}
-      {savedToastId > 0 && (
-        <div
-          key={savedToastId}
-          className="anim-fade-in"
-          style={{ padding: '1rem 1.2rem', backgroundColor: '#e3f1df', color: '#108043', borderRadius: '4px', marginBottom: '1.6rem', fontSize: '1.3rem' }}
-        >
-          Check-in guardado.
-        </div>
-      )}
-
-      {loading ? (
-        <p style={{ color: '#637381', textAlign: 'center', padding: '4rem' }}>Cargando objetivos...</p>
-      ) : !activePeriod ? (
-        <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-          <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
-        </div>
-      ) : (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr minmax(260px, 30%)',
-            gap: '2rem',
-            alignItems: 'flex-start',
-          }}
-        >
-          {/* Left column: per-KPI tables */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            {/* Section title — introduces the KPI-grouped tables as
-                the "your department's objectives" block. Rendered
-                here (rather than at the page level) so it tracks with
-                the left column and doesn't sit above the Mis tareas
-                card. No top padding: the grid uses
-                `alignItems: 'flex-start'`, so dropping the inset makes
-                the title's top edge line up with the top edge of the
-                "¿En qué estás pensando?" card on the right column. */}
-            <h2
+          {/* Primary CTA — left-aligned. Opens the confirmation modal
+              instead of saving immediately, so the user gets a
+              chance to review the queued updates and add a thought. */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-start',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setConfirmingCheckin(true)}
+              disabled={saving || !activePeriod || !hasPendingEdits}
+              aria-label="Reportar actualización"
+              title={
+                !hasPendingEdits
+                  ? 'Marca alguna actualización para reportar tu check-in'
+                  : undefined
+              }
               style={{
-                fontSize: '1.8rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '1.1rem 2.4rem',
+                fontSize: '1.5rem',
                 fontWeight: 600,
-                color: '#212b36',
-                margin: 0,
-                lineHeight: 1.25,
+                color: 'white',
+                backgroundColor:
+                  saving || !activePeriod || !hasPendingEdits ? '#8c92c4' : '#5c6ac4',
+                border: 'none',
+                borderRadius: '10px',
+                cursor:
+                  saving || !activePeriod || !hasPendingEdits ? 'not-allowed' : 'pointer',
+                boxShadow: '0 1px 2px rgba(15,24,48,0.08)',
+                lineHeight: 1,
               }}
             >
-              Los objetivos de tu departamento
-            </h2>
-            {objectives.length === 0 ? (
-              <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-                <p style={{ color: '#637381', fontSize: '1.4rem' }}>
-                  No tienes objetivos asignados en este periodo.
-                </p>
-              </div>
-            ) : (
-              <>
-                {kpis.map((kpi) => {
-                  const rows = grouped.map.get(kpi.id) || [];
-                  if (rows.length === 0) return null;
-                  return (
+              {saving ? 'Enviando…' : 'Reportar actualización'}
+            </button>
+          </div>
+
+          {saveError && (
+            <div style={{ padding: '1rem 1.2rem', backgroundColor: '#fbeae5', color: '#bf0711', borderRadius: '4px', fontSize: '1.3rem' }}>
+              {saveError}
+            </div>
+          )}
+          {savedToastId > 0 && (
+            <div
+              key={savedToastId}
+              className="anim-fade-in"
+              style={{ padding: '1rem 1.2rem', backgroundColor: '#e3f1df', color: '#108043', borderRadius: '4px', fontSize: '1.3rem' }}
+            >
+              Check-in guardado.
+            </div>
+          )}
+
+          {loading ? (
+            <p style={{ color: '#637381', textAlign: 'center', padding: '4rem' }}>Cargando objetivos...</p>
+          ) : !activePeriod ? (
+            <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+              <p style={{ color: '#637381', fontSize: '1.4rem' }}>No hay un periodo activo.</p>
+            </div>
+          ) : (
+            <>
+              <h2
+                style={{
+                  fontSize: '1.8rem',
+                  fontWeight: 600,
+                  color: '#212b36',
+                  margin: 0,
+                  lineHeight: 1.25,
+                }}
+              >
+                Los objetivos de tu departamento
+              </h2>
+              {objectives.length === 0 ? (
+                <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                  <p style={{ color: '#637381', fontSize: '1.4rem' }}>
+                    No tienes objetivos asignados en este periodo.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {kpis.map((kpi) => {
+                    const rows = grouped.map.get(kpi.id) || [];
+                    if (rows.length === 0) return null;
+                    return (
+                      <CheckinKpiTable
+                        key={kpi.id}
+                        kpiId={kpi.id}
+                        kpiTitle={kpi.title}
+                        rows={rows}
+                        expanded={expanded}
+                        onToggle={toggle}
+                        objectiveEdits={objectiveEdits}
+                        tasksToComplete={tasksToComplete}
+                        onUpdateObjective={setEditingObjective}
+                        onToggleTaskComplete={toggleTaskCompletion}
+                        onOpenPanel={setPanelTarget}
+                        onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
+                      />
+                    );
+                  })}
+
+                  {grouped.orphans.length > 0 && (
                     <CheckinKpiTable
-                      key={kpi.id}
-                      kpiId={kpi.id}
-                      kpiTitle={kpi.title}
-                      rows={rows}
+                      kpiId={null}
+                      kpiTitle="Sin KPI asignado"
+                      rows={grouped.orphans}
                       expanded={expanded}
                       onToggle={toggle}
                       objectiveEdits={objectiveEdits}
@@ -581,121 +605,63 @@ export default function CheckinPage() {
                       onOpenPanel={setPanelTarget}
                       onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
                     />
-                  );
-                })}
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
 
-                {grouped.orphans.length > 0 && (
-                  <CheckinKpiTable
-                    kpiId={null}
-                    kpiTitle="Sin KPI asignado"
-                    rows={grouped.orphans}
-                    expanded={expanded}
-                    onToggle={toggle}
-                    objectiveEdits={objectiveEdits}
-                    tasksToComplete={tasksToComplete}
-                    onUpdateObjective={setEditingObjective}
-                    onToggleTaskComplete={toggleTaskCompletion}
-                    onOpenPanel={setPanelTarget}
-                    onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
-                  />
-                )}
-              </>
-            )}
-          </div>
+        {/* Column 2 — Mis tareas + Actividad feed. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          <MyTasksColumn
+            tasks={myAssignedTasks}
+            tasksToComplete={tasksToComplete}
+            onToggleComplete={toggleTaskCompletion}
+            onOpenTask={(t) => setPanelTarget({ type: 'task', id: t.id })}
+            onOpenObjective={(oid) => setPanelTarget({ type: 'objective', id: oid })}
+            onAddTask={() => setAddingTaskFor({ objectiveId: null })}
+          />
 
-          {/* Right column: ¿En qué estás pensando? + Mis tareas +
-              Actividad feed. Wrapper stacks them vertically. */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            {/* Free-form thought captured as the check-in's summary —
-                persisted to `checkins.summary` on save and surfaced on
-                the activity timeline as the quote attached to the
-                "hizo check-in" event. Background is transparent so the
-                card blends with the page bg; the border + padding
-                stay so it still reads as a discrete card.
-
-                `marginTop` offsets the card down by the height of the
-                left column's `<h2>` section title (1.8rem * 1.25
-                line-height = 2.25rem) plus the left column's internal
-                flex gap (2rem). That lines up this card's top corner
-                with the top corner of the first KPI table on the
-                left — not with the section title above it. */}
+          {/* Embedded activity timeline. Flat — no card bg — subtle
+              top/bottom borders only so it reads as part of the page. */}
+          <section aria-label="Actividad reciente">
             <div
-              className="Polaris-Card"
               style={{
-                borderRadius: '8px',
-                border: '1px solid var(--color-border)',
-                backgroundColor: 'transparent',
-                padding: '1.2rem 1.6rem',
-                marginTop: '4.25rem',
+                padding: '1rem 0 0.8rem',
+                borderBottom: '1px solid #edeff2',
+                marginBottom: '0.4rem',
               }}
             >
-              <label
-                htmlFor="checkin-thought"
-                style={{
-                  display: 'block',
-                  fontSize: '1.5rem',
-                  fontWeight: 600,
-                  color: '#212b36',
-                  marginBottom: '0.8rem',
-                }}
-              >
-                ¿En qué estás pensando?
-              </label>
-              <textarea
-                id="checkin-thought"
-                value={thought}
-                onChange={(e) => setThought(e.target.value)}
-                rows={3}
-                placeholder="Agrega una nota para tu check-in…"
-                style={{
-                  width: '100%',
-                  padding: '0.8rem 1rem',
-                  fontSize: '1.3rem',
-                  color: '#212b36',
-                  border: '1px solid #dfe3e8',
-                  borderRadius: '6px',
-                  resize: 'vertical',
-                  fontFamily: 'inherit',
-                  lineHeight: 1.45,
-                }}
-              />
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#212b36' }}>
+                Actividad
+              </h2>
+              <p style={{ fontSize: '1.1rem', color: '#637381', marginTop: '0.2rem' }}>
+                Últimos movimientos del workspace
+              </p>
             </div>
-
-            <MyTasksColumn
-              tasks={myAssignedTasks}
-              tasksToComplete={tasksToComplete}
-              onToggleComplete={toggleTaskCompletion}
-              onOpenTask={(t) => setPanelTarget({ type: 'task', id: t.id })}
-              onOpenObjective={(oid) => setPanelTarget({ type: 'objective', id: oid })}
-              onAddTask={() => setAddingTaskFor({ objectiveId: null })}
+            <ActivityList
+              events={activityEvents}
+              loading={activityLoading}
+              onOpen={handleActivityOpen}
+              variant="embed"
             />
-
-            {/* Embedded activity timeline. Flat — no card bg — subtle
-                top/bottom borders only so it reads as part of the page. */}
-            <section aria-label="Actividad reciente">
-              <div
-                style={{
-                  padding: '1rem 0 0.8rem',
-                  borderBottom: '1px solid #edeff2',
-                  marginBottom: '0.4rem',
-                }}
-              >
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#212b36' }}>
-                  Actividad
-                </h2>
-                <p style={{ fontSize: '1.1rem', color: '#637381', marginTop: '0.2rem' }}>
-                  Últimos movimientos del workspace
-                </p>
-              </div>
-              <ActivityList
-                events={activityEvents}
-                loading={activityLoading}
-                onOpen={handleActivityOpen}
-                variant="embed"
-              />
-            </section>
-          </div>
+          </section>
         </div>
+      </div>
+
+      {confirmingCheckin && (
+        <CheckinConfirmModal
+          objectives={objectives}
+          myAssignedTasks={myAssignedTasks}
+          objectiveEdits={objectiveEdits}
+          tasksToComplete={tasksToComplete}
+          thought={thought}
+          onThoughtChange={setThought}
+          saving={saving}
+          onCancel={() => setConfirmingCheckin(false)}
+          onConfirm={handleSave}
+        />
       )}
 
       {editingObjective && (
@@ -1256,6 +1222,269 @@ function ObjectiveRowGroup({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// ---------- Confirmation modal ----------
+
+interface CheckinConfirmModalProps {
+  objectives: ObjectiveWithTasks[];
+  myAssignedTasks: Array<Task & { objective: Objective | null }>;
+  objectiveEdits: Map<string, PendingObjectiveUpdate>;
+  tasksToComplete: Set<string>;
+  thought: string;
+  onThoughtChange: (s: string) => void;
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+/**
+ * Pre-save review screen for the check-in. Lists every queued
+ * objective update and every task that's about to be marked
+ * completed, plus the free-form "¿En qué estás pensando?" note that
+ * gets persisted onto `checkins.summary`.
+ *
+ * Nothing in this modal mutates state on its own — the parent owns
+ * `objectiveEdits`, `tasksToComplete`, and `thought`; we only render
+ * a summary and a textarea bound back to the parent.
+ */
+function CheckinConfirmModal({
+  objectives,
+  myAssignedTasks,
+  objectiveEdits,
+  tasksToComplete,
+  thought,
+  onThoughtChange,
+  saving,
+  onCancel,
+  onConfirm,
+}: CheckinConfirmModalProps) {
+  const objectiveById = useMemo(() => {
+    const m = new Map<string, ObjectiveWithTasks>();
+    objectives.forEach((o) => m.set(o.id, o));
+    return m;
+  }, [objectives]);
+
+  // Tasks may live either nested under a team objective in
+  // `objectives` OR in the personal `myAssignedTasks` list — index
+  // both so the summary can render any queued task by id.
+  const taskById = useMemo(() => {
+    const m = new Map<string, Task & { objective?: Objective | null }>();
+    objectives.forEach((o) =>
+      (o.tasks || []).forEach((t) =>
+        m.set(t.id, { ...t, objective: o as Objective }),
+      ),
+    );
+    myAssignedTasks.forEach((t) => {
+      if (!m.has(t.id)) m.set(t.id, t);
+    });
+    return m;
+  }, [objectives, myAssignedTasks]);
+
+  const editEntries = Array.from(objectiveEdits.entries());
+  const taskIds = Array.from(tasksToComplete);
+  const totalCount = editEntries.length + taskIds.length;
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    onConfirm();
+  }
+
+  return (
+    <AnimatedModal open={true} onClose={onCancel} width={560}>
+      <form onSubmit={handleSubmit}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            marginBottom: '0.8rem',
+          }}
+        >
+          <div>
+            <h2 style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36' }}>
+              Confirmar check-in
+            </h2>
+            <p style={{ fontSize: '1.3rem', color: '#637381', marginTop: '0.4rem' }}>
+              {totalCount === 0
+                ? 'No hay actualizaciones pendientes.'
+                : `Vas a registrar ${totalCount} ${totalCount === 1 ? 'cambio' : 'cambios'}.`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Cerrar"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '2rem', color: '#637381', lineHeight: 1 }}
+          >
+            &times;
+          </button>
+        </div>
+
+        {/* Summary list — one row per queued objective edit, plus one
+            row per task we'll mark completed. Scrolls if the list
+            grows beyond the modal's viewport budget. */}
+        {totalCount > 0 && (
+          <div
+            style={{
+              border: '1px solid var(--color-border)',
+              borderRadius: '8px',
+              maxHeight: '32rem',
+              overflowY: 'auto',
+              marginBottom: '1.6rem',
+              backgroundColor: '#fafbfb',
+            }}
+          >
+            {editEntries.map(([objId, edit], idx) => {
+              const obj = objectiveById.get(objId);
+              if (!obj) return null;
+              const showProgress =
+                edit.new_progress !== undefined &&
+                edit.new_progress !== obj.manual_progress;
+              const showStatus =
+                edit.new_status !== undefined && edit.new_status !== obj.status;
+              const newChip = showStatus ? objectiveStatusChip(edit.new_status!) : null;
+              const oldChip = showStatus ? objectiveStatusChip(obj.status) : null;
+              return (
+                <div
+                  key={`obj-${objId}`}
+                  style={{
+                    padding: '1.2rem 1.6rem',
+                    borderBottom:
+                      idx < editEntries.length + taskIds.length - 1
+                        ? '1px solid #edeff2'
+                        : 'none',
+                  }}
+                >
+                  <div style={{ fontSize: '1.1rem', color: '#919eab', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, marginBottom: '0.4rem' }}>
+                    Objetivo
+                  </div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 600, color: '#212b36', marginBottom: '0.6rem' }}>
+                    {obj.title}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {showProgress && (
+                      <div style={{ fontSize: '1.3rem', color: '#454f5b' }}>
+                        Progreso: <strong>{obj.manual_progress}%</strong> →{' '}
+                        <strong style={{ color: '#5c6ac4' }}>{edit.new_progress}%</strong>
+                      </div>
+                    )}
+                    {showStatus && oldChip && newChip && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', color: '#454f5b' }}>
+                        <span>Estado:</span>
+                        <StaticChip chip={oldChip} />
+                        <span>→</span>
+                        <StaticChip chip={newChip} />
+                      </div>
+                    )}
+                    {edit.comment?.trim() && (
+                      <div style={{ fontSize: '1.3rem', color: '#454f5b', fontStyle: 'italic' }}>
+                        “{edit.comment.trim()}”
+                      </div>
+                    )}
+                    {!showProgress && !showStatus && !edit.comment?.trim() && (
+                      <div style={{ fontSize: '1.3rem', color: '#919eab' }}>
+                        Sin cambios.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {taskIds.map((tid, idx) => {
+              const t = taskById.get(tid);
+              if (!t) return null;
+              return (
+                <div
+                  key={`task-${tid}`}
+                  style={{
+                    padding: '1.2rem 1.6rem',
+                    borderBottom:
+                      idx < taskIds.length - 1 ? '1px solid #edeff2' : 'none',
+                  }}
+                >
+                  <div style={{ fontSize: '1.1rem', color: '#919eab', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, marginBottom: '0.4rem' }}>
+                    Tarea
+                  </div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 600, color: '#212b36', marginBottom: '0.4rem' }}>
+                    {t.title}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', color: '#454f5b' }}>
+                    <span>Se marcará</span>
+                    <StaticChip chip={taskStatusChip('completed')} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* "¿En qué estás pensando?" — relocated from the right
+            column. Same label and behavior, persisted to
+            `checkins.summary` on save. */}
+        <div style={{ marginBottom: '1.6rem' }}>
+          <label
+            htmlFor="checkin-confirm-thought"
+            style={{
+              display: 'block',
+              fontSize: '1.5rem',
+              fontWeight: 600,
+              color: '#212b36',
+              marginBottom: '0.6rem',
+            }}
+          >
+            ¿En qué estás pensando?
+          </label>
+          <textarea
+            id="checkin-confirm-thought"
+            value={thought}
+            onChange={(e) => onThoughtChange(e.target.value)}
+            rows={3}
+            placeholder="Agrega una nota para tu check-in…"
+            style={{
+              width: '100%',
+              padding: '0.8rem 1rem',
+              fontSize: '1.3rem',
+              color: '#212b36',
+              border: '1px solid #dfe3e8',
+              borderRadius: '6px',
+              resize: 'vertical',
+              fontFamily: 'inherit',
+              lineHeight: 1.45,
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.8rem' }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            style={{ padding: '0.7rem 1.4rem', fontSize: '1.4rem', color: '#454f5b', backgroundColor: 'white', border: '1px solid #c4cdd5', borderRadius: '4px', cursor: saving ? 'default' : 'pointer' }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={saving || totalCount === 0}
+            style={{
+              padding: '0.7rem 1.6rem',
+              fontSize: '1.4rem',
+              fontWeight: 600,
+              color: 'white',
+              backgroundColor: saving || totalCount === 0 ? '#8c92c4' : '#5c6ac4',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: saving || totalCount === 0 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {saving ? 'Enviando…' : 'Confirmar check-in'}
+          </button>
+        </div>
+      </form>
+    </AnimatedModal>
+  );
+}
+
 // ---------- Update modal ----------
 
 interface ObjectiveUpdateModalProps {
@@ -1528,8 +1757,8 @@ function CheckinHero({
     <section
       aria-label="Resumen del periodo"
       style={{
-        textAlign: 'center',
-        padding: '2.4rem 2rem',
+        textAlign: 'left',
+        padding: '2.4rem 0',
         marginBottom: '2.4rem',
         borderBottom: '1px solid var(--color-border)',
         background: 'transparent',
@@ -1544,8 +1773,6 @@ function CheckinHero({
           letterSpacing: '-0.01em',
           lineHeight: 1.2,
           maxWidth: '68ch',
-          marginLeft: 'auto',
-          marginRight: 'auto',
         }}
       >
         Te quedan <span style={{ color: '#5c6ac4' }}>{daysRemaining} días</span> para hacer la diferencia en {periodName}.
@@ -1553,7 +1780,7 @@ function CheckinHero({
 
       <p
         style={{
-          margin: '1.2rem auto 0',
+          margin: '1.2rem 0 0',
           fontSize: '1.4rem',
           lineHeight: 1.55,
           color: '#637381',
@@ -1567,18 +1794,19 @@ function CheckinHero({
         <strong style={{ color: '#212b36' }}>31% encima del promedio</strong>.
       </p>
 
-      {/* Stats row: weeks-remaining / %-elapsed / timeline bar.
-          Lays out in a 3-cell grid so the bar hugs the right edge of
-          the hero while the two counters sit in their own columns. */}
+      {/* Stats row: weeks-remaining / %-elapsed / timeline bar. Left-
+          aligned to match the rest of the hero — counters and bar
+          stack in a 3-cell grid that hugs the left edge of the
+          column. */}
       <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'minmax(120px, 1fr) minmax(120px, 1fr) minmax(200px, 1.4fr)',
           gap: '2.8rem',
           alignItems: 'center',
-          justifyItems: 'center',
+          justifyItems: 'start',
           maxWidth: '58rem',
-          margin: '2.4rem auto 0',
+          margin: '2.4rem 0 0',
         }}
       >
         <StatNumber value={weeksRemaining} unit="sem" label="Restantes" />
@@ -1607,8 +1835,8 @@ function StatNumber({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        textAlign: 'center',
+        alignItems: 'flex-start',
+        textAlign: 'left',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
