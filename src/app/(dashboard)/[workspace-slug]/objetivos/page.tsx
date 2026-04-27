@@ -79,6 +79,13 @@ export default function ObjetivosPage() {
   const [deptIdsByObjective, setDeptIdsByObjective] = useState<Map<string, Set<string>>>(
     new Map(),
   );
+  // KPI ↔ department junction (`kpi_departments`). A KPI may be
+  // attached to one or more departments via the form's multi-select
+  // and that's the canonical "department of this KPI" — independent
+  // from the optional single `responsible_department_id`. Used to
+  // render the dept name(s) next to the "KPI" eyebrow on each
+  // section header.
+  const [deptIdsByKpi, setDeptIdsByKpi] = useState<Map<string, string[]>>(new Map());
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
   const [activeTab, setActiveTab] = useState<'listado' | 'gantt' | 'metricas' | 'tree' | 'overview'>('listado');
   // "Vista resumida" collapses every KpiSection / OrphanSection to just
@@ -101,7 +108,7 @@ export default function ObjetivosPage() {
     async function loadMeta() {
       if (!currentWorkspace?.id || !activePeriod?.id) return;
       const supabase = createClient();
-      const [deptRes, kpiRes, userDeptRes, objDeptRes] = await Promise.all([
+      const [deptRes, kpiRes, userDeptRes, objDeptRes, kpiDeptRes] = await Promise.all([
         supabase
           .from('departments')
           .select('*')
@@ -128,6 +135,9 @@ export default function ObjetivosPage() {
         // responsible department. Workspace scoping happens through
         // RLS; we don't filter here.
         supabase.from('objective_departments').select('objective_id, department_id'),
+        // kpi_departments junction — drives the dept name shown next
+        // to each KPI section's eyebrow.
+        supabase.from('kpi_departments').select('kpi_id, department_id'),
       ]);
       if (deptRes.data) setDepartments(deptRes.data as Department[]);
       if (kpiRes.data) setKpis(kpiRes.data as KPI[]);
@@ -147,6 +157,15 @@ export default function ObjetivosPage() {
         },
       );
       setDeptIdsByObjective(map);
+      const kpiMap = new Map<string, string[]>();
+      ((kpiDeptRes.data || []) as Array<{ kpi_id: string; department_id: string }>).forEach(
+        (r) => {
+          const arr = kpiMap.get(r.kpi_id) || [];
+          arr.push(r.department_id);
+          kpiMap.set(r.kpi_id, arr);
+        },
+      );
+      setDeptIdsByKpi(kpiMap);
     }
     loadMeta();
   }, [currentWorkspace?.id, activePeriod?.id, profile?.id]);
@@ -672,6 +691,7 @@ export default function ObjetivosPage() {
                 onMoveUp={() => moveKpi(kpi.id, -1)}
                 onMoveDown={() => moveKpi(kpi.id, 1)}
                 departments={departments}
+                linkedDepartmentIds={deptIdsByKpi.get(kpi.id)}
                 canEdit={canEdit}
                 onChanged={refreshAll}
                 onOpenPanel={setPanelTarget}
@@ -730,6 +750,8 @@ interface KpiSectionProps {
   onMoveUp: () => void;
   onMoveDown: () => void;
   departments: Department[];
+  /** Department ids linked to this KPI via `kpi_departments`. */
+  linkedDepartmentIds?: string[];
   canEdit: boolean;
   onChanged: () => void;
   onOpenPanel: (t: PanelTarget) => void;
@@ -750,6 +772,7 @@ function KpiSection({
   onMoveUp,
   onMoveDown,
   departments,
+  linkedDepartmentIds,
   canEdit,
   onChanged,
   onOpenPanel,
@@ -771,6 +794,19 @@ function KpiSection({
   const responsibleDept = kpi.responsible_department_id
     ? departments.find((d) => d.id === kpi.responsible_department_id)
     : null;
+  // Department label rendered next to the "KPI" eyebrow. Prefer the
+  // `kpi_departments` junction (which is the canonical multi-select
+  // assignment captured by the KPI form) and fall back to the
+  // optional `responsible_department_id` if the junction is empty.
+  // Multiple departments are joined with " · " so the eyebrow stays a
+  // single-line breadcrumb.
+  const linkedDeptNames = (linkedDepartmentIds || [])
+    .map((id) => departments.find((d) => d.id === id)?.name)
+    .filter((n): n is string => Boolean(n));
+  const eyebrowDeptLabel =
+    linkedDeptNames.length > 0
+      ? linkedDeptNames.join(' · ')
+      : responsibleDept?.name || '';
 
   // Vista resumida — render a compact card designed to sit in a 3-col
   // grid. All the interactive elements from the detailed view are
@@ -826,7 +862,7 @@ function KpiSection({
               marginBottom: '0.3rem',
             }}
           >
-            KPI{responsibleDept ? ` · ${responsibleDept.name}` : ''}
+            KPI{eyebrowDeptLabel ? ` · ${eyebrowDeptLabel}` : ''}
           </div>
           <button
             type="button"
@@ -964,7 +1000,7 @@ function KpiSection({
               marginBottom: '0.2rem',
             }}
           >
-            KPI{responsibleDept ? ` · ${responsibleDept.name}` : ''}
+            KPI{eyebrowDeptLabel ? ` · ${eyebrowDeptLabel}` : ''}
           </div>
           <button
             type="button"

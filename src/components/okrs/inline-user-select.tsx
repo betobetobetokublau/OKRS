@@ -5,8 +5,11 @@ import { createClient } from '@/lib/supabase/client';
 import type { Profile } from '@/types';
 
 interface InlineUserSelectProps {
-  /** Currently only 'task' is supported (assigned_user_id). */
-  entity: 'task';
+  /**
+   * 'task'      — writes `tasks.assigned_user_id`.
+   * 'objective' — writes `objectives.responsible_user_id`.
+   */
+  entity: 'task' | 'objective';
   id: string;
   workspaceId: string;
   currentUserId: string | null;
@@ -90,11 +93,18 @@ export function InlineUserSelect({
     setValue(next);
     setSaving(true);
     const supabase = createClient();
-    const table = entity === 'task' ? 'tasks' : 'tasks';
-    await supabase
-      .from(table)
-      .update({ assigned_user_id: next || null })
-      .eq('id', id);
+    if (entity === 'task') {
+      await supabase
+        .from('tasks')
+        .update({ assigned_user_id: next || null })
+        .eq('id', id);
+    } else {
+      // objective — `responsible_user_id` is the equivalent column.
+      await supabase
+        .from('objectives')
+        .update({ responsible_user_id: next || null })
+        .eq('id', id);
+    }
     setSaving(false);
     onChanged();
   }

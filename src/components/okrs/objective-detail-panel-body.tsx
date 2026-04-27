@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { DepartmentTag } from '@/components/common/department-tag';
-import { UserAvatar } from '@/components/common/user-avatar';
 import { CommentTimeline } from '@/components/timeline/comment-timeline';
 import { TaskRow } from '@/components/tasks/task-row';
 import { TaskForm } from '@/components/tasks/task-form';
 import { ObjectiveForm } from '@/components/objectives/objective-form';
 import { InlineTeamSelect } from './inline-team-select';
 import { InlineStatusSelect } from './inline-status-select';
+import { InlineUserSelect } from './inline-user-select';
 import {
   AsanaDetailShell,
   AsanaSection,
@@ -122,13 +122,21 @@ export function ObjectiveDetailPanelBody({
   const fields: FieldRow[] = [
     {
       label: 'Responsable',
-      value: objective.responsible_user ? (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem' }}>
-          <UserAvatar user={objective.responsible_user} size="small" />
-          <span>{objective.responsible_user.full_name}</span>
-        </span>
-      ) : (
-        <AsanaEmpty />
+      // Inline-editable for every role — the assignee is the highest-
+      // friction field the panel exposes and gating it behind the
+      // "Editar" modal slowed the operational flow. The `canEdit`
+      // flag is intentionally hardcoded to `true` here; structural
+      // edits to the rest of the objective stay in the form modal.
+      value: (
+        <InlineUserSelect
+          entity="objective"
+          id={objective.id}
+          workspaceId={objective.workspace_id}
+          currentUserId={objective.responsible_user_id}
+          currentUser={objective.responsible_user}
+          canEdit
+          onChanged={refresh}
+        />
       ),
     },
     {

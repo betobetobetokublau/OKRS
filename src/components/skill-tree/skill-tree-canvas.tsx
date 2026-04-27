@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useSkillTreeStore } from '@/stores/skill-tree-store';
 import { calculateKpiProgress, calculateObjectiveProgress } from '@/lib/utils/progress';
@@ -135,6 +135,58 @@ export function SkillTreeCanvas({
   const [kpis, setKpis] = useState<ViewKpi[]>([]);
   const [loading, setLoading] = useState(true);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  // Zoom level expressed as a multiplier — 1.0 = "fit to viewBox" (the
+  // original look). The viewBox is shrunk around its center as `zoom`
+  // grows, which scales SVG content up to fill the same DOM box. Keep
+  // a default that's a touch tighter than 1.0 since the radial layout
+  // reads as "too zoomed out" at the original framing.
+  const ZOOM_MIN = 0.5;
+  const ZOOM_MAX = 4;
+  const ZOOM_STEP = 0.25;
+  const ZOOM_DEFAULT = 1.3;
+  const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  function clampZoom(z: number) {
+    return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+  }
+  function setZoomRounded(z: number) {
+    // Round to 2 decimals so the readout stays clean (e.g. 1.30, 1.55)
+    // instead of drifting into 1.299999 territory after wheel events.
+    setZoom(Math.round(clampZoom(z) * 100) / 100);
+  }
+  function zoomIn() {
+    setZoomRounded(zoom + ZOOM_STEP);
+  }
+  function zoomOut() {
+    setZoomRounded(zoom - ZOOM_STEP);
+  }
+  function resetZoom() {
+    setZoom(ZOOM_DEFAULT);
+  }
+
+  // Wheel zoom — bound with `passive: false` so we can preventDefault
+  // (React's synthetic onWheel can't, since wheel listeners are
+  // passive by default in modern browsers). Functional setState keeps
+  // the handler stable across renders.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    function onWheel(e: WheelEvent) {
+      e.preventDefault();
+      const delta = -e.deltaY;
+      // ~0.0015 per unit of deltaY gives a tactile pace on both
+      // trackpads (where deltaY is small/continuous) and mice (where
+      // it's chunky).
+      setZoom((prev) => {
+        const next = prev + delta * 0.0015 * ZOOM_STEP;
+        const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next));
+        return Math.round(clamped * 100) / 100;
+      });
+    }
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   // Load data.
   useEffect(() => {
@@ -282,8 +334,16 @@ export function SkillTreeCanvas({
   const barInner = 375;
   const barOuter = 505;
 
+  // Effective viewBox shrinks symmetrically around the canvas center
+  // as zoom grows — content scales up to fill the same DOM box.
+  const vbW = W / zoom;
+  const vbH = H / zoom;
+  const vbX = cx - vbW / 2;
+  const vbY = cy - vbH / 2;
+
   return (
     <div
+      ref={containerRef}
       style={{
         height,
         borderRadius: '12px',
@@ -297,13 +357,36 @@ export function SkillTreeCanvas({
         // actual nodes are stopped in their handlers).
         if (e.target === e.currentTarget) setFocusedId(null);
       }}
+      onDoubleClick={(e) => {
+        // Double-clicking empty canvas zooms in by one step. Bubbled
+        // double-clicks on nodes don't reach here because node
+        // handlers stop propagation, so this only fires on
+        // background empty space.
+        if (e.target === e.currentTarget || (e.target as Element).tagName === 'svg') {
+          zoomIn();
+        }
+      }}
     >
       <TopPill overall={overall} />
+      <ZoomControls
+        zoom={zoom}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        onReset={resetZoom}
+        min={ZOOM_MIN}
+        max={ZOOM_MAX}
+      />
 
       <svg
-        viewBox={`0 0 ${W} ${H}`}
+        viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
         preserveAspectRatio="xMidYMid meet"
         style={{ width: '100%', height: '100%', display: 'block' }}
+        onDoubleClick={(e) => {
+          // Catch double-clicks that land on the SVG background
+          // (between sectors). The SVG itself becomes the target —
+          // node groups stop propagation.
+          if (e.target === e.currentTarget) zoomIn();
+        }}
       >
         {/* Concentric guide rings */}
         {[labelROuter, barInner, barOuter, barOuter + 24].map((r, i) => (
@@ -778,6 +861,101 @@ function KpiFocusPanel({
 }
 
 // ──────────────── Helper components ────────────────
+
+function ZoomControls({
+  zoom,
+  onZoomIn,
+  onZoomOut,
+  onReset,
+  min,
+  max,
+}: {
+  zoom: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onReset: () => void;
+  min: number;
+  max: number;
+}) {
+  const pct = Math.round(zoom * 100);
+  const btn: React.CSSProperties = {
+    width: 28,
+    height: 28,
+    border: 'none',
+    background: 'transparent',
+    color: '#3D4760',
+    fontSize: 16,
+    fontWeight: 600,
+    cursor: 'pointer',
+    lineHeight: 1,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  };
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 14,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 6,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        background: 'rgba(255,255,255,.92)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+        border: '1px solid #E3E7EF',
+        borderRadius: 999,
+        padding: 3,
+      }}
+    >
+      <button
+        type="button"
+        onClick={onZoomOut}
+        disabled={zoom <= min}
+        aria-label="Reducir zoom"
+        title="Reducir zoom"
+        style={{ ...btn, opacity: zoom <= min ? 0.4 : 1, cursor: zoom <= min ? 'default' : 'pointer' }}
+      >
+        −
+      </button>
+      <button
+        type="button"
+        onClick={onReset}
+        aria-label="Restablecer zoom"
+        title="Restablecer zoom"
+        style={{
+          padding: '0 10px',
+          height: 28,
+          minWidth: 56,
+          border: 'none',
+          background: 'transparent',
+          color: '#0F1830',
+          fontFamily: 'ui-monospace, monospace',
+          fontWeight: 700,
+          fontSize: 12,
+          cursor: 'pointer',
+          borderRadius: 999,
+        }}
+      >
+        {pct}%
+      </button>
+      <button
+        type="button"
+        onClick={onZoomIn}
+        disabled={zoom >= max}
+        aria-label="Aumentar zoom"
+        title="Aumentar zoom"
+        style={{ ...btn, opacity: zoom >= max ? 0.4 : 1, cursor: zoom >= max ? 'default' : 'pointer' }}
+      >
+        +
+      </button>
+    </div>
+  );
+}
 
 function TopPill({ overall }: { overall: number }) {
   return (
