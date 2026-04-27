@@ -67,6 +67,11 @@ export default function ObjetivosPage() {
   // linked department (mirrors the visibility rule used by the
   // check-in page).
   const [filterScope, setFilterScope] = useState<'all' | 'mine'>('all');
+  // Optional sub-filter under the "Todos" scope: narrow the listing
+  // to a single department. `null` means no narrowing. Hidden + reset
+  // automatically whenever the scope flips to "mine" since the two
+  // filters compete for the same surface.
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null>(null);
   // Department ids the current user belongs to, plus the
   // objective→department junction. Both feed the "asignados a mí"
   // scope filter; loaded once per workspace/profile.
@@ -211,7 +216,20 @@ export default function ObjetivosPage() {
     };
   }, [profile?.id, myDeptIds, deptIdsByObjective]);
 
-  const filteredRows = filterScope === 'all' ? rows : rows.filter(isObjectiveMine);
+  // When scope is "mine" the assignment test wins. When scope is
+  // "all" we additionally honor the optional department pill: an
+  // objective passes when its responsible department matches the
+  // selection OR it's linked to the dept via the
+  // `objective_departments` junction.
+  const filteredRows = useMemo(() => {
+    if (filterScope === 'mine') return rows.filter(isObjectiveMine);
+    if (!selectedDepartmentId) return rows;
+    return rows.filter((o) => {
+      if (o.responsible_department_id === selectedDepartmentId) return true;
+      const linked = deptIdsByObjective.get(o.id);
+      return linked ? linked.has(selectedDepartmentId) : false;
+    });
+  }, [rows, filterScope, isObjectiveMine, selectedDepartmentId, deptIdsByObjective]);
 
   // KPIs to render in Listado. When scope is "mine" we further hide
   // KPI sections whose objectives all got filtered out AND which the
@@ -502,7 +520,13 @@ export default function ObjetivosPage() {
           return (
             <button
               key={s}
-              onClick={() => setFilterScope(s)}
+              onClick={() => {
+                setFilterScope(s);
+                // The dept sub-filter only applies under "Todos" — clear
+                // any active selection when the user flips to "mine" so
+                // toggling back doesn't leak stale state.
+                if (s === 'mine') setSelectedDepartmentId(null);
+              }}
               style={{
                 padding: '0.4rem 1.2rem',
                 fontSize: '1.3rem',
@@ -518,6 +542,48 @@ export default function ObjetivosPage() {
             </button>
           );
         })}
+
+        {/* Department sub-filter — only visible under the "Todos"
+            scope. The thin vertical rule visually splits it from the
+            scope group so the two filter families read as siblings,
+            not a single chain. Clicking the active dept pill clears
+            the selection. */}
+        {filterScope === 'all' && departments.length > 0 && (
+          <>
+            <div
+              aria-hidden
+              style={{
+                width: '1px',
+                alignSelf: 'stretch',
+                margin: '0 0.6rem',
+                backgroundColor: '#dfe3e8',
+              }}
+            />
+            {departments.map((d) => {
+              const active = selectedDepartmentId === d.id;
+              return (
+                <button
+                  key={d.id}
+                  onClick={() =>
+                    setSelectedDepartmentId(active ? null : d.id)
+                  }
+                  style={{
+                    padding: '0.4rem 1.2rem',
+                    fontSize: '1.3rem',
+                    fontWeight: active ? 600 : 400,
+                    color: active ? '#5c6ac4' : '#637381',
+                    backgroundColor: active ? '#f4f5fc' : 'transparent',
+                    border: active ? '1px solid #5c6ac4' : '1px solid #dfe3e8',
+                    borderRadius: '20px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {d.name}
+                </button>
+              );
+            })}
+          </>
+        )}
         <button
           type="button"
           onClick={() => setCollapsedListado((v) => !v)}
@@ -581,6 +647,18 @@ export default function ObjetivosPage() {
             // way the view collapses cleanly to just the user's
             // surface area instead of leaving empty headers.
             if (filterScope === 'mine' && kpiRows.length === 0 && !isKpiMine(kpi)) {
+              return null;
+            }
+            // When a department sub-filter is active, do the same:
+            // skip a KPI whose objectives all got filtered out and
+            // whose own responsibility doesn't match the selected
+            // department.
+            if (
+              filterScope === 'all' &&
+              selectedDepartmentId &&
+              kpiRows.length === 0 &&
+              kpi.responsible_department_id !== selectedDepartmentId
+            ) {
               return null;
             }
             return (
