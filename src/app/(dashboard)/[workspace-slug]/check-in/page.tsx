@@ -432,7 +432,7 @@ export default function CheckinPage() {
           display: 'flex',
           flexDirection: 'column',
           gap: '2rem',
-          maxWidth: '600px',
+          maxWidth: '900px',
           margin: '0 auto',
         }}
       >
@@ -538,8 +538,12 @@ export default function CheckinPage() {
                 fontSize: '1.8rem',
                 fontWeight: 600,
                 color: '#212b36',
-                margin: 0,
+                // Negative top margin shaves 4px off the parent flex's
+                // 2rem (20px) gap so the spacing between the CTA and
+                // this section title lands at exactly 16px per spec.
+                margin: '-0.4rem 0 0',
                 lineHeight: 1.25,
+                textAlign: 'center',
               }}
             >
               Los objetivos de tu departamento
