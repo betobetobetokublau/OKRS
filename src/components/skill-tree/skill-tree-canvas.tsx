@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useSkillTreeStore } from '@/stores/skill-tree-store';
 import { calculateKpiProgress, calculateObjectiveProgress } from '@/lib/utils/progress';
@@ -149,7 +149,13 @@ export function SkillTreeCanvas({
   // the layout center (cx, cy). Positive panX shifts the visible
   // window to the right (i.e. the user dragged content to the left).
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  // Tracks active drag so the cursor flips from `grab` → `grabbing`.
+  const [dragging, setDragging] = useState(false);
+  // Container ref via state so we can re-bind wheel listener whenever
+  // the actual canvas div mounts. The first render of this component
+  // is the loading state, which has no ref — a plain useRef + []-deps
+  // useEffect would never see the canvas div.
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
 
   function clampZoom(z: number) {
     return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
@@ -177,11 +183,13 @@ export function SkillTreeCanvas({
   // passive by default in modern browsers). Plain wheel scrolls the
   // page normally; only ctrlKey / metaKey / altKey (option on macOS,
   // ctrl on Windows, plus the trackpad pinch gesture which surfaces
-  // as ctrlKey) zooms the canvas. Functional setState keeps the
-  // handler stable across renders.
+  // as ctrlKey) zooms the canvas.
+  //
+  // Bound to the live `containerEl` (state-as-callback-ref) so the
+  // listener attaches the moment the real canvas mounts — surviving
+  // the initial loading-state render that has no canvas div.
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    if (!containerEl) return;
     function onWheel(e: WheelEvent) {
       const isZoomGesture = e.ctrlKey || e.metaKey || e.altKey;
       if (!isZoomGesture) return;
@@ -196,33 +204,13 @@ export function SkillTreeCanvas({
         return Math.round(clamped * 100) / 100;
       });
     }
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+    containerEl.addEventListener('wheel', onWheel, { passive: false });
+    return () => containerEl.removeEventListener('wheel', onWheel);
+  }, [containerEl]);
 
-  // Drag-to-pan state lives in a ref so the pointer handlers don't
-  // need to be re-bound every render. The canvas is the first
-  // responder for drags — even pointerdown on top of a KPI / objective
-  // sector starts a drag, and we suppress the trailing click iff the
-  // pointer actually moved past the threshold (so single clicks still
-  // open the focus panel as before).
-  const dragStateRef = useRef<{
-    pointerId: number | null;
-    startClientX: number;
-    startClientY: number;
-    startPanX: number;
-    startPanY: number;
-    moved: boolean;
-  }>({
-    pointerId: null,
-    startClientX: 0,
-    startClientY: 0,
-    startPanX: 0,
-    startPanY: 0,
-    moved: false,
-  });
   // Pixels of movement before we commit to drag mode. Below this,
-  // the gesture is treated as a click.
+  // the gesture is treated as a click — and the original click event
+  // routes to its target normally.
   const DRAG_THRESHOLD = 4;
 
   // Load data.
@@ -379,6 +367,13 @@ export function SkillTreeCanvas({
   const vbX = cx - vbW / 2 + pan.x;
   const vbY = cy - vbH / 2 + pan.y;
 
+  // Drag-to-pan handler. We deliberately avoid `setPointerCapture`
+  // here — capturing on the container retargets the synthesized click
+  // event to the captured element, which would prevent KPI / objective
+  // onClick handlers from ever firing. Instead we wire pointermove +
+  // pointerup at the document level for the lifetime of the gesture,
+  // so click events route normally to their original target while the
+  // drag stays alive even if the cursor leaves the canvas.
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     // Primary mouse button only. Right-click + middle-click pass
     // through to the browser's native menu / autoscroll behavior.
@@ -387,70 +382,71 @@ export function SkillTreeCanvas({
     // itself with `data-no-drag` so its own clicks aren't hijacked.
     const target = e.target as Element;
     if (target.closest('[data-no-drag]')) return;
-    const el = containerRef.current;
-    if (!el) return;
-    el.setPointerCapture(e.pointerId);
-    dragStateRef.current = {
-      pointerId: e.pointerId,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      startPanX: pan.x,
-      startPanY: pan.y,
-      moved: false,
-    };
-  }
+    if (!containerEl) return;
 
-  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    const s = dragStateRef.current;
-    if (s.pointerId !== e.pointerId) return;
-    const dx = e.clientX - s.startClientX;
-    const dy = e.clientY - s.startClientY;
-    if (!s.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-    s.moved = true;
-    const el = containerRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    // Convert screen pixels into viewBox units so panning tracks
-    // the cursor 1:1 regardless of zoom level. Dragging right shifts
-    // content to the right, which means moving the viewBox to the
-    // left — hence the subtraction.
-    const sxToVx = vbW / rect.width;
-    const syToVy = vbH / rect.height;
-    setPan({
-      x: s.startPanX - dx * sxToVx,
-      y: s.startPanY - dy * syToVy,
-    });
-  }
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    const startPanX = pan.x;
+    const startPanY = pan.y;
+    const pointerId = e.pointerId;
+    let moved = false;
 
-  function endDrag(e: React.PointerEvent<HTMLDivElement>) {
-    const s = dragStateRef.current;
-    if (s.pointerId !== e.pointerId) return;
-    const el = containerRef.current;
-    if (el && el.hasPointerCapture(e.pointerId)) {
-      el.releasePointerCapture(e.pointerId);
+    function onMove(ev: PointerEvent) {
+      if (ev.pointerId !== pointerId) return;
+      const dx = ev.clientX - startClientX;
+      const dy = ev.clientY - startClientY;
+      if (!moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      if (!moved) {
+        moved = true;
+        setDragging(true);
+      }
+      if (!containerEl) return;
+      const rect = containerEl.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      // Convert screen pixels into viewBox units so panning tracks
+      // the cursor 1:1 regardless of zoom level. Dragging right shifts
+      // content right → viewBox shifts left, hence the subtraction.
+      const sxToVx = vbW / rect.width;
+      const syToVy = vbH / rect.height;
+      setPan({
+        x: startPanX - dx * sxToVx,
+        y: startPanY - dy * syToVy,
+      });
     }
-    if (s.moved) {
-      // Swallow the synthetic click that fires after a real drag so
-      // it doesn't reach the underlying KPI / objective handlers (or
-      // the canvas's own clear-focus-on-bg-click handler).
-      const onClick = (ev: MouseEvent) => {
-        ev.stopPropagation();
-        ev.preventDefault();
-        window.removeEventListener('click', onClick, true);
-      };
-      window.addEventListener('click', onClick, true);
-      // Defensive: if a click never arrives (e.g. pointerleave),
-      // detach the listener after the next tick so it never lingers.
-      setTimeout(() => window.removeEventListener('click', onClick, true), 0);
+
+    function onUp(ev: PointerEvent) {
+      if (ev.pointerId !== pointerId) return;
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+      if (moved) {
+        setDragging(false);
+        // Swallow the synthetic click that fires after a real drag so
+        // it doesn't reach the underlying KPI / objective handlers
+        // (or the canvas's own clear-focus-on-bg-click handler). We
+        // listen at capture phase so we beat every other click
+        // listener in the tree.
+        const onClick = (clickEv: MouseEvent) => {
+          clickEv.stopPropagation();
+          clickEv.preventDefault();
+          window.removeEventListener('click', onClick, true);
+        };
+        window.addEventListener('click', onClick, true);
+        // Defensive: if no click ever arrives (e.g. pointer ended
+        // outside any clickable target), detach next tick so the
+        // listener doesn't linger.
+        setTimeout(() => window.removeEventListener('click', onClick, true), 0);
+      }
     }
-    dragStateRef.current.pointerId = null;
-    dragStateRef.current.moved = false;
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
   }
 
   return (
     <div
-      ref={containerRef}
+      ref={setContainerEl}
       style={{
         height,
         borderRadius: '12px',
@@ -462,16 +458,12 @@ export function SkillTreeCanvas({
         // along the way.
         userSelect: 'none',
         WebkitUserSelect: 'none',
-        // Visual cue that the canvas is grabbable.
-        cursor: dragStateRef.current.pointerId !== null && dragStateRef.current.moved
-          ? 'grabbing'
-          : 'grab',
+        // Visual cue that the canvas is grabbable; flips to grabbing
+        // once the drag threshold is crossed.
+        cursor: dragging ? 'grabbing' : 'grab',
         touchAction: 'none',
       }}
       onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
       onClick={(e) => {
         // Click on empty canvas background clears focus (bubbled clicks on
         // actual nodes are stopped in their handlers).
