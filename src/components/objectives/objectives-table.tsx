@@ -104,6 +104,49 @@ function Chevron({ expanded, visible }: { expanded: boolean; visible: boolean })
   );
 }
 
+/** Interactive wrapper: clicking the chevron toggles task expansion
+ *  *without* triggering the row's open-detail-panel handler. */
+function ChevronToggle({
+  expanded,
+  visible,
+  onToggle,
+}: {
+  expanded: boolean;
+  visible: boolean;
+  onToggle: () => void;
+}) {
+  if (!visible) {
+    // Reserve the slot so titles stay visually aligned across rows.
+    return <span style={{ width: 12, height: 12, flexShrink: 0 }} aria-hidden />;
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      aria-label={expanded ? 'Contraer tareas' : 'Expandir tareas'}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 20,
+        height: 20,
+        padding: 0,
+        margin: 0,
+        background: 'transparent',
+        border: 'none',
+        borderRadius: 4,
+        cursor: 'pointer',
+        flexShrink: 0,
+      }}
+    >
+      <Chevron expanded={expanded} visible />
+    </button>
+  );
+}
+
 // ---------- Main ----------
 
 interface ObjectivesTableProps {
@@ -326,18 +369,20 @@ function ObjectiveRowGroup({
     <>
       <tr
         className="anim-row-in"
-        onClick={hasTasks ? onToggle : undefined}
+        onClick={() => onOpenPanel({ type: 'objective', id: obj.id })}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
         style={{
-          cursor: hasTasks ? 'pointer' : 'default',
+          // Whole row is now the click target for opening the detail
+          // panel — task expansion is reserved for the chevron alone.
+          cursor: 'pointer',
           backgroundColor: bg,
           transition: 'background-color 120ms ease',
         }}
       >
         <td style={cellBase}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <Chevron expanded={expanded} visible={hasTasks} />
+            <ChevronToggle expanded={expanded} visible={hasTasks} onToggle={onToggle} />
             <TitleButton onClick={() => onOpenPanel({ type: 'objective', id: obj.id })} strong>
               {obj.title}
             </TitleButton>

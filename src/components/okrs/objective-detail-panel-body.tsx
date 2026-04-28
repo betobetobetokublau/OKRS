@@ -15,8 +15,8 @@ import {
   AsanaDetailShell,
   AsanaSection,
   AsanaEmpty,
+  ProgressFillBar,
   type FieldRow,
-  type BreadcrumbItem,
 } from './asana-detail-shell';
 import { calculateObjectiveProgress } from '@/lib/utils/progress';
 import type { Objective, Task, KPI, Department } from '@/types';
@@ -105,19 +105,34 @@ export function ObjectiveDetailPanelBody({
       : null;
   const completedCount = tasks.filter((t) => t.status === 'completed').length;
 
-  // Breadcrumb: the parent KPI(s). If multiple, show the first as primary with
-  // a small "+N más" hint; if none, show "Sin KPI" so the user knows it's an orphan.
-  const breadcrumb: BreadcrumbItem[] =
-    linkedKpis.length > 0
-      ? [
-          {
-            label:
-              linkedKpis.length === 1
-                ? `KPI: ${linkedKpis[0].title}`
-                : `KPI: ${linkedKpis[0].title} (+${linkedKpis.length - 1} más)`,
-          },
-        ]
-      : [{ label: 'Sin KPI padre' }];
+  // Breadcrumb: replace the textual "KPI: title" line with the same
+  // colored chips that previously lived inside the fields table. Keeps
+  // the parent context glanceable at the top of the panel without
+  // duplicating it further down.
+  const breadcrumbContent =
+    linkedKpis.length > 0 ? (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+        {linkedKpis.map((k) => (
+          <span
+            key={k.id}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '0.2rem 0.8rem',
+              fontSize: '1.2rem',
+              color: '#5c6ac4',
+              backgroundColor: '#f4f5fc',
+              border: '1px solid #e3e5f1',
+              borderRadius: '999px',
+            }}
+          >
+            {k.title}
+          </span>
+        ))}
+      </div>
+    ) : (
+      <span style={{ color: '#637381', fontSize: '1.3rem' }}>Sin KPI padre</span>
+    );
 
   const fields: FieldRow[] = [
     {
@@ -156,33 +171,6 @@ export function ObjectiveDetailPanelBody({
       ),
     },
     {
-      label: 'KPI(s) vinculado(s)',
-      value:
-        linkedKpis.length > 0 ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-            {linkedKpis.map((k) => (
-              <span
-                key={k.id}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '0.2rem 0.8rem',
-                  fontSize: '1.2rem',
-                  color: '#5c6ac4',
-                  backgroundColor: '#f4f5fc',
-                  border: '1px solid #e3e5f1',
-                  borderRadius: '999px',
-                }}
-              >
-                {k.title}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <AsanaEmpty>Ninguno</AsanaEmpty>
-        ),
-    },
-    {
       label: 'Depto. responsable',
       // Always inline-editable, like the Responsable above —
       // assignment shouldn't require entering edit mode regardless of
@@ -195,6 +183,18 @@ export function ObjectiveDetailPanelBody({
           currentDepartment={objective.responsible_department}
           departments={departments}
           canEdit
+          onChanged={refresh}
+        />
+      ),
+    },
+    {
+      label: 'Estado',
+      value: (
+        <InlineStatusSelect
+          entity="objective"
+          id={objective.id}
+          currentStatus={objective.status}
+          canEdit={canEdit}
           onChanged={refresh}
         />
       ),
@@ -213,18 +213,6 @@ export function ObjectiveDetailPanelBody({
         ),
     },
     {
-      label: 'Estado',
-      value: (
-        <InlineStatusSelect
-          entity="objective"
-          id={objective.id}
-          currentStatus={objective.status}
-          canEdit={canEdit}
-          onChanged={refresh}
-        />
-      ),
-    },
-    {
       label: 'Modo de progreso',
       value: (
         <span>
@@ -237,70 +225,104 @@ export function ObjectiveDetailPanelBody({
   return (
     <>
       <AsanaDetailShell
-        breadcrumb={breadcrumb}
+        breadcrumbContent={breadcrumbContent}
         title={objective.title}
         onEdit={canEdit ? () => setShowEditForm(true) : undefined}
         fields={fields}
       >
         {/* Progress — single unified slider. When editable it writes
-            through to manual_progress on mouse-up / touch-end. When
-            not editable, a red message explains why (auto mode, or
-            missing permissions). */}
-        <AsanaSection title="Progreso">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
-            <span style={{ fontSize: '1.2rem', color: '#637381' }}>
-              {tasks.length > 0
-                ? `${completedCount}/${tasks.length} tareas completadas`
-                : 'Sin tareas'}
-            </span>
-            <span style={{ fontSize: '2rem', fontWeight: 700, color: '#5c6ac4' }}>{progress}%</span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={canEditProgress ? objective.manual_progress : progress}
-            disabled={savingManual || !canEditProgress}
-            onChange={(e) => {
-              if (!canEditProgress) return;
-              const v = Number(e.target.value);
-              setObjective({ ...objective, manual_progress: v });
-            }}
-            onMouseUp={(e) => {
-              if (!canEditProgress) return;
-              saveManualProgress(Number((e.target as HTMLInputElement).value));
-            }}
-            onTouchEnd={(e) => {
-              if (!canEditProgress) return;
-              saveManualProgress(Number((e.target as HTMLInputElement).value));
-            }}
-            onKeyUp={(e) => {
-              if (!canEditProgress) return;
-              if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
-                saveManualProgress(Number((e.target as HTMLInputElement).value));
-              }
-            }}
-            style={{
-              width: '100%',
-              accentColor: '#5c6ac4',
-              cursor: canEditProgress ? 'grab' : 'not-allowed',
-            }}
-          />
-          {progressErrorMessage && (
-            <p
-              role="note"
-              style={{
-                marginTop: '0.8rem',
-                fontSize: '1.2rem',
-                color: '#bf0711',
-                lineHeight: 1.45,
+            through to manual_progress on mouse-up / touch-end. Auto
+            mode swaps the slider for a non-interactive purple fill
+            bar so the read-only state is visually clear, and lifts
+            the percentage up to the section title row. */}
+        {objective.progress_mode === 'auto' ? (
+          <AsanaSection
+            title="Progreso"
+            action={
+              <span
+                style={{
+                  fontSize: '2rem',
+                  fontWeight: 700,
+                  color: '#5c6ac4',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {progress}%
+              </span>
+            }
+          >
+            <ProgressFillBar value={progress} />
+            {progressErrorMessage && (
+              <p
+                role="note"
+                style={{
+                  marginTop: '0.8rem',
+                  fontSize: '1.2rem',
+                  color: '#bf0711',
+                  lineHeight: 1.45,
+                }}
+              >
+                {progressErrorMessage}
+              </p>
+            )}
+          </AsanaSection>
+        ) : (
+          <AsanaSection title="Progreso">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+              <span style={{ fontSize: '1.2rem', color: '#637381' }}>
+                {tasks.length > 0
+                  ? `${completedCount}/${tasks.length} tareas completadas`
+                  : 'Sin tareas'}
+              </span>
+              <span style={{ fontSize: '2rem', fontWeight: 700, color: '#5c6ac4' }}>{progress}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={canEditProgress ? objective.manual_progress : progress}
+              disabled={savingManual || !canEditProgress}
+              onChange={(e) => {
+                if (!canEditProgress) return;
+                const v = Number(e.target.value);
+                setObjective({ ...objective, manual_progress: v });
               }}
-            >
-              {progressErrorMessage}
-            </p>
-          )}
-        </AsanaSection>
+              onMouseUp={(e) => {
+                if (!canEditProgress) return;
+                saveManualProgress(Number((e.target as HTMLInputElement).value));
+              }}
+              onTouchEnd={(e) => {
+                if (!canEditProgress) return;
+                saveManualProgress(Number((e.target as HTMLInputElement).value));
+              }}
+              onKeyUp={(e) => {
+                if (!canEditProgress) return;
+                if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
+                  saveManualProgress(Number((e.target as HTMLInputElement).value));
+                }
+              }}
+              style={{
+                width: '100%',
+                accentColor: '#5c6ac4',
+                cursor: canEditProgress ? 'grab' : 'not-allowed',
+              }}
+            />
+            {progressErrorMessage && (
+              <p
+                role="note"
+                style={{
+                  marginTop: '0.8rem',
+                  fontSize: '1.2rem',
+                  color: '#bf0711',
+                  lineHeight: 1.45,
+                }}
+              >
+                {progressErrorMessage}
+              </p>
+            )}
+          </AsanaSection>
+        )}
 
         {/* Description */}
         {objective.description && (
@@ -387,3 +409,4 @@ export function ObjectiveDetailPanelBody({
     </>
   );
 }
+

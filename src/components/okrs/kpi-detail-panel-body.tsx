@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { ProgressBar } from '@/components/common/progress-bar';
 import { StatusBadge } from '@/components/common/status-badge';
 import { DepartmentTag } from '@/components/common/department-tag';
 import { CommentTimeline } from '@/components/timeline/comment-timeline';
@@ -15,6 +14,8 @@ import {
   AsanaDetailShell,
   AsanaSection,
   AsanaEmpty,
+  ProgressFillBar,
+  LinkedObjectiveProgress,
   formatShortDate,
   type FieldRow,
   type BreadcrumbItem,
@@ -208,63 +209,97 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
         onEdit={canEdit ? () => setShowEditForm(true) : undefined}
         fields={fields}
       >
-        {/* Progress — single unified slider. When editable it writes
-            directly to manual_progress on mouse-up / touch-end. When
-            not editable (auto mode, or lacking permissions), a red
-            message below explains why. */}
-        <AsanaSection title="Progreso">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
-            <span style={{ fontSize: '1.2rem', color: '#637381' }}>
-              Modo {kpi.progress_mode === 'manual' ? 'manual' : kpi.progress_mode === 'auto' ? 'automático' : 'híbrido'}
-            </span>
-            <span style={{ fontSize: '2rem', fontWeight: 700, color: '#5c6ac4' }}>{progress}%</span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={canEditProgress ? kpi.manual_progress : progress}
-            disabled={savingManual || !canEditProgress}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (!canEditProgress) return;
-              setKpi({ ...kpi, manual_progress: v });
-            }}
-            onMouseUp={(e) => {
-              if (!canEditProgress) return;
-              saveManualProgress(Number((e.target as HTMLInputElement).value));
-            }}
-            onTouchEnd={(e) => {
-              if (!canEditProgress) return;
-              saveManualProgress(Number((e.target as HTMLInputElement).value));
-            }}
-            onKeyUp={(e) => {
-              if (!canEditProgress) return;
-              if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
-                saveManualProgress(Number((e.target as HTMLInputElement).value));
-              }
-            }}
-            style={{
-              width: '100%',
-              accentColor: '#5c6ac4',
-              cursor: canEditProgress ? 'grab' : 'not-allowed',
-            }}
-          />
-          {progressErrorMessage && (
-            <p
-              role="note"
-              style={{
-                marginTop: '0.8rem',
-                fontSize: '1.2rem',
-                color: '#bf0711',
-                lineHeight: 1.45,
+        {/* Progress — slider for manual / hybrid; static purple fill
+            bar for auto so the read-only state is visually obvious.
+            Auto mode also lifts the percentage into the section title
+            row instead of the secondary "Modo automático" inline
+            label. */}
+        {kpi.progress_mode === 'auto' ? (
+          <AsanaSection
+            title="Progreso"
+            action={
+              <span
+                style={{
+                  fontSize: '2rem',
+                  fontWeight: 700,
+                  color: '#5c6ac4',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {progress}%
+              </span>
+            }
+          >
+            <ProgressFillBar value={progress} />
+            {progressErrorMessage && (
+              <p
+                role="note"
+                style={{
+                  marginTop: '0.8rem',
+                  fontSize: '1.2rem',
+                  color: '#bf0711',
+                  lineHeight: 1.45,
+                }}
+              >
+                {progressErrorMessage}
+              </p>
+            )}
+          </AsanaSection>
+        ) : (
+          <AsanaSection title="Progreso">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+              <span style={{ fontSize: '1.2rem', color: '#637381' }}>
+                Modo {kpi.progress_mode === 'manual' ? 'manual' : 'híbrido'}
+              </span>
+              <span style={{ fontSize: '2rem', fontWeight: 700, color: '#5c6ac4' }}>{progress}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={canEditProgress ? kpi.manual_progress : progress}
+              disabled={savingManual || !canEditProgress}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (!canEditProgress) return;
+                setKpi({ ...kpi, manual_progress: v });
               }}
-            >
-              {progressErrorMessage}
-            </p>
-          )}
-        </AsanaSection>
+              onMouseUp={(e) => {
+                if (!canEditProgress) return;
+                saveManualProgress(Number((e.target as HTMLInputElement).value));
+              }}
+              onTouchEnd={(e) => {
+                if (!canEditProgress) return;
+                saveManualProgress(Number((e.target as HTMLInputElement).value));
+              }}
+              onKeyUp={(e) => {
+                if (!canEditProgress) return;
+                if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
+                  saveManualProgress(Number((e.target as HTMLInputElement).value));
+                }
+              }}
+              style={{
+                width: '100%',
+                accentColor: '#5c6ac4',
+                cursor: canEditProgress ? 'grab' : 'not-allowed',
+              }}
+            />
+            {progressErrorMessage && (
+              <p
+                role="note"
+                style={{
+                  marginTop: '0.8rem',
+                  fontSize: '1.2rem',
+                  color: '#bf0711',
+                  lineHeight: 1.45,
+                }}
+              >
+                {progressErrorMessage}
+              </p>
+            )}
+          </AsanaSection>
+        )}
 
         {/* Description */}
         {kpi.description && (
@@ -314,7 +349,7 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
                     <span style={{ fontSize: '1.3rem', fontWeight: 500, color: '#212b36' }}>{obj.title}</span>
                     <StatusBadge status={obj.status} type="objective" />
                   </div>
-                  <ProgressBar value={obj.manual_progress} size="small" />
+                  <LinkedObjectiveProgress value={obj.manual_progress} />
                   {obj.tasks && obj.tasks.length > 0 && (
                     <p style={{ fontSize: '1.2rem', color: '#637381', marginTop: '0.4rem' }}>
                       {obj.tasks.filter((t) => t.status === 'completed').length}/{obj.tasks.length} tareas completadas

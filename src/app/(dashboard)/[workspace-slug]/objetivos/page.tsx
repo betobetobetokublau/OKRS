@@ -371,7 +371,7 @@ export default function ObjetivosPage() {
   const showHeroBlock = activeTab === 'listado' || activeTab === 'gantt';
 
   return (
-    <div>
+    <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
       {showHeroBlock && (
         <>
           {/* Hero summary block — transparent, floats on the page bg. */}
