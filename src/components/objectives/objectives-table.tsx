@@ -218,8 +218,9 @@ export function ObjectivesTable({
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            <th style={{ ...headerCell, width: '40%' }}>Nombre</th>
+            <th style={{ ...headerCell, width: '34%' }}>Nombre</th>
             <th style={headerCell}>Tipo</th>
+            <th style={headerCell}>Responsable</th>
             <th style={headerCell}>Equipo</th>
             <th style={headerCell}>Progreso</th>
             <th style={headerCell}>Estado</th>
@@ -228,7 +229,7 @@ export function ObjectivesTable({
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={5} style={{ ...cellBase, textAlign: 'center', color: '#637381', padding: '3rem' }}>
+              <td colSpan={6} style={{ ...cellBase, textAlign: 'center', color: '#637381', padding: '3rem' }}>
                 {emptyLabel}
               </td>
             </tr>
@@ -294,7 +295,7 @@ function AddObjectiveRow({
         transition: 'background-color 120ms ease',
       }}
     >
-      <td colSpan={5} style={{ ...cellBase, borderBottom: 'none' }}>
+      <td colSpan={6} style={{ ...cellBase, borderBottom: 'none' }}>
         <span
           style={{
             display: 'inline-flex',
@@ -411,7 +412,18 @@ function ObjectiveRowGroup({
           </div>
         </td>
         <td style={cellBase}><TypeBadge type="objective" /></td>
-        <td style={cellBase}>
+        <td style={cellBase} onClick={(e) => e.stopPropagation()}>
+          <InlineUserSelect
+            entity="objective"
+            id={obj.id}
+            workspaceId={workspaceId}
+            currentUserId={obj.responsible_user_id}
+            currentUser={obj.responsible_user}
+            canEdit={canEdit}
+            onChanged={onChanged}
+          />
+        </td>
+        <td style={cellBase} onClick={(e) => e.stopPropagation()}>
           <InlineTeamSelect
             entity="objective"
             id={obj.id}
@@ -423,7 +435,7 @@ function ObjectiveRowGroup({
           />
         </td>
         <td style={cellBase}><ProgressBar value={progress} /></td>
-        <td style={cellBase}>
+        <td style={cellBase} onClick={(e) => e.stopPropagation()}>
           <InlineStatusSelect
             entity="objective"
             id={obj.id}
@@ -458,6 +470,12 @@ function ObjectiveRowGroup({
                   canEdit={canEdit}
                   onChanged={onChanged}
                 />
+              </td>
+              <td style={cellBase}>
+                {/* Tasks inherit their parent objective's department —
+                    no per-task override exists, so the cell stays
+                    empty for column alignment. */}
+                <span style={{ color: '#919eab', fontSize: '1.2rem' }}>—</span>
               </td>
               <td style={cellBase}><ProgressBar value={taskProgress} /></td>
               <td style={cellBase}>
