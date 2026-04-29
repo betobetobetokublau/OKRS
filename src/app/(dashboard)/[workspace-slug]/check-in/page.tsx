@@ -13,7 +13,8 @@ import {
 import { AnimatedModal } from '@/components/common/animated-modal';
 import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
 import { TaskForm } from '@/components/tasks/task-form';
-import type { Department, KPI, Objective, ObjectiveStatus, Task } from '@/types';
+import { UserAvatar } from '@/components/common/user-avatar';
+import type { Department, KPI, Objective, ObjectiveStatus, Profile, Task } from '@/types';
 
 // ---------- Types ----------
 
@@ -65,6 +66,11 @@ export default function CheckinPage() {
 
   const [kpis, setKpis] = useState<KPI[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  // Department label shown in the gray pill of each KPI table header.
+  // Keyed by KPI id; resolves from `kpi_departments` (joined with " · "
+  // for multi-dept KPIs) and falls back to `responsible_department_id`
+  // if the junction is empty.
+  const [kpiDeptLabels, setKpiDeptLabels] = useState<Map<string, string>>(new Map());
   const [objectives, setObjectives] = useState<ObjectiveWithTasks[]>([]);
   const [myAssignedTasks, setMyAssignedTasks] = useState<
     Array<Task & { objective: Objective | null }>
@@ -136,21 +142,54 @@ export default function CheckinPage() {
       .eq('workspace_id', currentWorkspace.id);
     setDepartments((deptRows || []) as Department[]);
 
-    // 4) All objectives for the period + tasks + junctions.
-    const [objRes, objDeptRes, kpiObjRes] = await Promise.all([
+    // 4) All objectives for the period + tasks + junctions. The
+    //    `responsible_user` join populates the new "Responsable"
+    //    column on each KPI table; `kpi_departments` powers the
+    //    department badge on each KPI table header.
+    const [objRes, objDeptRes, kpiObjRes, kpiDeptRes] = await Promise.all([
       supabase
         .from('objectives')
-        .select('*, tasks(*)')
+        .select(
+          '*, tasks(*), responsible_user:profiles!objectives_responsible_user_id_fkey(*)',
+        )
         .eq('workspace_id', currentWorkspace.id)
         .eq('period_id', activePeriod.id)
         .order('created_at', { ascending: false }),
       supabase.from('objective_departments').select('objective_id, department_id'),
       supabase.from('kpi_objectives').select('objective_id, kpi_id'),
+      supabase.from('kpi_departments').select('kpi_id, department_id'),
     ]);
 
     const allObjectives = (objRes.data || []) as ObjectiveWithTasks[];
     const objDepts = (objDeptRes.data || []) as Array<{ objective_id: string; department_id: string }>;
     const objKpis = (kpiObjRes.data || []) as Array<{ objective_id: string; kpi_id: string }>;
+    const kpiDepts = (kpiDeptRes.data || []) as Array<{ kpi_id: string; department_id: string }>;
+    // Build kpiId → joined dept-name string ("Producto · RRHH"). Falls
+    // back to the KPI's `responsible_department_id` if the junction
+    // is empty for that KPI.
+    const deptIdsByKpi = new Map<string, string[]>();
+    kpiDepts.forEach((r) => {
+      const arr = deptIdsByKpi.get(r.kpi_id) || [];
+      arr.push(r.department_id);
+      deptIdsByKpi.set(r.kpi_id, arr);
+    });
+    const allDepts = (deptRows || []) as Department[];
+    const labelByKpi = new Map<string, string>();
+    (kpiRows || []).forEach((k) => {
+      const ids = deptIdsByKpi.get(k.id) || [];
+      const names = ids
+        .map((id) => allDepts.find((d) => d.id === id)?.name)
+        .filter((n): n is string => Boolean(n));
+      if (names.length > 0) {
+        labelByKpi.set(k.id, names.join(' · '));
+        return;
+      }
+      if (k.responsible_department_id) {
+        const name = allDepts.find((d) => d.id === k.responsible_department_id)?.name;
+        if (name) labelByKpi.set(k.id, name);
+      }
+    });
+    setKpiDeptLabels(labelByKpi);
 
     const deptsByObjective = new Map<string, Set<string>>();
     objDepts.forEach((r) => {
@@ -564,6 +603,7 @@ export default function CheckinPage() {
                       key={kpi.id}
                       kpiId={kpi.id}
                       kpiTitle={kpi.title}
+                      kpiDepartmentLabel={kpiDeptLabels.get(kpi.id)}
                       rows={rows}
                       expanded={expanded}
                       onToggle={toggle}
@@ -664,6 +704,9 @@ export default function CheckinPage() {
 interface CheckinKpiTableProps {
   kpiId: string | null;
   kpiTitle: string;
+  /** Department(s) the KPI is assigned to. Rendered as a gray pill in
+   *  the table header. Joined with " · " when there's more than one. */
+  kpiDepartmentLabel?: string;
   rows: ObjectiveWithTasks[];
   expanded: Set<string>;
   onToggle: (id: string) => void;
@@ -678,6 +721,7 @@ interface CheckinKpiTableProps {
 function CheckinKpiTable({
   kpiId,
   kpiTitle,
+  kpiDepartmentLabel,
   rows,
   expanded,
   onToggle,
@@ -712,7 +756,17 @@ function CheckinKpiTable({
       className="Polaris-Card"
       style={{ borderRadius: '8px', border: '1px solid var(--color-border)', backgroundColor: 'white', overflow: 'hidden' }}
     >
-      <div style={{ padding: '1.2rem 1.6rem', borderBottom: '1px solid #f1f2f4', backgroundColor: '#fafbfb' }}>
+      <div
+        style={{
+          padding: '1.2rem 1.6rem',
+          borderBottom: '1px solid #f1f2f4',
+          backgroundColor: '#fafbfb',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.8rem',
+          flexWrap: 'wrap',
+        }}
+      >
         {kpiId ? (
           <button
             type="button"
@@ -735,11 +789,13 @@ function CheckinKpiTable({
         ) : (
           <span style={{ fontSize: '1.6rem', fontWeight: 600, color: '#637381' }}>{kpiTitle}</span>
         )}
+        {kpiDepartmentLabel && <DepartmentBadge label={kpiDepartmentLabel} />}
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            <th style={{ ...headerCell, width: '45%' }}>Nombre</th>
+            <th style={{ ...headerCell, width: '36%' }}>Nombre</th>
+            <th style={headerCell}>Responsable</th>
             <th style={headerCell}>Estado</th>
             <th style={headerCell}>Progreso</th>
             <th style={{ ...headerCell, width: '170px' }}></th>
@@ -803,6 +859,9 @@ function CheckinKpiTable({
                         </span>
                       )}
                     </div>
+                  </td>
+                  <td style={cellBase}>
+                    <ResponsibleUserCell user={obj.responsible_user ?? null} />
                   </td>
                   <td style={cellBase}>
                     <StaticChip chip={statusChip} />
@@ -898,6 +957,11 @@ function CheckinKpiTable({
                           </div>
                         </td>
                         <td style={cellBase}>
+                          {/* Tasks belong to the objective above; keep
+                              the cell empty so the column stays aligned. */}
+                          <span style={{ color: '#919eab', fontSize: '1.2rem' }}>—</span>
+                        </td>
+                        <td style={cellBase}>
                           <StaticChip chip={chip} />
                         </td>
                         <td style={cellBase}>
@@ -927,6 +991,55 @@ function CheckinKpiTable({
 /** Fragment wrapper — tr elements must be direct siblings inside <tbody>. */
 function ObjectiveRowGroup({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
+}
+
+/**
+ * Renders the assignee on each objective row — a small Polaris-style
+ * avatar circle with the user's initials, plus the first name with
+ * the leading letter capitalized. Falls back to a muted "Sin asignar"
+ * when no responsible user is set.
+ */
+function ResponsibleUserCell({ user }: { user: Profile | null }) {
+  if (!user) {
+    return <span style={{ color: '#919eab', fontSize: '1.2rem' }}>Sin asignar</span>;
+  }
+  const firstName = (user.full_name || '').trim().split(/\s+/)[0] ?? '';
+  const display = firstName
+    ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase()
+    : user.full_name;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem' }}>
+      <UserAvatar user={user} size="small" />
+      <span style={{ fontSize: '1.3rem', color: '#212b36' }}>{display}</span>
+    </span>
+  );
+}
+
+/**
+ * Neutral gray pill that surfaces the department(s) a KPI is assigned
+ * to in the table header. Colored neutrally on purpose: per the
+ * design pass we want a single shared treatment regardless of which
+ * department it represents.
+ */
+function DepartmentBadge({ label }: { label: string }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '0.2rem 0.8rem',
+        borderRadius: '999px',
+        backgroundColor: '#f4f6f8',
+        border: '1px solid #dfe3e8',
+        color: '#454f5b',
+        fontSize: '1.1rem',
+        fontWeight: 500,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label}
+    </span>
+  );
 }
 
 // ---------- Confirmation modal ----------
