@@ -28,8 +28,6 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showResetModal, setShowResetModal] = useState(false);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -93,28 +91,8 @@ export default function LoginPage() {
           padding: '4rem',
           backgroundColor: '#fff',
           minHeight: '100vh',
-          position: 'relative',
         }}
       >
-        <button
-          type="button"
-          onClick={() => setShowResetModal(true)}
-          style={{
-            position: 'absolute',
-            top: '1.6rem',
-            left: '1.6rem',
-            background: 'none',
-            border: 'none',
-            color: KUBLAU_SUB,
-            fontSize: '1.2rem',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            padding: '0.4rem 0.8rem',
-            borderRadius: '4px',
-          }}
-        >
-          Restablecer contraseña
-        </button>
         {/* Single flex column — everything shares one consistent rhythm. */}
         <div
           style={{
@@ -288,9 +266,6 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {showResetModal && (
-        <ResetPasswordModal onClose={() => setShowResetModal(false)} />
-      )}
     </div>
   );
 }
@@ -508,113 +483,6 @@ function PrimaryButton({ loading, children }: { loading: boolean; children: Reac
         }
       `}</style>
     </button>
-  );
-}
-
-// ───────── Temporary password reset modal ─────────
-
-function ResetPasswordModal({ onClose }: { onClose: () => void }) {
-  const [resetEmail, setResetEmail] = useState('');
-  const [resetPw, setResetPw] = useState('');
-  const [resetError, setResetError] = useState('');
-  const [resetSuccess, setResetSuccess] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
-
-  async function handleReset(e: React.FormEvent) {
-    e.preventDefault();
-    setResetError('');
-    setResetLoading(true);
-
-    try {
-      const res = await fetch('/api/auth/reset-password-temp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: resetEmail, password: resetPw }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setResetError(data.error || 'Error al restablecer.');
-        setResetLoading(false);
-        return;
-      }
-      setResetSuccess(true);
-      setResetLoading(false);
-    } catch {
-      setResetError('Error de red.');
-      setResetLoading(false);
-    }
-  }
-
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        style={{
-          background: '#fff',
-          borderRadius: '8px',
-          padding: '2.4rem',
-          width: '100%',
-          maxWidth: '380px',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.6rem' }}>
-          <h2 style={{ fontSize: '1.6rem', fontWeight: 600, color: KUBLAU_INK, margin: 0 }}>
-            Restablecer contraseña
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', fontSize: '1.8rem', cursor: 'pointer', color: KUBLAU_SUB, lineHeight: 1 }}
-          >
-            &times;
-          </button>
-        </div>
-
-        <p style={{ fontSize: '1.2rem', color: '#bf0711', marginBottom: '1.2rem', lineHeight: 1.5 }}>
-          Acceso temporal de emergencia. Se eliminará pronto.
-        </p>
-
-        {resetSuccess ? (
-          <div style={{ padding: '1.2rem', background: '#e3f1df', borderRadius: '4px', color: '#108043', fontSize: '1.3rem' }}>
-            Contraseña actualizada. Ya puedes iniciar sesión.
-          </div>
-        ) : (
-          <form onSubmit={handleReset} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-            {resetError && <Banner>{resetError}</Banner>}
-            <TextField
-              label="Correo electrónico"
-              type="email"
-              value={resetEmail}
-              onChange={setResetEmail}
-              placeholder="tu@empresa.com"
-              required
-            />
-            <TextField
-              label="Nueva contraseña"
-              type="password"
-              value={resetPw}
-              onChange={setResetPw}
-              placeholder="Mínimo 6 caracteres"
-              required
-            />
-            <PrimaryButton loading={resetLoading}>
-              {resetLoading ? '' : 'Restablecer'}
-            </PrimaryButton>
-          </form>
-        )}
-      </div>
-    </div>
   );
 }
 

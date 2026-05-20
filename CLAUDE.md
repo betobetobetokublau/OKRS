@@ -1,5 +1,19 @@
 # Kublau OKR platform — agent notes
 
+## Database schema
+
+The authoritative schema reference is `sql/SCHEMA.md`. **Always check it
+before writing SQL migrations, RLS policies, or Supabase queries.** The
+original spec (`okr-platform-spec.md` section 3.2) is outdated — several
+tables have columns the spec doesn't show, and some spec columns don't
+exist in the real DB.
+
+Key gotchas:
+- `tasks` has NO `workspace_id` — join through `objectives` to reach it.
+- `progress_logs` has NO `task_id`.
+- `objective_kpis` exists in the DB but is unused; code uses `kpi_objectives`.
+- `kpis.status` is TEXT, not an enum.
+
 ## Testing
 
 Framework: **vitest** (unit tests colocated as `*.test.ts`).
