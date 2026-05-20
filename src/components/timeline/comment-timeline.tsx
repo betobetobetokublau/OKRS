@@ -59,7 +59,7 @@ export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
           id: l.id,
           type: 'progress_log',
           user: l.user,
-          content: `actualizó el progreso a ${l.progress_value}%${l.note ? ` — ${l.note}` : ''}`,
+          content: `actualizó el progreso a ${l.new_value}%${l.comment ? ` — ${l.comment}` : ''}`,
           created_at: l.created_at,
         });
       }

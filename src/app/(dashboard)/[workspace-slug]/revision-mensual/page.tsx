@@ -93,8 +93,9 @@ export default function RevisionMensualPage() {
         period_id: activePeriod.id,
         workspace_id: currentWorkspace.id,
         objective_id: item.objective.id,
-        progress_value: item.newProgress,
-        note: item.comment || null,
+        previous_value: item.objective.manual_progress,
+        new_value: item.newProgress,
+        comment: item.comment || null,
       });
 
       // Create comment if provided

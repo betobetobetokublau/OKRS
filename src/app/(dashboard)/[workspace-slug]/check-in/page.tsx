@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { canManageContent, canManageObjectives } from '@/lib/utils/permissions';
@@ -367,14 +367,12 @@ export default function CheckinPage() {
       });
 
       if (edit.new_progress !== undefined && edit.new_progress !== obj.manual_progress) {
-        // Canonical column names per the real schema: `new_value` (new
-        // number), `previous_value` (audit). `workspace_id` isn't on
-        // this table — RLS scopes via objective_id → objectives — so
-        // we don't send it.
         timelineInserts.push(
           Promise.resolve(
             supabase.from('progress_logs').insert({
               user_id: profile.id,
+              workspace_id: currentWorkspace.id,
+              period_id: activePeriod.id,
               objective_id: objId,
               previous_value: obj.manual_progress,
               new_value: edit.new_progress,
@@ -450,14 +448,55 @@ export default function CheckinPage() {
     [objectives],
   );
 
+  // Are there any pending edits queued for the check-in? Used to drive
+  // the popover that nudges the user to update at least one objective
+  // before reporting the check-in. The CTA stays visually active so
+  // the affordance is discoverable on first hover/click.
+  const hasPendingEdits = objectiveEdits.size > 0 || tasksToComplete.size > 0;
+
+  // Popover shown above the CTA when there are no queued updates yet.
+  // Triggered by hover OR click; auto-dismisses after a short delay
+  // when triggered by click so it doesn't linger forever.
+  const [showNudge, setShowNudge] = useState(false);
+  const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (hasPendingEdits && showNudge) setShowNudge(false);
+  }, [hasPendingEdits, showNudge]);
+  useEffect(() => {
+    return () => {
+      if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+    };
+  }, []);
+
   if (!currentWorkspace) {
     return <div style={{ padding: '4rem', color: '#637381' }}>Cargando workspace...</div>;
   }
 
-  // Are there any pending edits queued for the check-in? Used to gate
-  // the primary CTA — opening the confirmation modal when there's
-  // nothing to confirm would just dead-end the user.
-  const hasPendingEdits = objectiveEdits.size > 0 || tasksToComplete.size > 0;
+  function handleCtaClick() {
+    if (!activePeriod || saving) return;
+    if (!hasPendingEdits) {
+      setShowNudge(true);
+      if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+      nudgeTimerRef.current = setTimeout(() => setShowNudge(false), 4000);
+      return;
+    }
+    setConfirmingCheckin(true);
+  }
+
+  function handleCtaMouseEnter() {
+    if (!hasPendingEdits) {
+      if (nudgeTimerRef.current) {
+        clearTimeout(nudgeTimerRef.current);
+        nudgeTimerRef.current = null;
+      }
+      setShowNudge(true);
+    }
+  }
+
+  function handleCtaMouseLeave() {
+    if (nudgeTimerRef.current) return;
+    setShowNudge(false);
+  }
 
   return (
     <div>
@@ -511,42 +550,89 @@ export default function CheckinPage() {
             instead of saving immediately, so the user gets a chance
             to review the queued updates and add a thought. Sized 30%
             larger than the standard hero button to match the new
-            design weight on this view. */}
+            design weight on this view. When the user has no queued
+            edits the button stays visually active and triggers a
+            nudge popover on hover/click instead of being disabled. */}
         <div
           style={{
             display: 'flex',
             justifyContent: 'center',
           }}
         >
-          <button
-            type="button"
-            onClick={() => setConfirmingCheckin(true)}
-            disabled={saving || !activePeriod || !hasPendingEdits}
-            aria-label="Reportar actualización"
-            title={
-              !hasPendingEdits
-                ? 'Marca alguna actualización para reportar tu check-in'
-                : undefined
-            }
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              padding: '1.43rem 3.12rem',
-              fontSize: '1.95rem',
-              fontWeight: 600,
-              color: 'white',
-              backgroundColor:
-                saving || !activePeriod || !hasPendingEdits ? '#8c92c4' : '#5c6ac4',
-              border: 'none',
-              borderRadius: '13px',
-              cursor:
-                saving || !activePeriod || !hasPendingEdits ? 'not-allowed' : 'pointer',
-              boxShadow: '0 1px 2px rgba(15,24,48,0.08)',
-              lineHeight: 1,
-            }}
+          <div
+            style={{ position: 'relative', display: 'inline-block' }}
+            onMouseEnter={handleCtaMouseEnter}
+            onMouseLeave={handleCtaMouseLeave}
           >
-            {saving ? 'Enviando…' : 'Reportar actualización'}
-          </button>
+            {showNudge && (
+              <div
+                role="tooltip"
+                aria-live="polite"
+                className="anim-fade-in"
+                style={{
+                  position: 'absolute',
+                  bottom: 'calc(100% + 1.2rem)',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  maxWidth: '34rem',
+                  width: 'max-content',
+                  padding: '1.2rem 1.4rem',
+                  backgroundColor: 'white',
+                  color: '#212b36',
+                  fontSize: '1.3rem',
+                  lineHeight: 1.45,
+                  borderRadius: '8px',
+                  border: '1px solid #dfe3e8',
+                  boxShadow: '0 6px 20px rgba(15,24,48,0.12)',
+                  zIndex: 10,
+                  pointerEvents: 'none',
+                  textAlign: 'center',
+                }}
+              >
+                Para reportar el check-in por favor da click a actualizar a al menos una iniciativa asignada de la lista de abajo
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    width: 0,
+                    height: 0,
+                    borderLeft: '8px solid transparent',
+                    borderRight: '8px solid transparent',
+                    borderTop: '8px solid white',
+                    filter: 'drop-shadow(0 1px 0 #dfe3e8)',
+                  }}
+                />
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleCtaClick}
+              disabled={saving || !activePeriod}
+              aria-label="Reportar actualización"
+              aria-describedby={showNudge ? 'checkin-cta-nudge' : undefined}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '1.43rem 3.12rem',
+                fontSize: '1.95rem',
+                fontWeight: 600,
+                color: 'white',
+                backgroundColor:
+                  saving || !activePeriod ? '#8c92c4' : '#5c6ac4',
+                border: 'none',
+                borderRadius: '13px',
+                cursor:
+                  saving || !activePeriod ? 'not-allowed' : 'pointer',
+                boxShadow: '0 1px 2px rgba(15,24,48,0.08)',
+                lineHeight: 1,
+              }}
+            >
+              {saving ? 'Enviando…' : 'Reportar actualización'}
+            </button>
+          </div>
         </div>
 
         {saveError && (

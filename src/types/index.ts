@@ -147,13 +147,13 @@ export interface Task {
 export interface ProgressLog {
   id: string;
   user_id: string;
-  period_id: string;
-  workspace_id: string;
+  period_id: string | null;
+  workspace_id: string | null;
   kpi_id: string | null;
   objective_id: string | null;
-  task_id: string | null;
-  progress_value: number;
-  note: string | null;
+  previous_value: number | null;
+  new_value: number | null;
+  comment: string | null;
   created_at: string;
   user?: Profile;
 }

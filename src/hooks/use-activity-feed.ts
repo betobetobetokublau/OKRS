@@ -354,18 +354,11 @@ async function loadActivity(
     // progress_logs can target EITHER an objective or a KPI (see
     // 2026-04-21-kpi-comments.sql). Prefer objective when both are
     // set, fall back to KPI otherwise, and drop rows that resolve to
-    // neither. For the numeric field we accept any common name
-    // (new_value is canonical; progress_value was an older spelling).
+    // neither.
     (progressRes.data || []).forEach((r: any) => {
       const target = refForObj(r.objective_id) ?? refForKpi(r.kpi_id);
       if (!target) return;
-      const pct = pickNumber(
-        r.new_value,
-        r.new_progress,
-        r.progress_value,
-        r.value,
-        r.progress,
-      );
+      const pct = pickNumber(r.new_value);
       out.push({
         id: `progress-${r.id}`,
         kind: 'progress_log',
