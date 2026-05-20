@@ -31,6 +31,7 @@ export function TaskDetailPanelBody({ taskId, canEdit, onChanged }: TaskDetailPa
   const [loading, setLoading] = useState(true);
   const [showEditForm, setShowEditForm] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string>('');
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -64,6 +65,13 @@ export function TaskDetailPanelBody({ taskId, canEdit, onChanged }: TaskDetailPa
   }
 
   const overdue = isOverdue(task.due_date) && task.status !== 'completed';
+
+  async function handleDelete() {
+    setDeleting(true);
+    const supabase = createClient();
+    await supabase.from('tasks').delete().eq('id', task!.id);
+    onChanged();
+  }
 
   function refresh() {
     load();
@@ -117,6 +125,8 @@ export function TaskDetailPanelBody({ taskId, canEdit, onChanged }: TaskDetailPa
         breadcrumb={breadcrumb}
         title={task.title}
         onEdit={canEdit && workspaceId ? () => setShowEditForm(true) : undefined}
+        onDelete={canEdit ? handleDelete : undefined}
+        deleting={deleting}
         fields={fields}
       >
         {/* Block reason (when blocked) */}

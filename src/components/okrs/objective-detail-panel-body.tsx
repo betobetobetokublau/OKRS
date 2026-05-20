@@ -46,6 +46,7 @@ export function ObjectiveDetailPanelBody({
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [savingManual, setSavingManual] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -82,6 +83,18 @@ export function ObjectiveDetailPanelBody({
 
   function refresh() {
     load();
+    onChanged();
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    const supabase = createClient();
+    await supabase.from('tasks').delete().eq('objective_id', objective!.id);
+    await supabase.from('kpi_objectives').delete().eq('objective_id', objective!.id);
+    await supabase.from('objective_departments').delete().eq('objective_id', objective!.id);
+    await supabase.from('progress_logs').delete().eq('objective_id', objective!.id);
+    await supabase.from('comments').delete().eq('objective_id', objective!.id);
+    await supabase.from('objectives').delete().eq('id', objective!.id);
     onChanged();
   }
 
@@ -228,6 +241,8 @@ export function ObjectiveDetailPanelBody({
         breadcrumbContent={breadcrumbContent}
         title={objective.title}
         onEdit={canEdit ? () => setShowEditForm(true) : undefined}
+        onDelete={canEdit ? handleDelete : undefined}
+        deleting={deleting}
         fields={fields}
       >
         {/* Progress — single unified slider. When editable it writes

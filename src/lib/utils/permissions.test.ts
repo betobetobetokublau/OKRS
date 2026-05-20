@@ -47,10 +47,10 @@ describe('workspace admin gates', () => {
 });
 
 describe('content + pdf gates', () => {
-  it('canManageContent requires manager+', () => {
+  it('canManageContent allows every role (member+)', () => {
     expect(canManageContent('admin')).toBe(true);
     expect(canManageContent('manager')).toBe(true);
-    expect(canManageContent('member')).toBe(false);
+    expect(canManageContent('member')).toBe(true);
   });
 
   it('canExportPdf requires manager+', () => {

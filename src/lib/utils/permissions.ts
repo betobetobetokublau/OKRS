@@ -23,17 +23,9 @@ export function canManagePeriods(role: WorkspaceRole): boolean {
 }
 
 export function canManageContent(role: WorkspaceRole): boolean {
-  return hasMinRole(role, 'manager');
+  return hasMinRole(role, 'member');
 }
 
-/**
- * Permission to create/edit objectives and tasks. Strictly looser than
- * `canManageContent` — any workspace member qualifies, because day-to-day
- * operational work (authoring objectives, adding + editing tasks, marking
- * progress) is what members are here to do. `canManageContent` stays
- * gated to manager+ and continues to govern the higher-level structural
- * pieces (KPIs, departments, org layout).
- */
 export function canManageObjectives(role: WorkspaceRole): boolean {
   return hasMinRole(role, 'member');
 }

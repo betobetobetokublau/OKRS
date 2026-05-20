@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 /**
  * Shared visual scaffold for KPI / Objective / Task detail views.
@@ -37,6 +37,8 @@ interface AsanaDetailShellProps {
   title: string;
   titleAfter?: React.ReactNode;
   onEdit?: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
   fields: FieldRow[];
   children?: React.ReactNode;
   maxWidth?: number | string;
@@ -53,6 +55,8 @@ export function AsanaDetailShell({
   title,
   titleAfter,
   onEdit,
+  onDelete,
+  deleting,
   fields,
   children,
   maxWidth,
@@ -123,25 +127,29 @@ export function AsanaDetailShell({
           </h1>
           {titleAfter}
         </div>
-        {onEdit && (
-          <button
-            type="button"
-            onClick={onEdit}
-            style={{
-              padding: '0.6rem 1.4rem',
-              fontSize: '1.3rem',
-              fontWeight: 500,
-              color: '#5c6ac4',
-              backgroundColor: '#f4f5fc',
-              border: '1px solid #e3e5f1',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            Editar
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '0.6rem', flexShrink: 0 }}>
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              style={{
+                padding: '0.6rem 1.4rem',
+                fontSize: '1.3rem',
+                fontWeight: 500,
+                color: '#5c6ac4',
+                backgroundColor: '#f4f5fc',
+                border: '1px solid #e3e5f1',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              Editar
+            </button>
+          )}
+          {onDelete && (
+            <DeleteConfirmButton onConfirm={onDelete} deleting={deleting} />
+          )}
+        </div>
       </div>
 
       {fields.length > 0 && (
@@ -352,6 +360,47 @@ export function LinkedObjectiveProgress({ value }: { value: number }) {
         {clamped}%
       </span>
     </div>
+  );
+}
+
+function DeleteConfirmButton({ onConfirm, deleting }: { onConfirm: () => void; deleting?: boolean }) {
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 3000);
+    return () => clearTimeout(t);
+  }, [armed]);
+
+  const label = deleting ? 'Eliminando...' : armed ? 'Confirmar' : 'Eliminar';
+  const bg = armed ? '#bf0711' : '#fbeae5';
+  const fg = armed ? '#fff' : '#bf0711';
+  const border = armed ? '#bf0711' : '#e3b5af';
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (deleting) return;
+        if (!armed) { setArmed(true); return; }
+        onConfirm();
+      }}
+      disabled={deleting}
+      style={{
+        padding: '0.6rem 1.4rem',
+        fontSize: '1.3rem',
+        fontWeight: 500,
+        color: fg,
+        backgroundColor: bg,
+        border: `1px solid ${border}`,
+        borderRadius: '4px',
+        cursor: deleting ? 'not-allowed' : 'pointer',
+        opacity: deleting ? 0.6 : 1,
+        transition: 'all 150ms',
+      }}
+    >
+      {label}
+    </button>
   );
 }
 

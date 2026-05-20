@@ -44,6 +44,7 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
   const [showEditForm, setShowEditForm] = useState(false);
   const [showObjectiveForm, setShowObjectiveForm] = useState(false);
   const [savingManual, setSavingManual] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -91,6 +92,17 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
 
   function refresh() {
     load();
+    onChanged();
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    const supabase = createClient();
+    await supabase.from('kpi_objectives').delete().eq('kpi_id', kpi!.id);
+    await supabase.from('kpi_departments').delete().eq('kpi_id', kpi!.id);
+    await supabase.from('progress_logs').delete().eq('kpi_id', kpi!.id);
+    await supabase.from('comments').delete().eq('kpi_id', kpi!.id);
+    await supabase.from('kpis').delete().eq('id', kpi!.id);
     onChanged();
   }
 
@@ -207,6 +219,8 @@ export function KpiDetailPanelBody({ kpiId, departments, canEdit, onChanged }: K
         breadcrumb={breadcrumb}
         title={kpi.title}
         onEdit={canEdit ? () => setShowEditForm(true) : undefined}
+        onDelete={canEdit ? handleDelete : undefined}
+        deleting={deleting}
         fields={fields}
       >
         {/* Progress — slider for manual / hybrid; static purple fill
