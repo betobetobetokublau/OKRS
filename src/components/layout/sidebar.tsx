@@ -41,28 +41,24 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
   const collapsed = useSidebarStore((s) => s.collapsed);
   const [hovered, setHovered] = useState(false);
 
-  // Members see a trimmed nav: only Check-in + Objetivos. Managers and
-  // admins see the full navigation.
+  // Members see only the Funcionalidades section. Managers and admins
+  // see all three sections (Funcionalidades, Listados, Administración).
   const isMember = role === 'member';
 
-  const fullNavItems: NavItem[] = [
+  const funcionalidadesItems: NavItem[] = [
+    { label: 'Check-in', href: `${base}/check-in`, icon: 'M5 13l4 4L19 7' },
+    { label: 'Objetivos', href: `${base}/objetivos`, icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+  ];
+
+  const listadosItems: NavItem[] = [
     { label: 'Dashboard', href: base, icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
     { label: 'OKRs', href: `${base}/okrs`, icon: 'M4 6h16M4 10h10M4 14h16M4 18h10' },
-    { label: 'Objetivos', href: `${base}/objetivos`, icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
     { label: 'KPIs', href: `${base}/kpis`, icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
     { label: 'Mis Tareas', href: `${base}/mis-tareas`, icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
-    { label: 'Check-in', href: `${base}/check-in`, icon: 'M5 13l4 4L19 7' },
     { label: 'Revisión Mensual', href: `${base}/revision-mensual`, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', badge: pendingReview },
     { label: 'Trimestral', href: `${base}/trimestral`, icon: 'M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z' },
     { label: 'Departamentos', href: `${base}/departamentos`, icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
   ];
-
-  const memberNavItems: NavItem[] = [
-    { label: 'Objetivos', href: `${base}/objetivos`, icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
-    { label: 'Check-in', href: `${base}/check-in`, icon: 'M5 13l4 4L19 7' },
-  ];
-
-  const navItems: NavItem[] = isMember ? memberNavItems : fullNavItems;
 
   const adminItems: NavItem[] = [
     { label: 'Equipo', href: `${base}/equipo`, icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z', adminOnly: true },
@@ -112,10 +108,24 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
         >
           <div style={{ padding: '1.2rem 0', flex: 1 }}>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {navItems.map((item) => (
+              {funcionalidadesItems.map((item) => (
                 <CollapsedLink key={item.href} item={item} active={isActive(item.href)} iconColor={iconColor} />
               ))}
             </ul>
+
+            {!isMember && (
+              <>
+                <div
+                  aria-hidden
+                  style={{ height: '1px', backgroundColor: '#dfe3e8', margin: '1.2rem 1rem 0.8rem' }}
+                />
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {listadosItems.map((item) => (
+                    <CollapsedLink key={item.href} item={item} active={isActive(item.href)} iconColor={iconColor} />
+                  ))}
+                </ul>
+              </>
+            )}
 
             {canManageTeam(role) && (
               <>
@@ -171,27 +181,27 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
           }}
         >
           <div style={{ padding: '1.2rem 0', flex: 1 }}>
+            {!isMember && <SectionHeading first>Funcionalidades</SectionHeading>}
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {navItems.map((item) => (
+              {funcionalidadesItems.map((item) => (
                 <ExpandedLink key={item.href} item={item} active={isActive(item.href)} iconColor={iconColor} />
               ))}
             </ul>
 
+            {!isMember && (
+              <>
+                <SectionHeading>Listados</SectionHeading>
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {listadosItems.map((item) => (
+                    <ExpandedLink key={item.href} item={item} active={isActive(item.href)} iconColor={iconColor} />
+                  ))}
+                </ul>
+              </>
+            )}
+
             {canManageTeam(role) && (
               <>
-                <div
-                  style={{
-                    fontSize: '1.1rem',
-                    fontWeight: 600,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.1em',
-                    color: '#637381',
-                    padding: '1.6rem 2rem 0.4rem',
-                    marginTop: '0.8rem',
-                  }}
-                >
-                  Administración
-                </div>
+                <SectionHeading>Administración</SectionHeading>
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {adminItems.map((item) => {
                     if (item.adminOnly && !canManageTeam(role)) return null;
@@ -210,6 +220,24 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
 }
 
 // ---------- Row variants ----------
+
+function SectionHeading({ children, first }: { children: React.ReactNode; first?: boolean }) {
+  return (
+    <div
+      style={{
+        fontSize: '1.1rem',
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        letterSpacing: '0.1em',
+        color: '#637381',
+        padding: '1.6rem 2rem 0.4rem',
+        marginTop: first ? 0 : '0.8rem',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 function CollapsedLink({
   item,

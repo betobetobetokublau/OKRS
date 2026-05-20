@@ -211,12 +211,8 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
         </Link>
       )}
 
-      {/* Right: Help + Notifications + User */}
+      {/* Right: Notifications + User */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.6rem' }}>
-        <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1.3rem', cursor: 'pointer' }}>
-          Ayuda
-        </span>
-
         <NotificationBell userId={userId} workspaceId={workspaceId} />
 
         {/* User menu */}
