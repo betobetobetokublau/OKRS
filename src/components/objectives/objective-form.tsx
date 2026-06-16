@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { AnimatedModal } from '@/components/common/animated-modal';
 import { SearchableChecklist } from '@/components/common/searchable-checklist';
 import type { Department, Profile, KPI, ProgressMode, ObjectiveStatus } from '@/types';
+import { unwrapRelation, pluck } from '@/lib/utils/supabase-helpers';
+import { INPUT_STYLE, TEXTAREA_STYLE } from '@/lib/styles/form';
 
 interface ObjectiveFormProps {
   workspaceId: string;
@@ -54,7 +56,7 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
         supabase.from('departments').select('*').eq('workspace_id', workspaceId),
         supabase.from('kpis').select('*').eq('workspace_id', workspaceId).eq('period_id', periodId),
       ]);
-      setUsers((usersRes.data || []).map((uw: any) => uw.profile).filter(Boolean));
+      setUsers(unwrapRelation<Profile>(usersRes.data, 'profile'));
       setDepartments((deptsRes.data || []) as Department[]);
       setKpis((kpisRes.data || []) as KPI[]);
 
@@ -65,8 +67,8 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
         ]);
         setForm(prev => ({
           ...prev,
-          department_ids: (odRes.data || []).map((r: any) => r.department_id),
-          kpi_ids: (koRes.data || []).map((r: any) => r.kpi_id),
+          department_ids: pluck<string>(odRes.data, 'department_id'),
+          kpi_ids: pluck<string>(koRes.data, 'kpi_id'),
         }));
       }
     }
@@ -126,18 +128,18 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Título</label>
-              <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} required style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }} />
+              <label htmlFor="objective-form-title" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Título</label>
+              <input id="objective-form-title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} required style={INPUT_STYLE} />
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Descripción</label>
-              <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={3} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px', resize: 'vertical' }} />
+              <label htmlFor="objective-form-description" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Descripción</label>
+              <textarea id="objective-form-description" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={3} style={TEXTAREA_STYLE} />
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Estado</label>
-              <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as ObjectiveStatus }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <label htmlFor="objective-form-status" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Estado</label>
+              <select id="objective-form-status" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as ObjectiveStatus }))} style={INPUT_STYLE}>
                 <option value="upcoming">Próximo</option>
                 <option value="in_progress">En progreso</option>
                 <option value="paused">Pausado</option>
@@ -146,8 +148,8 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Modo de progreso</label>
-              <select value={form.progress_mode} onChange={e => setForm(p => ({ ...p, progress_mode: e.target.value as ProgressMode }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <label htmlFor="objective-form-progress-mode" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Modo de progreso</label>
+              <select id="objective-form-progress-mode" value={form.progress_mode} onChange={e => setForm(p => ({ ...p, progress_mode: e.target.value as ProgressMode }))} style={INPUT_STYLE}>
                 <option value="manual">Manual</option>
                 <option value="auto">Automático (basado en tareas)</option>
                 <option value="hybrid">Híbrido (promedio manual + auto)</option>
@@ -156,44 +158,46 @@ export function ObjectiveForm({ workspaceId, periodId, onClose, onSaved, initial
 
             {(form.progress_mode === 'manual' || form.progress_mode === 'hybrid') && (
               <div>
-                <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Progreso manual: {form.manual_progress}%</label>
-                <input type="range" min={0} max={100} value={form.manual_progress} onChange={e => setForm(p => ({ ...p, manual_progress: Number(e.target.value) }))} style={{ width: '100%' }} />
+                <label htmlFor="objective-form-manual-progress" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Progreso manual: {form.manual_progress}%</label>
+                <input id="objective-form-manual-progress" type="range" min={0} max={100} value={form.manual_progress} onChange={e => setForm(p => ({ ...p, manual_progress: Number(e.target.value) }))} style={{ width: '100%' }} />
               </div>
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Fecha de inicio (opcional)</label>
+                <label htmlFor="objective-form-start-date" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Fecha de inicio (opcional)</label>
                 <input
+                  id="objective-form-start-date"
                   type="date"
                   value={form.start_date}
                   onChange={(e) => setForm((p) => ({ ...p, start_date: e.target.value }))}
-                  style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}
+                  style={INPUT_STYLE}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Fecha de fin (opcional)</label>
+                <label htmlFor="objective-form-end-date" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Fecha de fin (opcional)</label>
                 <input
+                  id="objective-form-end-date"
                   type="date"
                   value={form.end_date}
                   onChange={(e) => setForm((p) => ({ ...p, end_date: e.target.value }))}
                   min={form.start_date || undefined}
-                  style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}
+                  style={INPUT_STYLE}
                 />
               </div>
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (usuario)</label>
-              <select value={form.responsible_user_id} onChange={e => setForm(p => ({ ...p, responsible_user_id: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <label htmlFor="objective-form-responsible-user" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (usuario)</label>
+              <select id="objective-form-responsible-user" value={form.responsible_user_id} onChange={e => setForm(p => ({ ...p, responsible_user_id: e.target.value }))} style={INPUT_STYLE}>
                 <option value="">Sin asignar</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
               </select>
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (departamento)</label>
-              <select value={form.responsible_department_id} onChange={e => setForm(p => ({ ...p, responsible_department_id: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <label htmlFor="objective-form-responsible-department" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (departamento)</label>
+              <select id="objective-form-responsible-department" value={form.responsible_department_id} onChange={e => setForm(p => ({ ...p, responsible_department_id: e.target.value }))} style={INPUT_STYLE}>
                 <option value="">Sin asignar</option>
                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>

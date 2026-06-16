@@ -2,10 +2,30 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { sendMonthlyReviewReminder, sendQuarterlySessionInvite } from '@/lib/postmark/templates';
 import { NextResponse } from 'next/server';
 
+// Batched-query approach: for each active period we run three bulk queries
+// (progress_logs/objectives/tasks) across all workspace users instead of
+// repeating them per user. This keeps total DB round-trips at O(periods)
+// rather than O(periods × users × 3). Don't reintroduce per-user queries
+// inside the recipient loop — aggregate in memory first.
+//
+// Idempotency: Vercel retries failed cron invocations up to 3 times. To
+// prevent duplicate emails and notifications on retry, DB-level partial
+// UNIQUE indexes (see sql/2026-05-21-cron-idempotency.sql) enforce one
+// notification + one email_log row per (user, workspace, type/template,
+// calendar day). The inserts below use `upsert({ ignoreDuplicates: true })`
+// so a retry that hits the same (user, day) silently no-ops at the DB
+// layer instead of throwing. The Postmark send itself is NOT deduped here
+// — Postmark templating is idempotent enough for our use case, but if a
+// retry races between the email send and the notification insert the
+// recipient may receive a duplicate email. The notification/email_log
+// dedup keys catch the common case (full retry of a previously-completed
+// recipient).
 export async function POST(request: Request) {
-  // Verify cron secret
+  // Verify cron secret. Fail-closed if the env var is missing — otherwise
+  // an attacker sending `Bearer undefined` would authenticate.
+  const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
@@ -35,42 +55,65 @@ export async function POST(request: Request) {
         .select('user_id, profile:profiles(id, email, full_name)')
         .eq('workspace_id', workspace.id);
 
-      if (!uwList) continue;
+      if (!uwList || uwList.length === 0) continue;
+
+      const allUserIds = uwList.map((uw) => uw.user_id);
 
       // Monthly review reminder (day 20 to end of month)
       if (dayOfMonth >= 20 && dayOfMonth <= lastDay) {
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
 
+        // Batch 1: users who already logged progress this month in this workspace.
+        const { data: logRows } = await adminClient
+          .from('progress_logs')
+          .select('user_id')
+          .in('user_id', allUserIds)
+          .eq('workspace_id', workspace.id)
+          .gte('created_at', monthStart)
+          .lt('created_at', monthEnd);
+
+        const reviewedUserIds = new Set<string>((logRows || []).map((r: any) => r.user_id));
+
+        // Batch 2: pending objectives in this period — group counts by responsible_user_id.
+        const { data: objRows } = await adminClient
+          .from('objectives')
+          .select('responsible_user_id')
+          .eq('workspace_id', workspace.id)
+          .eq('period_id', period.id)
+          .in('responsible_user_id', allUserIds);
+
+        const objCountByUser = new Map<string, number>();
+        for (const row of objRows || []) {
+          const uid = (row as any).responsible_user_id as string | null;
+          if (!uid) continue;
+          objCountByUser.set(uid, (objCountByUser.get(uid) || 0) + 1);
+        }
+
+        // Batch 3: open tasks assigned to these users (status != completed).
+        // tasks has no workspace_id — preserving the original cross-workspace
+        // count behavior for the assigned user.
+        const { data: taskRows } = await adminClient
+          .from('tasks')
+          .select('assigned_user_id')
+          .in('assigned_user_id', allUserIds)
+          .neq('status', 'completed');
+
+        const taskCountByUser = new Map<string, number>();
+        for (const row of taskRows || []) {
+          const uid = (row as any).assigned_user_id as string | null;
+          if (!uid) continue;
+          taskCountByUser.set(uid, (taskCountByUser.get(uid) || 0) + 1);
+        }
+
         for (const uw of uwList) {
           const profile = uw.profile as any;
           if (!profile) continue;
 
-          // Check if user already completed review this month
-          const { data: logs } = await adminClient
-            .from('progress_logs')
-            .select('id')
-            .eq('user_id', uw.user_id)
-            .eq('workspace_id', workspace.id)
-            .gte('created_at', monthStart)
-            .lt('created_at', monthEnd)
-            .limit(1);
+          if (reviewedUserIds.has(uw.user_id)) continue; // Already reviewed
 
-          if (logs && logs.length > 0) continue; // Already reviewed
-
-          // Count pending items
-          const { count: objCount } = await adminClient
-            .from('objectives')
-            .select('id', { count: 'exact', head: true })
-            .eq('workspace_id', workspace.id)
-            .eq('period_id', period.id)
-            .eq('responsible_user_id', uw.user_id);
-
-          const { count: taskCount } = await adminClient
-            .from('tasks')
-            .select('id', { count: 'exact', head: true })
-            .eq('assigned_user_id', uw.user_id)
-            .neq('status', 'completed');
+          const objCount = objCountByUser.get(uw.user_id) || 0;
+          const taskCount = taskCountByUser.get(uw.user_id) || 0;
 
           try {
             await sendMonthlyReviewReminder({
@@ -78,28 +121,37 @@ export async function POST(request: Request) {
               user_name: profile.full_name,
               workspace_name: workspace.name,
               month_name: now.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
-              pending_objectives_count: objCount || 0,
-              pending_tasks_count: taskCount || 0,
+              pending_objectives_count: objCount,
+              pending_tasks_count: taskCount,
               review_url: `${process.env.NEXT_PUBLIC_APP_URL}/${workspace.slug}/revision-mensual`,
             });
 
-            // Create in-app notification
-            await adminClient.from('notifications').insert({
-              user_id: uw.user_id,
-              workspace_id: workspace.id,
-              type: 'monthly_review_reminder',
-              title: 'Revisión mensual pendiente',
-              message: `Tu revisión mensual de ${now.toLocaleDateString('es-ES', { month: 'long' })} está pendiente.`,
-              action_url: `/${workspace.slug}/revision-mensual`,
-            });
+            // Create in-app notification. Dedup at the DB layer:
+            // notifications_dedup_idx prevents the same (user, workspace,
+            // type, day) from being inserted twice on a Vercel retry.
+            await adminClient.from('notifications').upsert(
+              {
+                user_id: uw.user_id,
+                workspace_id: workspace.id,
+                type: 'monthly_review_reminder',
+                title: 'Revisión mensual pendiente',
+                message: `Tu revisión mensual de ${now.toLocaleDateString('es-ES', { month: 'long' })} está pendiente.`,
+                action_url: `/${workspace.slug}/revision-mensual`,
+              },
+              { onConflict: 'user_id,workspace_id,type,created_day', ignoreDuplicates: true },
+            );
 
-            // Log email
-            await adminClient.from('email_logs').insert({
-              user_id: uw.user_id,
-              workspace_id: workspace.id,
-              template_alias: 'monthly-review-reminder',
-              status: 'sent',
-            });
+            // Log email. Same retry-safety reasoning via email_logs_dedup_idx.
+            await adminClient.from('email_logs').upsert(
+              {
+                user_id: uw.user_id,
+                workspace_id: workspace.id,
+                to_email: profile.email,
+                template_alias: 'monthly-review-reminder',
+                status: 'sent',
+              },
+              { onConflict: 'user_id,workspace_id,template_alias,created_day', ignoreDuplicates: true },
+            );
 
             emailsSent++;
           } catch {
@@ -126,14 +178,18 @@ export async function POST(request: Request) {
               session_url: `${process.env.NEXT_PUBLIC_APP_URL}/${workspace.slug}/trimestral`,
             });
 
-            await adminClient.from('notifications').insert({
-              user_id: uw.user_id,
-              workspace_id: workspace.id,
-              type: 'quarterly_session',
-              title: 'Sesión trimestral próxima',
-              message: `La sesión trimestral de ${period.name} está programada en 7 días.`,
-              action_url: `/${workspace.slug}/trimestral`,
-            });
+            // Dedup on retry — see comment above on notifications_dedup_idx.
+            await adminClient.from('notifications').upsert(
+              {
+                user_id: uw.user_id,
+                workspace_id: workspace.id,
+                type: 'quarterly_session',
+                title: 'Sesión trimestral próxima',
+                message: `La sesión trimestral de ${period.name} está programada en 7 días.`,
+                action_url: `/${workspace.slug}/trimestral`,
+              },
+              { onConflict: 'user_id,workspace_id,type,created_day', ignoreDuplicates: true },
+            );
 
             emailsSent++;
           } catch {

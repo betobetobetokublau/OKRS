@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useSkillTreeStore } from '@/stores/skill-tree-store';
 import { calculateKpiProgress, calculateObjectiveProgress } from '@/lib/utils/progress';
@@ -68,8 +68,9 @@ const PROGRESS_STOPS: Array<[number, [number, number, number]]> = [
 function progressColor(p: number): string {
   const clamp = Math.max(0, Math.min(100, p));
   for (let i = 0; i < PROGRESS_STOPS.length - 1; i++) {
-    const [a, ca] = PROGRESS_STOPS[i];
-    const [b, cb] = PROGRESS_STOPS[i + 1];
+    // i and i+1 are both in-bounds by the loop condition.
+    const [a, ca] = PROGRESS_STOPS[i]!;
+    const [b, cb] = PROGRESS_STOPS[i + 1]!;
     if (clamp >= a && clamp <= b) {
       const t = (clamp - a) / (b - a);
       const r = Math.round(ca[0] + (cb[0] - ca[0]) * t);
@@ -156,6 +157,26 @@ export function SkillTreeCanvas({
   // is the loading state, which has no ref — a plain useRef + []-deps
   // useEffect would never see the canvas div.
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
+
+  // Post-drag synthetic-click swallower lives on `window` at capture
+  // phase. Tracked in a ref so a second rapid drag can tear down the
+  // previous swallower before installing its own — otherwise two
+  // overlapping drags can fight over the same global listener.
+  const pendingClickSwallowerRef = useRef<{
+    handler: (e: MouseEvent) => void;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+
+  function clearPendingClickSwallower() {
+    const pending = pendingClickSwallowerRef.current;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    window.removeEventListener('click', pending.handler, true);
+    pendingClickSwallowerRef.current = null;
+  }
+
+  // Always tear the swallower down on unmount so nothing leaks.
+  useEffect(() => clearPendingClickSwallower, []);
 
   function clampZoom(z: number) {
     return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
@@ -384,6 +405,10 @@ export function SkillTreeCanvas({
     if (target.closest('[data-no-drag]')) return;
     if (!containerEl) return;
 
+    // A new drag starts — tear down any leftover swallower from a
+    // previous drag so the two don't co-exist on `window`.
+    clearPendingClickSwallower();
+
     const startClientX = e.clientX;
     const startClientY = e.clientY;
     const startPanX = pan.x;
@@ -425,17 +450,18 @@ export function SkillTreeCanvas({
         // it doesn't reach the underlying KPI / objective handlers
         // (or the canvas's own clear-focus-on-bg-click handler). We
         // listen at capture phase so we beat every other click
-        // listener in the tree.
-        const onClick = (clickEv: MouseEvent) => {
+        // listener in the tree. Both the handler and its safety-net
+        // timeout are tracked in a ref so a follow-up drag can tear
+        // them down deterministically.
+        clearPendingClickSwallower();
+        const handler = (clickEv: MouseEvent) => {
           clickEv.stopPropagation();
           clickEv.preventDefault();
-          window.removeEventListener('click', onClick, true);
+          clearPendingClickSwallower();
         };
-        window.addEventListener('click', onClick, true);
-        // Defensive: if no click ever arrives (e.g. pointer ended
-        // outside any clickable target), detach next tick so the
-        // listener doesn't linger.
-        setTimeout(() => window.removeEventListener('click', onClick, true), 0);
+        const timer = setTimeout(clearPendingClickSwallower, 0);
+        pendingClickSwallowerRef.current = { handler, timer };
+        window.addEventListener('click', handler, true);
       }
     }
 

@@ -36,13 +36,33 @@ export default function CambiarPasswordPage() {
       return;
     }
 
+    // Audit the self-change. Non-blocking: a failure here shouldn't keep
+    // the user on the password page (they did rotate their password). We
+    // do log to console so a silent endpoint failure leaves a breadcrumb
+    // rather than vanishing entirely.
+    fetch('/api/auth/registrar-cambio-password', { method: 'POST' }).catch((err) => {
+      console.error('[cambiar-password] audit log failed:', err);
+    });
+
     // Mark password as changed
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      await supabase
+      const { error: flagError } = await supabase
         .from('profiles')
         .update({ must_change_password: false })
         .eq('id', user.id);
+
+      if (flagError) {
+        // The password rotated successfully but we couldn't clear the
+        // forced-change flag. If we navigate away, middleware will redirect
+        // the user right back to this page on the next request and they'll
+        // be stuck in a loop. Surface the error so they can reload or
+        // contact support instead.
+        console.error('[cambiar-password] could not clear must_change_password flag:', flagError);
+        setError('Tu contraseña se cambió pero no pudimos limpiar el aviso. Recarga la página o contacta al administrador.');
+        setLoading(false);
+        return;
+      }
 
       // Navigate to first workspace
       const { data: uw } = await supabase

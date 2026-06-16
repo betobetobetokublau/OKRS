@@ -20,10 +20,23 @@ export function ProgressInlineEdit({ value, onChange, label }: ProgressInlineEdi
 
   if (!editing) {
     return (
-      <div onClick={() => { setEditing(true); setTempValue(value); }} style={{ cursor: 'pointer' }}>
+      <button
+        type="button"
+        onClick={() => { setEditing(true); setTempValue(value); }}
+        aria-label={label ? `Editar ${label.toLowerCase()}: ${value}%` : `Editar progreso: ${value}%`}
+        style={{
+          cursor: 'pointer',
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          width: '100%',
+          textAlign: 'left',
+          display: 'block',
+        }}
+      >
         {label && <span style={{ fontSize: '1.2rem', color: '#637381', marginBottom: '0.2rem', display: 'block' }}>{label}</span>}
         <ProgressBar value={value} size="medium" />
-      </div>
+      </button>
     );
   }
 

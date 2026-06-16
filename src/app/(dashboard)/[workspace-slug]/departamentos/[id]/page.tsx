@@ -8,6 +8,7 @@ import { UserAvatar } from '@/components/common/user-avatar';
 import { ProgressBar } from '@/components/common/progress-bar';
 import { StatusBadge } from '@/components/common/status-badge';
 import type { Department, Profile, KPI, Objective } from '@/types';
+import { unwrapRelation } from '@/lib/utils/supabase-helpers';
 
 export default function DepartamentoDetailPage() {
   const params = useParams();
@@ -34,9 +35,9 @@ export default function DepartamentoDetailPage() {
     ]);
 
     if (deptRes.data) setDepartment(deptRes.data as Department);
-    setMembers((membersRes.data || []).map((ud: any) => ud.profile) as Profile[]);
-    setKpis((kpiRes.data || []).map((kd: any) => kd.kpi).filter(Boolean) as KPI[]);
-    setObjectives((objRes.data || []).map((od: any) => od.objective).filter(Boolean) as Objective[]);
+    setMembers(unwrapRelation<Profile>(membersRes.data, 'profile'));
+    setKpis(unwrapRelation<KPI>(kpiRes.data, 'kpi'));
+    setObjectives(unwrapRelation<Objective>(objRes.data, 'objective'));
     setLoading(false);
   }
 

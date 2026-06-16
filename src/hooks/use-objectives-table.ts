@@ -23,9 +23,14 @@ export function useObjectivesTable(workspaceId: string | undefined, periodId: st
   const [rows, setRows] = useState<ObjectiveRow[]>([]);
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
+  // Bumped on every effect cleanup so any in-flight fetchRows from a stale
+  // workspace/period (or a manual refetch) skips its setState calls.
+  const fetchTokenRef = useRef(0);
 
   const fetchRows = useCallback(async () => {
     if (!workspaceId || !periodId) return;
+    const token = ++fetchTokenRef.current;
+    const isStale = () => token !== fetchTokenRef.current;
     if (!hasLoadedOnce.current) setLoading(true);
     const supabase = createClient();
 
@@ -40,6 +45,7 @@ export function useObjectivesTable(workspaceId: string | undefined, periodId: st
       .eq('workspace_id', workspaceId)
       .eq('period_id', periodId)
       .order('created_at', { ascending: false });
+    if (isStale()) return;
 
     if (!objectiveRows || objectiveRows.length === 0) {
       setRows([]);
@@ -55,6 +61,7 @@ export function useObjectivesTable(workspaceId: string | undefined, periodId: st
       .from('kpi_objectives')
       .select('objective_id, kpi:kpis(*)')
       .in('objective_id', objIds);
+    if (isStale()) return;
 
     const kpisByObj = new Map<string, KPI[]>();
     // Supabase's TS inference flattens the nested `kpi` into an array in some
@@ -83,6 +90,11 @@ export function useObjectivesTable(workspaceId: string | undefined, periodId: st
   useEffect(() => {
     hasLoadedOnce.current = false;
     fetchRows();
+    return () => {
+      // Invalidate any in-flight fetch from this mount; its post-await setState
+      // calls will short-circuit via the token check inside fetchRows.
+      fetchTokenRef.current++;
+    };
   }, [fetchRows]);
 
   return { rows, loading, refetch: fetchRows };

@@ -122,8 +122,9 @@ export function TaskForm({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
           {showPicker && (
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Objetivo</label>
+              <label htmlFor="task-form-objective" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Objetivo</label>
               <select
+                id="task-form-objective"
                 value={form.objective_id}
                 onChange={(e) => setForm((p) => ({ ...p, objective_id: e.target.value }))}
                 required
@@ -139,16 +140,16 @@ export function TaskForm({
             </div>
           )}
           <div>
-            <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Título</label>
-            <input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} required style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }} />
+            <label htmlFor="task-form-title" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Título</label>
+            <input id="task-form-title" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} required style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Descripción</label>
-            <textarea value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={2} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px', resize: 'vertical' }} />
+            <label htmlFor="task-form-description" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Descripción</label>
+            <textarea id="task-form-description" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={2} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px', resize: 'vertical' }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Asignar a</label>
-            <select value={form.assigned_user_id} onChange={(e) => setForm((p) => ({ ...p, assigned_user_id: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+            <label htmlFor="task-form-assigned-user" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Asignar a</label>
+            <select id="task-form-assigned-user" value={form.assigned_user_id} onChange={(e) => setForm((p) => ({ ...p, assigned_user_id: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
               <option value="">Sin asignar</option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -158,8 +159,8 @@ export function TaskForm({
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Fecha límite</label>
-            <input type="date" value={form.due_date} onChange={(e) => setForm((p) => ({ ...p, due_date: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }} />
+            <label htmlFor="task-form-due-date" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Fecha límite</label>
+            <input id="task-form-due-date" type="date" value={form.due_date} onChange={(e) => setForm((p) => ({ ...p, due_date: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }} />
           </div>
           <button type="submit" disabled={saving} style={{ width: '100%', padding: '1rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: saving ? '#8c92c4' : '#5c6ac4', border: 'none', borderRadius: '4px', cursor: saving ? 'not-allowed' : 'pointer' }}>
             {saving ? 'Guardando...' : initialData?.id ? 'Guardar cambios' : 'Crear tarea'}

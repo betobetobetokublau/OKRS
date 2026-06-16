@@ -93,6 +93,7 @@ export default function ObjetivosPage() {
   // user wants to scan KPI progress at a glance without scrolling past
   // every objective row. Only applies to the Listado tab.
   const [collapsedListado, setCollapsedListado] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   // Two-tier permissions: members can create/edit objectives + tasks
   // (the operational work) but KPI structural edits stay gated to
@@ -105,6 +106,7 @@ export default function ObjetivosPage() {
   const canReorder = canEditKpi;
 
   useEffect(() => {
+    let cancelled = false;
     async function loadMeta() {
       if (!currentWorkspace?.id || !activePeriod?.id) return;
       const supabase = createClient();
@@ -129,7 +131,7 @@ export default function ObjetivosPage() {
               .from('user_departments')
               .select('department_id')
               .eq('user_id', profile.id)
-          : Promise.resolve({ data: [] as Array<{ department_id: string }> }),
+          : Promise.resolve({ data: [] as Array<{ department_id: string }>, error: null }),
         // objective_departments junction — used to detect objectives
         // linked to one of the user's departments without being the
         // responsible department. Workspace scoping happens through
@@ -139,6 +141,21 @@ export default function ObjetivosPage() {
         // to each KPI section's eyebrow.
         supabase.from('kpi_departments').select('kpi_id, department_id'),
       ]);
+      if (cancelled) return;
+      const hasError =
+        deptRes.error || kpiRes.error || (userDeptRes as { error?: unknown }).error || objDeptRes.error || kpiDeptRes.error;
+      if (hasError) {
+        console.error('Objetivos load error:', {
+          departments: deptRes.error,
+          kpis: kpiRes.error,
+          userDepartments: (userDeptRes as { error?: unknown }).error,
+          objectiveDepartments: objDeptRes.error,
+          kpiDepartments: kpiDeptRes.error,
+        });
+        setLoadError(true);
+      } else {
+        setLoadError(false);
+      }
       if (deptRes.data) setDepartments(deptRes.data as Department[]);
       if (kpiRes.data) setKpis(kpiRes.data as KPI[]);
       setMyDeptIds(
@@ -168,6 +185,9 @@ export default function ObjetivosPage() {
       setDeptIdsByKpi(kpiMap);
     }
     loadMeta();
+    return () => {
+      cancelled = true;
+    };
   }, [currentWorkspace?.id, activePeriod?.id, profile?.id]);
 
   // Metrics are always computed over the FULL objective list (not the
@@ -334,7 +354,9 @@ export default function ObjetivosPage() {
     // Snapshot BEFORE the DOM updates so FLIP has a valid "first".
     captureFlip();
     const reordered = [...kpis];
-    const [item] = reordered.splice(idx, 1);
+    // idx is in-bounds (early-returned above when idx === -1), so splice
+    // always yields exactly one element.
+    const [item] = reordered.splice(idx, 1) as [KPI];
     reordered.splice(target, 0, item);
     // Local echo
     setKpis(reordered.map((k, i) => ({ ...k, sort_order: i })));
@@ -372,6 +394,22 @@ export default function ObjetivosPage() {
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+      {loadError && (
+        <div
+          role="alert"
+          style={{
+            padding: '1.2rem 1.6rem',
+            marginBottom: '1.6rem',
+            borderRadius: '6px',
+            border: '1px solid #fadbd0',
+            backgroundColor: '#fff4ef',
+            color: '#8a3c1a',
+            fontSize: '1.3rem',
+          }}
+        >
+          No pudimos cargar los objetivos. Recarga la página.
+        </div>
+      )}
       {showHeroBlock && (
         <>
           {/* Hero summary block — transparent, floats on the page bg. */}
@@ -1166,7 +1204,7 @@ function KpiRing({ value }: { value: number }) {
  */
 function KpiStatusPill({ status }: { status: KPIStatus }) {
   const style: Record<KPIStatus, { label: string; fg: string; bg: string; border: string; dot: string }> = {
-    on_track:  { label: 'On track',       fg: '#108043', bg: '#e3f1df', border: 'rgba(80,184,60,0.28)', dot: '#50b83c' },
+    on_track:  { label: 'En curso',       fg: '#108043', bg: '#e3f1df', border: 'rgba(80,184,60,0.28)', dot: '#50b83c' },
     at_risk:   { label: 'En riesgo',      fg: '#a45412', bg: '#fdeedc', border: 'rgba(244,147,66,0.32)', dot: '#f49342' },
     off_track: { label: 'Fuera de curso', fg: '#bf0711', bg: '#fbeae5', border: 'rgba(222,54,24,0.24)', dot: '#de3618' },
     achieved:  { label: 'Completado',     fg: '#108043', bg: '#e3f1df', border: 'rgba(80,184,60,0.28)', dot: '#50b83c' },

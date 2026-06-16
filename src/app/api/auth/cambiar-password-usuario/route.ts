@@ -54,7 +54,10 @@ export async function POST(request: Request) {
     });
     if (updateError) {
       console.error('[api/auth/cambiar-password-usuario] updateUserById failed:', updateError);
-      return NextResponse.json({ error: updateError.message }, { status: 400 });
+      return NextResponse.json(
+        { error: 'No se pudo actualizar la contraseña' },
+        { status: 400 },
+      );
     }
 
     if (typeof must_change_password === 'boolean') {

@@ -17,7 +17,9 @@ function getColor(name: string): string {
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return COLORS[Math.abs(hash) % COLORS.length];
+  // Index is always in-bounds: `i % COLORS.length` < COLORS.length and
+  // COLORS is a non-empty constant tuple.
+  return COLORS[Math.abs(hash) % COLORS.length]!;
 }
 
 function getInitials(name: string): string {

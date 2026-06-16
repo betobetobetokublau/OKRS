@@ -52,16 +52,44 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // Check must_change_password
+  // Check must_change_password.
+  //
+  // Previously this ran a `select must_change_password` DB query on EVERY
+  // non-/cambiar-password navigation — even for users who had rotated
+  // their password long ago. We now cache the "OK" result in a short-
+  // lived cookie (`kublau-pwd-ok`, 1h). If the cookie is present we trust
+  // it and skip the DB roundtrip. Tradeoff: when an admin force-resets a
+  // user via `cambiar-password-usuario` (or the user self-rotates), the
+  // cookie persists up to ~1h on already-active sessions — acceptable lag
+  // for re-prompting. The HTTP-only / SameSite=Lax flags prevent the
+  // cookie from being read by client JS or sent on cross-site requests.
   if (pathname !== '/cambiar-password') {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('must_change_password')
-      .eq('id', user.id)
-      .single();
+    const cachedOk = request.cookies.get('kublau-pwd-ok')?.value === '1';
 
-    if (profile?.must_change_password) {
-      return NextResponse.redirect(new URL('/cambiar-password', request.url));
+    if (!cachedOk) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('must_change_password')
+        .eq('id', user.id)
+        .single();
+
+      if (profile?.must_change_password) {
+        return NextResponse.redirect(new URL('/cambiar-password', request.url));
+      }
+
+      // Cache the negative-check for an hour. We set on the response
+      // (so the browser receives it) — the @supabase/ssr cookie pattern
+      // already keeps `request.cookies` and `response.cookies` in sync
+      // for auth cookies; this is a separate, non-auth cookie that only
+      // lives on the response.
+      response.cookies.set({
+        name: 'kublau-pwd-ok',
+        value: '1',
+        maxAge: 60 * 60, // 1 hour
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+      });
     }
   }
 

@@ -28,9 +28,15 @@ export function useOkrs(workspaceId: string | undefined, periodId: string | unde
   const [kpis, setKpis] = useState<KPIWithObjectives[]>([]);
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
+  // Bumped on every effect cleanup so any in-flight fetchOkrs from a stale
+  // workspace/period (or a manual refetch) skips its setState calls.
+  const fetchTokenRef = useRef(0);
 
   const fetchOkrs = useCallback(async () => {
     if (!workspaceId || !periodId) return;
+
+    const token = ++fetchTokenRef.current;
+    const isStale = () => token !== fetchTokenRef.current;
 
     // Only show the loading state on the very first fetch. Subsequent refetches
     // should swap data under the existing UI so the user keeps their expanded
@@ -52,6 +58,7 @@ export function useOkrs(workspaceId: string | undefined, periodId: string | unde
       .eq('period_id', periodId)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: true });
+    if (isStale()) return;
 
     if (!kpiRows || kpiRows.length === 0) {
       setKpis([]);
@@ -72,6 +79,7 @@ export function useOkrs(workspaceId: string | undefined, periodId: string | unde
       .eq('workspace_id', workspaceId)
       .eq('period_id', periodId)
       .order('created_at', { ascending: true });
+    if (isStale()) return;
 
     // Derive computed_progress per objective from its tasks
     const objectivesById = new Map<string, ObjectiveWithTasks>();
@@ -88,6 +96,7 @@ export function useOkrs(workspaceId: string | undefined, periodId: string | unde
       .from('kpi_objectives')
       .select('kpi_id, objective_id')
       .in('kpi_id', kpiIds);
+    if (isStale()) return;
 
     const objectivesByKpi = new Map<string, ObjectiveWithTasks[]>();
     (linkRows || []).forEach((link) => {
@@ -123,6 +132,11 @@ export function useOkrs(workspaceId: string | undefined, periodId: string | unde
     // loading state for a fresh workspace.
     hasLoadedOnce.current = false;
     fetchOkrs();
+    return () => {
+      // Invalidate any in-flight fetch from this mount; its post-await setState
+      // calls will short-circuit via the token check inside fetchOkrs.
+      fetchTokenRef.current++;
+    };
   }, [fetchOkrs]);
 
   /**

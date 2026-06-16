@@ -12,7 +12,8 @@ export async function POST(request: Request) {
     if (authed instanceof NextResponse) return authed;
     const { user, supabase } = authed;
 
-    // Rate limit: 20 req / min per user.
+    // Rate limit: 20 req / min per user. Caps a single account from
+    // spamming the system at large.
     const rl = checkRateLimit(`email:${user.id}`, 20, 60_000);
     if (!rl.ok) {
       return NextResponse.json(
@@ -24,6 +25,17 @@ export async function POST(request: Request) {
     const parsed = await parseJsonBody(request, sendEmailApiSchema);
     if (parsed instanceof NextResponse) return parsed;
     const { to, template_alias, template_model, workspace_id } = parsed;
+
+    // Per-recipient rate limit: 5 emails / hour to any single inbox,
+    // across all senders. Prevents an authorized sender from hammering
+    // a single teammate's mailbox even within their per-user budget.
+    const recipientRl = checkRateLimit(`email-recipient:${to.trim().toLowerCase()}`, 5, 60 * 60_000);
+    if (!recipientRl.ok) {
+      return NextResponse.json(
+        { error: 'Este destinatario ha recibido demasiados correos recientemente.' },
+        { status: 429, headers: { 'Retry-After': String(recipientRl.retryAfterSeconds) } },
+      );
+    }
 
     // Caller must be at least a manager in the target workspace.
     const roleResult = await requireWorkspaceRole(supabase, user.id, workspace_id, 'manager');
@@ -65,6 +77,7 @@ export async function POST(request: Request) {
     await admin.from('email_logs').insert({
       user_id: user.id,
       workspace_id,
+      to_email: to,
       template_alias,
       postmark_message_id: result.MessageID,
       status: 'sent',

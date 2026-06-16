@@ -278,8 +278,22 @@ export default function CheckinPage() {
         map.set(kid, arr);
       });
     });
-    return { map, orphans };
-  }, [objectives]);
+
+    // Section split (resolves the "why is this objective on my check-in?"
+    // confusion): a KPI belongs to "asignados a mí" when at least one of
+    // its objectives is directly assigned to the current user
+    // (responsible_user_id). KPIs that surface only because the user's
+    // department owns them — with no objective assigned to the user — go
+    // to the "asignados a mi departamento" section instead.
+    const myId = profile?.id;
+    const mineKpiIds = new Set<string>();
+    map.forEach((rows, kid) => {
+      if (rows.some((o) => o.responsible_user_id === myId)) mineKpiIds.add(kid);
+    });
+    const orphansAreMine = orphans.some((o) => o.responsible_user_id === myId);
+
+    return { map, orphans, mineKpiIds, orphansAreMine };
+  }, [objectives, profile?.id]);
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -498,6 +512,60 @@ export default function CheckinPage() {
     setShowNudge(false);
   }
 
+  // Shared renderer for a single KPI's table — used by both the
+  // "asignados a mí" and "asignados a mi departamento" sections so the
+  // prop wiring lives in one place.
+  function renderKpiTable(kpi: KPI, rows: ObjectiveWithTasks[]) {
+    return (
+      <CheckinKpiTable
+        key={kpi.id}
+        kpiId={kpi.id}
+        kpiTitle={kpi.title}
+        kpiDepartmentLabel={kpiDeptLabels.get(kpi.id)}
+        rows={rows}
+        expanded={expanded}
+        onToggle={toggle}
+        objectiveEdits={objectiveEdits}
+        tasksToComplete={tasksToComplete}
+        onUpdateObjective={setEditingObjective}
+        onToggleTaskComplete={toggleTaskCompletion}
+        onOpenPanel={setPanelTarget}
+        onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
+      />
+    );
+  }
+
+  // Partition the period's KPIs into the two sections. A KPI with no
+  // visible objectives is skipped entirely.
+  const mineKpis = kpis.filter(
+    (k) => grouped.mineKpiIds.has(k.id) && (grouped.map.get(k.id)?.length ?? 0) > 0,
+  );
+  const deptKpis = kpis.filter(
+    (k) => !grouped.mineKpiIds.has(k.id) && (grouped.map.get(k.id)?.length ?? 0) > 0,
+  );
+  const hasMineSection = mineKpis.length > 0 || (grouped.orphansAreMine && grouped.orphans.length > 0);
+  const hasDeptSection = deptKpis.length > 0 || (!grouped.orphansAreMine && grouped.orphans.length > 0);
+
+  // Objectives with no KPI render under a single "Sin KPI asignado" table.
+  // The whole bucket follows the same rule as a KPI: it sits in whichever
+  // section matches `orphansAreMine`.
+  const orphanTable =
+    grouped.orphans.length > 0 ? (
+      <CheckinKpiTable
+        kpiId={null}
+        kpiTitle="Sin KPI asignado"
+        rows={grouped.orphans}
+        expanded={expanded}
+        onToggle={toggle}
+        objectiveEdits={objectiveEdits}
+        tasksToComplete={tasksToComplete}
+        onUpdateObjective={setEditingObjective}
+        onToggleTaskComplete={toggleTaskCompletion}
+        onOpenPanel={setPanelTarget}
+        onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
+      />
+    ) : null;
+
   return (
     <div>
       {/* Single-column container — capped at 600px and centered on the
@@ -566,6 +634,7 @@ export default function CheckinPage() {
           >
             {showNudge && (
               <div
+                id="checkin-cta-nudge"
                 role="tooltip"
                 aria-live="polite"
                 className="anim-fade-in"
@@ -658,21 +727,6 @@ export default function CheckinPage() {
           </div>
         ) : (
           <>
-            <h2
-              style={{
-                fontSize: '1.8rem',
-                fontWeight: 600,
-                color: '#212b36',
-                // Negative top margin shaves 4px off the parent flex's
-                // 2rem (20px) gap so the spacing between the CTA and
-                // this section title lands at exactly 16px per spec.
-                margin: '-0.4rem 0 0',
-                lineHeight: 1.25,
-                textAlign: 'center',
-              }}
-            >
-              Los objetivos de tu departamento
-            </h2>
             {objectives.length === 0 ? (
               <div className="Polaris-Card" style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
                 <p style={{ color: '#637381', fontSize: '1.4rem' }}>
@@ -681,42 +735,25 @@ export default function CheckinPage() {
               </div>
             ) : (
               <>
-                {kpis.map((kpi) => {
-                  const rows = grouped.map.get(kpi.id) || [];
-                  if (rows.length === 0) return null;
-                  return (
-                    <CheckinKpiTable
-                      key={kpi.id}
-                      kpiId={kpi.id}
-                      kpiTitle={kpi.title}
-                      kpiDepartmentLabel={kpiDeptLabels.get(kpi.id)}
-                      rows={rows}
-                      expanded={expanded}
-                      onToggle={toggle}
-                      objectiveEdits={objectiveEdits}
-                      tasksToComplete={tasksToComplete}
-                      onUpdateObjective={setEditingObjective}
-                      onToggleTaskComplete={toggleTaskCompletion}
-                      onOpenPanel={setPanelTarget}
-                      onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
-                    />
-                  );
-                })}
+                {/* Section 1 — KPIs with at least one objective directly
+                    assigned to the current user. */}
+                {hasMineSection && (
+                  <>
+                    <SectionDivider title="Objetivos asignados a mí" />
+                    {mineKpis.map((kpi) => renderKpiTable(kpi, grouped.map.get(kpi.id) || []))}
+                    {grouped.orphansAreMine && orphanTable}
+                  </>
+                )}
 
-                {grouped.orphans.length > 0 && (
-                  <CheckinKpiTable
-                    kpiId={null}
-                    kpiTitle="Sin KPI asignado"
-                    rows={grouped.orphans}
-                    expanded={expanded}
-                    onToggle={toggle}
-                    objectiveEdits={objectiveEdits}
-                    tasksToComplete={tasksToComplete}
-                    onUpdateObjective={setEditingObjective}
-                    onToggleTaskComplete={toggleTaskCompletion}
-                    onOpenPanel={setPanelTarget}
-                    onAddTaskForObjective={(oid) => setAddingTaskFor({ objectiveId: oid })}
-                  />
+                {/* Section 2 — KPIs visible only because the user's
+                    department owns them, with no objective assigned to the
+                    user directly. */}
+                {hasDeptSection && (
+                  <>
+                    <SectionDivider title="Objetivos asignados a mi departamento" />
+                    {deptKpis.map((kpi) => renderKpiTable(kpi, grouped.map.get(kpi.id) || []))}
+                    {!grouped.orphansAreMine && orphanTable}
+                  </>
                 )}
               </>
             )}
@@ -802,6 +839,40 @@ interface CheckinKpiTableProps {
   onToggleTaskComplete: (t: TaskRow) => void;
   onOpenPanel: (t: PanelTarget) => void;
   onAddTaskForObjective: (objectiveId: string) => void;
+}
+
+/**
+ * Subtle labelled divider used to split the check-in KPI list into the
+ * "asignados a mí" / "asignados a mi departamento" sections. A 16px (1.6rem)
+ * muted title centered between two hairline rules.
+ */
+function SectionDivider({ title }: { title: string }) {
+  return (
+    <div
+      role="separator"
+      aria-label={title}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '1.2rem',
+        margin: '0.8rem 0 0.4rem',
+      }}
+    >
+      <span aria-hidden style={{ flex: 1, height: '1px', backgroundColor: '#dfe3e8' }} />
+      <span
+        style={{
+          fontSize: '1.6rem',
+          fontWeight: 500,
+          color: '#637381',
+          whiteSpace: 'nowrap',
+          letterSpacing: '0.01em',
+        }}
+      >
+        {title}
+      </span>
+      <span aria-hidden style={{ flex: 1, height: '1px', backgroundColor: '#dfe3e8' }} />
+    </div>
+  );
 }
 
 function CheckinKpiTable({

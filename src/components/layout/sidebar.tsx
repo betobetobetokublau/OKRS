@@ -71,7 +71,10 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
     return pathname.startsWith(href);
   }
 
-  const iconColor = (active: boolean): string => (active ? '#5c6ac4' : '#919eab');
+  // Inactive icon at #6b7280 (rather than #919eab) so the icon-vs-background
+  // contrast meets WCAG AA (4.5:1) on the #f4f6f8 rail. Old #919eab measured
+  // 2.5:1 which fails AA.
+  const iconColor = (active: boolean): string => (active ? '#5c6ac4' : '#6b7280');
 
   // Two faces: the always-visible collapsed rail (when collapsed), and the
   // full expanded drawer (shown when !collapsed or when the rail is hovered).

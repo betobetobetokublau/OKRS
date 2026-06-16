@@ -89,7 +89,9 @@ export function OnboardingCarousel({ role, userId, onDone }: OnboardingCarouselP
   const [completing, setCompleting] = useState(false);
 
   const isLast = index === SLIDES.length - 1;
-  const slide = SLIDES[index];
+  // `index` is initialized to 0 and only advanced by `next()` while
+  // `isLast === false`, so it always points at a real slide.
+  const slide = SLIDES[index]!;
 
   // Final destination depends on the role — members see only Check-in +
   // Objetivos in their nav so landing on the analytics dashboard would

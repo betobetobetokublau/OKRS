@@ -33,10 +33,11 @@ export function useWorkspace(workspaceSlug: string) {
 
   useEffect(() => {
     const supabase = createClient();
+    let cancelled = false;
 
     async function loadWorkspaceData() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (cancelled || !user) return;
 
       // ── Load the real authenticated user's profile + workspace ────
       const { data: profileData } = await supabase
@@ -44,12 +45,14 @@ export function useWorkspace(workspaceSlug: string) {
         .select('*')
         .eq('id', user.id)
         .single();
+      if (cancelled) return;
 
       const { data: workspaceData } = await supabase
         .from('workspaces')
         .select('*')
         .eq('slug', workspaceSlug)
         .single();
+      if (cancelled) return;
 
       if (workspaceData) setCurrentWorkspace(workspaceData as Workspace);
       if (!workspaceData) return;
@@ -60,6 +63,7 @@ export function useWorkspace(workspaceSlug: string) {
         .eq('user_id', user.id)
         .eq('workspace_id', workspaceData.id)
         .single();
+      if (cancelled) return;
 
       // ── Check for an active impersonation target ──────────────────
       const impersonateTarget = readImpersonationTarget();
@@ -80,6 +84,7 @@ export function useWorkspace(workspaceSlug: string) {
             .eq('workspace_id', workspaceData.id)
             .single(),
         ]);
+        if (cancelled) return;
 
         if (targetProfileRes.data && targetUwRes.data) {
           enterImpersonation(
@@ -115,10 +120,14 @@ export function useWorkspace(workspaceSlug: string) {
         .eq('workspace_id', workspaceData.id)
         .eq('status', 'active')
         .single();
+      if (cancelled) return;
       if (periodData) setActivePeriod(periodData as Period);
     }
 
     loadWorkspaceData();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceSlug]);
 

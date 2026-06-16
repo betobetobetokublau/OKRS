@@ -1,4 +1,3 @@
-import { createAdminClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { requireAuth, requireWorkspaceRole } from '@/lib/api/require-auth';
 import { checkRateLimit } from '@/lib/api/rate-limit';
@@ -16,7 +15,16 @@ import { changeRoleApiSchema } from '@/lib/validators/user';
  *   1. re-verifies the caller is a workspace admin,
  *   2. prevents cross-workspace escalation,
  *   3. blocks the last-admin demotion (would lock the workspace out),
- *   4. updates via the service-role client so RLS can stay locked down.
+ *   4. delegates the read-check-write to a SECURITY DEFINER RPC so the
+ *      operation is atomic (no TOCTOU between the admin-count check
+ *      and the role update).
+ *
+ * Atomicity: the previous count-then-update pattern was a textbook
+ * TOCTOU — two concurrent demotions could both observe `count > 1`
+ * before either committed. The RPC `change_workspace_role` (see
+ * sql/2026-05-21-demote-if-safe.sql) takes a `FOR UPDATE` row lock
+ * on the target user_workspace row and re-counts admins in the same
+ * transaction, returning a structured `{ ok, error }` envelope.
  */
 export async function POST(request: Request) {
   try {
@@ -42,49 +50,36 @@ export async function POST(request: Request) {
     const roleResult = await requireWorkspaceRole(supabase, currentUser.id, workspace_id, 'admin');
     if (roleResult instanceof NextResponse) return roleResult;
 
-    // Target must be a member of this workspace (prevents cross-workspace
-    // admin from mutating a stranger's row).
-    const { data: targetUw } = await supabase
-      .from('user_workspaces')
-      .select('id, role')
-      .eq('user_id', target_user_id)
-      .eq('workspace_id', workspace_id)
-      .single();
-    if (!targetUw) {
-      return NextResponse.json(
-        { error: 'El usuario no pertenece a este workspace' },
-        { status: 404 },
-      );
+    // Atomic: row-lock target, re-count admins, refuse last-admin
+    // demotion, then update — all in one SECURITY DEFINER function.
+    // Returns { ok: true } or { ok: false, error: '...' }.
+    const { data: rpcData, error: rpcError } = await supabase.rpc('change_workspace_role', {
+      p_target_user_id: target_user_id,
+      p_workspace_id: workspace_id,
+      p_new_role: role,
+    });
+
+    if (rpcError) {
+      console.error('[api/auth/cambiar-rol-usuario] rpc failed:', rpcError);
+      return NextResponse.json({ error: rpcError.message }, { status: 400 });
     }
 
-    // Last-admin guard: if the target is currently the only admin AND
-    // we're demoting them, refuse — otherwise the workspace would be
-    // orphaned (no one left to re-promote).
-    if (targetUw.role === 'admin' && role !== 'admin') {
-      const { count } = await supabase
-        .from('user_workspaces')
-        .select('id', { count: 'exact', head: true })
-        .eq('workspace_id', workspace_id)
-        .eq('role', 'admin');
-      if ((count ?? 0) <= 1) {
+    const result = rpcData as { ok: boolean; error?: string } | null;
+    if (!result || !result.ok) {
+      const code = result?.error;
+      if (code === 'not_in_workspace') {
+        return NextResponse.json(
+          { error: 'El usuario no pertenece a este workspace' },
+          { status: 404 },
+        );
+      }
+      if (code === 'last_admin') {
         return NextResponse.json(
           { error: 'No puedes quitar el último administrador del workspace.' },
           { status: 400 },
         );
       }
-    }
-
-    // Perform the update with the service-role client; RLS on
-    // user_workspaces.UPDATE stays closed for the authenticated role.
-    const adminClient = createAdminClient();
-    const { error: updateError } = await adminClient
-      .from('user_workspaces')
-      .update({ role })
-      .eq('id', targetUw.id);
-
-    if (updateError) {
-      console.error('[api/auth/cambiar-rol-usuario] update failed:', updateError);
-      return NextResponse.json({ error: updateError.message }, { status: 400 });
+      return NextResponse.json({ error: 'No se pudo cambiar el rol' }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true });

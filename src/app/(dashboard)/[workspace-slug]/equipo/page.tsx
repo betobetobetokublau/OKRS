@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { writeImpersonationTarget } from '@/lib/impersonation';
+import { canManageTeam } from '@/lib/utils/permissions';
 import type { Profile, UserWorkspace, WorkspaceRole, Department, UserDepartment } from '@/types';
 
 interface TeamMember {
@@ -276,6 +277,56 @@ export default function EquipoPage() {
           : null;
       alert(detail || json?.error || 'No se pudo cambiar el rol.');
     }
+  }
+
+  // Component-level role guard. The team-management endpoints
+  // (`crear-usuario`, `cambiar-rol-usuario`, `cambiar-password-usuario`) all
+  // enforce admin role server-side, but rendering the UI to a non-admin who
+  // navigates here via URL bar / back button / stale link is still an
+  // information-leak (and looks broken when their requests bounce). Bail
+  // out early with an "access denied" card matching the existing Polaris
+  // styling. We still render hooks unconditionally above to preserve hook
+  // order between this branch and the main render.
+  if (!userWorkspace || !canManageTeam(userWorkspace.role)) {
+    return (
+      <div>
+        <div style={{ marginBottom: '2.4rem' }}>
+          <h1 className="Polaris-Heading" style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36' }}>Equipo</h1>
+        </div>
+        <div
+          className="Polaris-Card"
+          style={{
+            padding: '2.4rem',
+            borderRadius: '8px',
+            border: '1px solid var(--color-border)',
+            maxWidth: '560px',
+          }}
+        >
+          <h2 style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36', marginBottom: '0.8rem' }}>
+            Acceso denegado
+          </h2>
+          <p style={{ color: '#637381', fontSize: '1.4rem', marginBottom: '1.6rem' }}>
+            Solo los administradores del workspace pueden gestionar al equipo.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push(`/${workspaceSlug}`)}
+            style={{
+              padding: '0.8rem 1.6rem',
+              fontSize: '1.4rem',
+              fontWeight: 600,
+              color: 'white',
+              backgroundColor: '#5c6ac4',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+            }}
+          >
+            Volver al dashboard
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const cellStyle: React.CSSProperties = { padding: '1.2rem 1.6rem' };

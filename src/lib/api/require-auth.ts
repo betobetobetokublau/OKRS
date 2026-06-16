@@ -84,8 +84,15 @@ export async function requireWorkspaceRole(
       { status: 403 },
     );
   }
-  const rank: Record<string, number> = { member: 1, manager: 2, admin: 3 };
-  if ((rank[uw.role] ?? 0) < rank[minRole]) {
+  const rank: Record<'member' | 'manager' | 'admin', number> = {
+    member: 1,
+    manager: 2,
+    admin: 3,
+  };
+  // `uw.role` is text from the DB and could in principle be unknown —
+  // fall back to 0 so any unknown role is treated as insufficient.
+  // `minRole` is union-typed, so `rank[minRole]` is always defined.
+  if ((rank[uw.role as 'member' | 'manager' | 'admin'] ?? 0) < rank[minRole]) {
     return NextResponse.json(
       { error: 'Permisos insuficientes' },
       { status: 403 },

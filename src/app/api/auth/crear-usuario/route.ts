@@ -48,8 +48,9 @@ export async function POST(request: Request) {
     });
 
     if (createError || !newUser.user) {
+      console.error('[api/auth/crear-usuario] createUser failed:', createError);
       return NextResponse.json(
-        { error: createError?.message || 'Error al crear usuario' },
+        { error: 'Error al crear usuario' },
         { status: 400 },
       );
     }

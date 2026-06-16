@@ -34,6 +34,24 @@ Key gotchas:
 - `updated_at` on workspaces/profiles/kpis/objectives/tasks is auto-
   touched by a BEFORE UPDATE trigger (`set_updated_at`).
 
+## API route auth
+
+**`src/middleware.ts` does NOT run on `/api/*` routes** — the matcher
+explicitly excludes them. Every API route handler must self-protect:
+
+- Authenticated routes: call `requireAuth()` (or `requireAuth({ allowMustChangePassword: true })`
+  only on the self-password-rotation endpoint) before any work. Use
+  `requireWorkspaceRole(supabase, userId, workspaceId, minRole)` whenever the
+  route touches workspace-scoped data.
+- Cron / system routes: check `Authorization: Bearer ${process.env.CRON_SECRET}`
+  with a fail-closed guard if the env var is missing (see
+  `src/app/api/cron/recordatorios/route.ts` for the pattern).
+- State-changing routes: also add `checkRateLimit(...)` keyed on `user.id`
+  (or recipient where applicable) to blunt abuse.
+
+Adding a new API route without one of these patterns is a P0 regression —
+the global middleware will not catch it.
+
 ## Testing
 
 Framework: **vitest** (unit tests colocated as `*.test.ts`).

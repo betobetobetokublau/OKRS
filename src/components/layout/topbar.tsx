@@ -60,6 +60,11 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Clear the `kublau-pwd-ok` cache cookie so a shared browser can't
+    // inherit it across users. Cookie was set by middleware with httpOnly;
+    // expiring via document.cookie still works because we're explicitly
+    // overwriting with maxAge=0 on the same path.
+    document.cookie = 'kublau-pwd-ok=; Max-Age=0; Path=/; SameSite=Lax';
     router.push('/login');
   }
 
@@ -150,9 +155,9 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
               <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 {i > 0 && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '1.3rem' }}>/</span>}
                 {crumb.href ? (
-                  <a href={crumb.href} style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', fontSize: '1.3rem' }}>
+                  <Link href={crumb.href} style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', fontSize: '1.3rem' }}>
                     {crumb.label}
-                  </a>
+                  </Link>
                 ) : (
                   <span style={{ color: 'white', fontSize: '1.3rem', fontWeight: 500 }}>
                     {crumb.label}

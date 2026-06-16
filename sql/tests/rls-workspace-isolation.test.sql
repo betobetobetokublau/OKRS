@@ -171,6 +171,44 @@ BEGIN
   PERFORM _assert(ok, 'user A cannot INSERT objective into workspace B');
 END $$;
 
+-- ---------- Trigger tests (still acting as user A) ----------
+-- Verifies the two triggers added by 2026-05-20-schema-reconciliation.sql:
+--   - set_created_by   stamps NEW.created_by := auth.uid() when NULL
+--   - set_updated_at   stamps NEW.updated_at := now() on every UPDATE
+
+DO $$
+DECLARE
+  new_obj_id uuid;
+  stamped_by uuid;
+  before_ts  timestamptz;
+  after_ts   timestamptz;
+BEGIN
+  INSERT INTO public.objectives (workspace_id, period_id, title, status, progress_mode, manual_progress)
+    VALUES (
+      '00000000-0000-0000-0000-00000000aaaa'::uuid,
+      '00000000-0000-0000-0000-0000000aaaaa'::uuid,
+      'trigger test', 'in_progress', 'auto', 0
+    )
+    RETURNING id INTO new_obj_id;
+
+  SELECT created_by INTO stamped_by FROM public.objectives WHERE id = new_obj_id;
+  PERFORM _assert(
+    stamped_by = '00000000-0000-0000-0000-0000000000a1'::uuid,
+    'set_created_by stamps auth.uid() on INSERT'
+  );
+
+  SELECT updated_at INTO before_ts FROM public.objectives WHERE id = new_obj_id;
+  PERFORM pg_sleep(0.01);
+  UPDATE public.objectives SET title = 'trigger test updated' WHERE id = new_obj_id;
+  SELECT updated_at INTO after_ts FROM public.objectives WHERE id = new_obj_id;
+  PERFORM _assert(
+    after_ts > before_ts,
+    'set_updated_at bumps timestamp on UPDATE'
+  );
+
+  DELETE FROM public.objectives WHERE id = new_obj_id;
+END $$;
+
 -- Act as user B.
 SELECT _rls_as('00000000-0000-0000-0000-0000000000b1'::uuid);
 

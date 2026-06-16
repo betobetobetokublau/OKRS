@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { AnimatedModal } from '@/components/common/animated-modal';
 import { SearchableChecklist } from '@/components/common/searchable-checklist';
 import type { Department, Profile, Objective, ProgressMode, KPIStatus } from '@/types';
+import { unwrapRelation, pluck } from '@/lib/utils/supabase-helpers';
+import { INPUT_STYLE, TEXTAREA_STYLE } from '@/lib/styles/form';
 
 interface KPIFormProps {
   workspaceId: string;
@@ -48,7 +50,7 @@ export function KPIForm({ workspaceId, periodId, onClose, onSaved, initialData }
         supabase.from('departments').select('*').eq('workspace_id', workspaceId),
         supabase.from('objectives').select('*').eq('workspace_id', workspaceId).eq('period_id', periodId),
       ]);
-      setUsers((usersRes.data || []).map((uw: any) => uw.profile).filter(Boolean));
+      setUsers(unwrapRelation<Profile>(usersRes.data, 'profile'));
       setDepartments((deptsRes.data || []) as Department[]);
       setObjectives((objsRes.data || []) as Objective[]);
 
@@ -59,8 +61,8 @@ export function KPIForm({ workspaceId, periodId, onClose, onSaved, initialData }
         ]);
         setForm(prev => ({
           ...prev,
-          department_ids: (kdRes.data || []).map((r: any) => r.department_id),
-          objective_ids: (koRes.data || []).map((r: any) => r.objective_id),
+          department_ids: pluck<string>(kdRes.data, 'department_id'),
+          objective_ids: pluck<string>(koRes.data, 'objective_id'),
         }));
       }
     }
@@ -124,18 +126,18 @@ export function KPIForm({ workspaceId, periodId, onClose, onSaved, initialData }
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Título</label>
-              <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} required style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }} />
+              <label htmlFor="kpi-form-title" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Título</label>
+              <input id="kpi-form-title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} required style={INPUT_STYLE} />
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Descripción</label>
-              <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={3} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px', resize: 'vertical' }} />
+              <label htmlFor="kpi-form-description" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Descripción</label>
+              <textarea id="kpi-form-description" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={3} style={TEXTAREA_STYLE} />
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Modo de progreso</label>
-              <select value={form.progress_mode} onChange={e => setForm(p => ({ ...p, progress_mode: e.target.value as ProgressMode }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <label htmlFor="kpi-form-progress-mode" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Modo de progreso</label>
+              <select id="kpi-form-progress-mode" value={form.progress_mode} onChange={e => setForm(p => ({ ...p, progress_mode: e.target.value as ProgressMode }))} style={INPUT_STYLE}>
                 <option value="manual">Manual</option>
                 <option value="auto">Automático (basado en objetivos)</option>
                 <option value="hybrid">Híbrido (promedio manual + auto)</option>
@@ -143,8 +145,8 @@ export function KPIForm({ workspaceId, periodId, onClose, onSaved, initialData }
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Estado</label>
-              <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as KPIStatus }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <label htmlFor="kpi-form-status" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Estado</label>
+              <select id="kpi-form-status" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as KPIStatus }))} style={INPUT_STYLE}>
                 <option value="on_track">On track</option>
                 <option value="at_risk">En riesgo</option>
                 <option value="off_track">Off track</option>
@@ -154,22 +156,22 @@ export function KPIForm({ workspaceId, periodId, onClose, onSaved, initialData }
 
             {(form.progress_mode === 'manual' || form.progress_mode === 'hybrid') && (
               <div>
-                <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Progreso manual: {form.manual_progress}%</label>
-                <input type="range" min={0} max={100} value={form.manual_progress} onChange={e => setForm(p => ({ ...p, manual_progress: Number(e.target.value) }))} style={{ width: '100%' }} />
+                <label htmlFor="kpi-form-manual-progress" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Progreso manual: {form.manual_progress}%</label>
+                <input id="kpi-form-manual-progress" type="range" min={0} max={100} value={form.manual_progress} onChange={e => setForm(p => ({ ...p, manual_progress: Number(e.target.value) }))} style={{ width: '100%' }} />
               </div>
             )}
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (usuario)</label>
-              <select value={form.responsible_user_id} onChange={e => setForm(p => ({ ...p, responsible_user_id: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <label htmlFor="kpi-form-responsible-user" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (usuario)</label>
+              <select id="kpi-form-responsible-user" value={form.responsible_user_id} onChange={e => setForm(p => ({ ...p, responsible_user_id: e.target.value }))} style={INPUT_STYLE}>
                 <option value="">Sin asignar</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
               </select>
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (departamento)</label>
-              <select value={form.responsible_department_id} onChange={e => setForm(p => ({ ...p, responsible_department_id: e.target.value }))} style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px' }}>
+              <label htmlFor="kpi-form-responsible-department" style={{ display: 'block', fontSize: '1.4rem', fontWeight: 500, marginBottom: '0.4rem' }}>Responsable (departamento)</label>
+              <select id="kpi-form-responsible-department" value={form.responsible_department_id} onChange={e => setForm(p => ({ ...p, responsible_department_id: e.target.value }))} style={INPUT_STYLE}>
                 <option value="">Sin asignar</option>
                 {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>

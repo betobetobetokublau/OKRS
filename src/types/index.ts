@@ -124,11 +124,6 @@ export interface Objective {
   tasks?: Task[];
 }
 
-export interface KPIObjective {
-  kpi_id: string;
-  objective_id: string;
-}
-
 export interface Task {
   id: string;
   objective_id: string;

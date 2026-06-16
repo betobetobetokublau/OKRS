@@ -23,8 +23,10 @@ export default function DashboardPage() {
   const { currentWorkspace, activePeriod } = useWorkspaceStore();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     async function loadDashboard() {
       if (!currentWorkspace?.id || !activePeriod?.id) return;
       const supabase = createClient();
@@ -34,6 +36,19 @@ export default function DashboardPage() {
         supabase.from('objectives').select('*, manual_progress, status').eq('workspace_id', currentWorkspace.id).eq('period_id', activePeriod.id).order('created_at', { ascending: false }),
         supabase.from('tasks').select('*, objective:objectives!tasks_objective_id_fkey(workspace_id, period_id)').order('created_at', { ascending: false }),
       ]);
+      if (cancelled) return;
+
+      const hasError = kpisRes.error || objectivesRes.error || tasksRes.error;
+      if (hasError) {
+        console.error('Dashboard load error:', {
+          kpis: kpisRes.error,
+          objectives: objectivesRes.error,
+          tasks: tasksRes.error,
+        });
+        setLoadError(true);
+      } else {
+        setLoadError(false);
+      }
 
       const kpis = (kpisRes.data || []) as KPI[];
       const objectives = (objectivesRes.data || []) as Objective[];
@@ -62,6 +77,9 @@ export default function DashboardPage() {
     }
 
     loadDashboard();
+    return () => {
+      cancelled = true;
+    };
   }, [currentWorkspace?.id, activePeriod?.id]);
 
   if (loading || !stats) {
@@ -92,6 +110,23 @@ export default function DashboardPage() {
           </p>
         )}
       </div>
+
+      {loadError && (
+        <div
+          role="alert"
+          style={{
+            padding: '1.2rem 1.6rem',
+            marginBottom: '1.6rem',
+            borderRadius: '6px',
+            border: '1px solid #fadbd0',
+            backgroundColor: '#fff4ef',
+            color: '#8a3c1a',
+            fontSize: '1.3rem',
+          }}
+        >
+          No pudimos cargar el dashboard. Recarga la página.
+        </div>
+      )}
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.6rem', marginBottom: '2.4rem' }}>

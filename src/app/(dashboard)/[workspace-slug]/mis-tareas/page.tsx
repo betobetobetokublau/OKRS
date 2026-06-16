@@ -24,7 +24,8 @@ export default function MisTareasPage() {
       .from('tasks')
       .select('*, assigned_user:profiles!tasks_assigned_user_id_fkey(*), objective:objectives!tasks_objective_id_fkey(*)')
       .eq('assigned_user_id', profile.id)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .limit(200);
 
     const tasks = ((data || []) as (Task & { objective: Objective })[]).filter(
       t => t.objective?.workspace_id === currentWorkspace.id && t.objective?.period_id === activePeriod.id

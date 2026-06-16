@@ -64,13 +64,6 @@ interface UseActivityFeedOptions {
 }
 
 /** Returns the first argument that's a finite number, else undefined. */
-function pickNumber(...candidates: unknown[]): number | undefined {
-  for (const c of candidates) {
-    if (typeof c === 'number' && Number.isFinite(c)) return c;
-  }
-  return undefined;
-}
-
 export function useActivityFeed(
   workspaceId: string | undefined,
   { limit = 50 }: UseActivityFeedOptions = {},
@@ -264,72 +257,10 @@ async function loadActivity(
     ]);
 
     // ── Step 4: build lookup maps. ───────────────────────────────────
-    const profileByUserId = new Map<string, { id: string; full_name: string }>();
-    (profsRes.data || []).forEach((p: { id: string; full_name: string }) =>
-      profileByUserId.set(p.id, p),
+    const { profileByUserId, objById, kpiByIdMap, taskById } = buildLookupMaps(
+      { profsRes, objsRes, kpisRes, tasksRes, extraObjsRes, extraKpisRes, extraTasksRes },
+      workspaceId,
     );
-
-    const objById = new Map<string, MinimalObj>();
-    (objsRes.data || []).forEach((o: MinimalObj) => {
-      if (!o?.id) return;
-      objById.set(o.id, {
-        id: o.id,
-        title: o.title ?? '',
-        workspace_id: o.workspace_id ?? '',
-      });
-    });
-    (extraObjsRes.data || []).forEach((o: MinimalObj) => {
-      // Only allow objectives in the current workspace into the lookup
-      // map — RLS should block cross-workspace reads anyway, but this is
-      // a defensive filter so comments/progress_logs events can't surface
-      // under the wrong workspace.
-      if (!o?.id || o.workspace_id !== workspaceId) return;
-      objById.set(o.id, { id: o.id, title: o.title ?? '', workspace_id: o.workspace_id });
-    });
-
-    const kpiByIdMap = new Map<string, MinimalKpi>();
-    (kpisRes.data || []).forEach((k: MinimalKpi) => {
-      if (!k?.id) return;
-      kpiByIdMap.set(k.id, {
-        id: k.id,
-        title: k.title ?? '',
-        workspace_id: k.workspace_id ?? '',
-      });
-    });
-    (extraKpisRes.data || []).forEach((k: MinimalKpi) => {
-      if (!k?.id || k.workspace_id !== workspaceId) return;
-      kpiByIdMap.set(k.id, { id: k.id, title: k.title ?? '', workspace_id: k.workspace_id });
-    });
-
-    // Task map: for checkin_entries that target tasks, we want the
-    // title + a fallback parent objective link. Seed from tasksRes
-    // (which already carries `objective:objectives!inner(...)`), top
-    // up with extraTasksRes for ids not in that initial slice.
-    const taskById = new Map<string, { id: string; title: string; objectiveId: string; objectiveTitle: string }>();
-    const normalizeJoinedObj = (raw: any) =>
-      Array.isArray(raw) ? raw[0] : raw;
-    (tasksRes.data || []).forEach((t: any) => {
-      if (!t?.id) return;
-      const obj = normalizeJoinedObj(t.objective);
-      if (!obj?.id) return;
-      taskById.set(t.id, {
-        id: t.id,
-        title: t.title ?? '',
-        objectiveId: obj.id,
-        objectiveTitle: obj.title ?? '',
-      });
-    });
-    (extraTasksRes.data || []).forEach((t: any) => {
-      if (!t?.id) return;
-      const obj = normalizeJoinedObj(t.objective);
-      if (!obj?.id || obj.workspace_id !== workspaceId) return;
-      taskById.set(t.id, {
-        id: t.id,
-        title: t.title ?? '',
-        objectiveId: obj.id,
-        objectiveTitle: obj.title ?? '',
-      });
-    });
 
     // ── Step 5: transform into a unified event list. ─────────────────
     const out: ActivityEvent[] = [];
@@ -358,7 +289,7 @@ async function loadActivity(
     (progressRes.data || []).forEach((r: any) => {
       const target = refForObj(r.objective_id) ?? refForKpi(r.kpi_id);
       if (!target) return;
-      const pct = pickNumber(r.new_value);
+      const pct = typeof r.new_value === 'number' && Number.isFinite(r.new_value) ? r.new_value : undefined;
       out.push({
         id: `progress-${r.id}`,
         kind: 'progress_log',
@@ -523,6 +454,78 @@ async function loadActivity(
     }
 }
 
+type MinimalObj = { id: string; title: string; workspace_id: string };
+type MinimalKpi = { id: string; title: string; workspace_id: string };
+type TaskMapEntry = { id: string; title: string; objectiveId: string; objectiveTitle: string };
+
+interface LookupSources {
+  profsRes: { data: { id: string; full_name: string }[] | null };
+  objsRes: { data: MinimalObj[] | null };
+  kpisRes: { data: MinimalKpi[] | null };
+  tasksRes: { data: any[] | null };
+  extraObjsRes: { data: MinimalObj[] | null };
+  extraKpisRes: { data: MinimalKpi[] | null };
+  extraTasksRes: { data: any[] | null };
+}
+
+/**
+ * Builds the four lookup Maps the event-builder needs: user → profile,
+ * id → objective, id → kpi, id → task-with-parent. Workspace filter is
+ * applied defensively to the "extra" buckets (the primary buckets are
+ * already workspace-scoped by query).
+ */
+function buildLookupMaps(sources: LookupSources, workspaceId: string) {
+  const profileByUserId = new Map<string, { id: string; full_name: string }>();
+  (sources.profsRes.data || []).forEach((p) => profileByUserId.set(p.id, p));
+
+  const objById = new Map<string, MinimalObj>();
+  (sources.objsRes.data || []).forEach((o) => {
+    if (!o?.id) return;
+    objById.set(o.id, { id: o.id, title: o.title ?? '', workspace_id: o.workspace_id ?? '' });
+  });
+  (sources.extraObjsRes.data || []).forEach((o) => {
+    if (!o?.id || o.workspace_id !== workspaceId) return;
+    objById.set(o.id, { id: o.id, title: o.title ?? '', workspace_id: o.workspace_id });
+  });
+
+  const kpiByIdMap = new Map<string, MinimalKpi>();
+  (sources.kpisRes.data || []).forEach((k) => {
+    if (!k?.id) return;
+    kpiByIdMap.set(k.id, { id: k.id, title: k.title ?? '', workspace_id: k.workspace_id ?? '' });
+  });
+  (sources.extraKpisRes.data || []).forEach((k) => {
+    if (!k?.id || k.workspace_id !== workspaceId) return;
+    kpiByIdMap.set(k.id, { id: k.id, title: k.title ?? '', workspace_id: k.workspace_id });
+  });
+
+  const taskById = new Map<string, TaskMapEntry>();
+  const normalizeJoinedObj = (raw: any) => (Array.isArray(raw) ? raw[0] : raw);
+  (sources.tasksRes.data || []).forEach((t: any) => {
+    if (!t?.id) return;
+    const obj = normalizeJoinedObj(t.objective);
+    if (!obj?.id) return;
+    taskById.set(t.id, {
+      id: t.id,
+      title: t.title ?? '',
+      objectiveId: obj.id,
+      objectiveTitle: obj.title ?? '',
+    });
+  });
+  (sources.extraTasksRes.data || []).forEach((t: any) => {
+    if (!t?.id) return;
+    const obj = normalizeJoinedObj(t.objective);
+    if (!obj?.id || obj.workspace_id !== workspaceId) return;
+    taskById.set(t.id, {
+      id: t.id,
+      title: t.title ?? '',
+      objectiveId: obj.id,
+      objectiveTitle: obj.title ?? '',
+    });
+  });
+
+  return { profileByUserId, objById, kpiByIdMap, taskById };
+}
+
 /**
  * Map raw DB status values to the Spanish labels we surface in the UI.
  * Matches the `objectiveStatusChip` / `taskStatusChip` vocabulary used
@@ -543,7 +546,7 @@ function humanStatus(targetType: 'kpi' | 'objective' | 'task', status: string): 
     blocked: 'Bloqueada',
   };
   const kpiLabels: Record<string, string> = {
-    on_track: 'On track',
+    on_track: 'En curso',
     at_risk: 'En riesgo',
     off_track: 'Fuera de curso',
     achieved: 'Completado',

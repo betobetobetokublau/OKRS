@@ -179,7 +179,8 @@ function buildCohorts(cfg: ReturnType<typeof scaleConfig>): Cohort[] {
       cohorts.push({
         start: clampedStart,
         end: chunkEnd,
-        label: MONTHS_ES_SHORT[chunkStart.getMonth()],
+        // getMonth() returns 0–11; MONTHS_ES_SHORT has 12 entries.
+        label: MONTHS_ES_SHORT[chunkStart.getMonth()]!,
         sub: `${chunkStart.getFullYear()}`,
         leftPct,
         widthPct,
@@ -211,10 +212,11 @@ function buildCohorts(cfg: ReturnType<typeof scaleConfig>): Cohort[] {
     let sub: string;
     if (cfg.labelKind === 'day') {
       label = `${clampedStart.getDate()}`;
-      sub = MONTHS_ES_SHORT[clampedStart.getMonth()];
+      // getMonth() returns 0–11; MONTHS_ES_SHORT has 12 entries.
+      sub = MONTHS_ES_SHORT[clampedStart.getMonth()]!;
     } else {
       const weekNum = isoWeek(clampedStart);
-      label = MONTHS_ES_SHORT[clampedStart.getMonth()];
+      label = MONTHS_ES_SHORT[clampedStart.getMonth()]!;
       sub = days <= 7 ? `sem ${weekNum}` : `sem ${weekNum}–${isoWeek(clampedEnd)}`;
     }
 
