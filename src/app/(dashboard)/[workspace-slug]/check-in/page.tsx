@@ -574,113 +574,143 @@ export default function CheckinPage() {
 
   return (
     <div>
-      {/* Sticky check-in banner — pinned just under the 56px topbar.
-          Negative margins bleed it out to the edges of <main> (which has
-          2.4rem padding) so it spans the full content column and sits flush
-          under the topbar. It lives inside <main> (margin-offset from the
-          sidebar), so it never overlaps the side navigation. */}
+      {/* Sticky check-in banner (design D — compact card).
+          OUTER wrapper: bleeds to the edges of <main> (which has 2.4rem
+          padding), carries the page background so content scrolling beneath
+          is masked, and pins at top:56px (just under the topbar). Its
+          vertical padding keeps the card from sitting tight against the
+          topbar above or the content below. Living inside <main> (which is
+          margin-offset from the sidebar), it never overlaps the side nav.
+          INNER: the proposal-D horizontal card. */}
       {activePeriod && (
         <div
           style={{
             position: 'sticky',
             top: '56px',
             zIndex: 140,
+            // Cancel <main>'s 2.4rem padding: flush under the topbar + full
+            // content-column width. Vertical padding is the requested
+            // breathing room above/below the card.
             margin: '-2.4rem -2.4rem 0',
-            padding: '1.2rem 2.4rem',
-            backgroundColor: '#ffffff',
-            borderBottom: '1px solid #dfe3e8',
-            boxShadow: '0 2px 8px rgba(15,24,48,0.05)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '1.6rem',
-            flexWrap: 'wrap',
+            padding: '1.6rem 2.4rem',
+            backgroundColor: 'var(--color-bg)',
           }}
         >
-          <CalendarDateBadge date={new Date()} />
-          <div style={{ flex: 1, minWidth: '14rem' }}>
-            <div style={{ fontSize: '1.7rem', fontWeight: 600, color: '#212b36', lineHeight: 1.2 }}>
-              {title}
-            </div>
-            <div style={{ fontSize: '1.3rem', color: '#637381', marginTop: '0.3rem' }}>
-              <b style={{ color: '#212b36', fontWeight: 700 }}>
-                Has actualizado {updatedObjectives} de {totalObjectives}
-              </b>{' '}
-              {totalObjectives === 1 ? 'objetivo' : 'objetivos'}
-            </div>
-          </div>
           <div
-            style={{ position: 'relative', display: 'inline-block' }}
-            onMouseEnter={handleCtaMouseEnter}
-            onMouseLeave={handleCtaMouseLeave}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1.8rem',
+              flexWrap: 'wrap',
+              maxWidth: '900px',
+              margin: '0 auto',
+              backgroundColor: '#f7f8fe',
+              border: '1px solid #dfe3f6',
+              borderRadius: '12px',
+              padding: '1.8rem 2rem',
+              boxShadow: '0 1px 2px rgba(15,24,48,0.05)',
+            }}
           >
-            {showNudge && (
-              <div
-                id="checkin-cta-nudge"
-                role="tooltip"
-                aria-live="polite"
-                className="anim-fade-in"
-                style={{
-                  // Drops DOWN from the button now that the CTA lives in a
-                  // top banner (popping up would collide with the topbar).
-                  position: 'absolute',
-                  top: 'calc(100% + 1.2rem)',
-                  right: 0,
-                  maxWidth: '34rem',
-                  width: 'max-content',
-                  padding: '1.2rem 1.4rem',
-                  backgroundColor: 'white',
-                  color: '#212b36',
-                  fontSize: '1.3rem',
-                  lineHeight: 1.45,
-                  borderRadius: '8px',
-                  border: '1px solid #dfe3e8',
-                  boxShadow: '0 6px 20px rgba(15,24,48,0.12)',
-                  zIndex: 10,
-                  pointerEvents: 'none',
-                  textAlign: 'center',
-                }}
-              >
-                Para reportar el check-in por favor da click a actualizar a al menos una iniciativa asignada de la lista de abajo
-                <span
-                  aria-hidden="true"
-                  style={{
-                    position: 'absolute',
-                    bottom: '100%',
-                    right: '2.4rem',
-                    width: 0,
-                    height: 0,
-                    borderLeft: '8px solid transparent',
-                    borderRight: '8px solid transparent',
-                    borderBottom: '8px solid white',
-                    filter: 'drop-shadow(0 -1px 0 #dfe3e8)',
-                  }}
-                />
+            <CalendarDateBadge date={new Date()} />
+            <div style={{ flex: 1, minWidth: '14rem' }}>
+              <div style={{ fontSize: '1.7rem', fontWeight: 700, color: '#212b36', lineHeight: 1.2 }}>
+                {title}
               </div>
-            )}
-            <button
-              type="button"
-              onClick={handleCtaClick}
-              disabled={saving || !activePeriod}
-              aria-label="Reportar actualización"
-              aria-describedby={showNudge ? 'checkin-cta-nudge' : undefined}
+              <div style={{ fontSize: '1.3rem', color: '#637381', marginTop: '0.3rem' }}>
+                {activePeriod
+                  ? `Actualiza tus objetivos y tareas del periodo ${activePeriod.name}.`
+                  : 'Sin periodo activo'}
+              </div>
+            </div>
+            <div
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                padding: '1rem 2.2rem',
-                fontSize: '1.5rem',
-                fontWeight: 600,
-                color: 'white',
-                backgroundColor: saving || !activePeriod ? '#8c92c4' : '#5c6ac4',
-                border: 'none',
-                borderRadius: '10px',
-                cursor: saving || !activePeriod ? 'not-allowed' : 'pointer',
-                boxShadow: '0 1px 2px rgba(15,24,48,0.08)',
-                lineHeight: 1,
-                whiteSpace: 'nowrap',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                gap: '0.8rem',
               }}
             >
-              {saving ? 'Enviando…' : 'Reportar actualización'}
-            </button>
+              <div style={{ fontSize: '1.3rem', color: '#637381', textAlign: 'right' }}>
+                <b style={{ color: '#212b36', fontWeight: 700 }}>
+                  Has actualizado {updatedObjectives} de {totalObjectives}
+                </b>{' '}
+                {totalObjectives === 1 ? 'objetivo' : 'objetivos'}
+              </div>
+              <div
+                style={{ position: 'relative', display: 'inline-block' }}
+                onMouseEnter={handleCtaMouseEnter}
+                onMouseLeave={handleCtaMouseLeave}
+              >
+                {showNudge && (
+                  <div
+                    id="checkin-cta-nudge"
+                    role="tooltip"
+                    aria-live="polite"
+                    className="anim-fade-in"
+                    style={{
+                      // Drops DOWN from the button (the banner is pinned to
+                      // the top, so popping up would collide with the topbar).
+                      position: 'absolute',
+                      top: 'calc(100% + 1.2rem)',
+                      right: 0,
+                      maxWidth: '34rem',
+                      width: 'max-content',
+                      padding: '1.2rem 1.4rem',
+                      backgroundColor: 'white',
+                      color: '#212b36',
+                      fontSize: '1.3rem',
+                      lineHeight: 1.45,
+                      borderRadius: '8px',
+                      border: '1px solid #dfe3e8',
+                      boxShadow: '0 6px 20px rgba(15,24,48,0.12)',
+                      zIndex: 10,
+                      pointerEvents: 'none',
+                      textAlign: 'center',
+                    }}
+                  >
+                    Para reportar el check-in por favor da click a actualizar a al menos una iniciativa asignada de la lista de abajo
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        bottom: '100%',
+                        right: '2.4rem',
+                        width: 0,
+                        height: 0,
+                        borderLeft: '8px solid transparent',
+                        borderRight: '8px solid transparent',
+                        borderBottom: '8px solid white',
+                        filter: 'drop-shadow(0 -1px 0 #dfe3e8)',
+                      }}
+                    />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleCtaClick}
+                  disabled={saving || !activePeriod}
+                  aria-label="Reportar actualización"
+                  aria-describedby={showNudge ? 'checkin-cta-nudge' : undefined}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '1rem 1.8rem',
+                    fontSize: '1.35rem',
+                    fontWeight: 600,
+                    color: 'white',
+                    backgroundColor: saving || !activePeriod ? '#8c92c4' : '#5c6ac4',
+                    border: 'none',
+                    borderRadius: '9px',
+                    cursor: saving || !activePeriod ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 1px 2px rgba(15,24,48,0.08)',
+                    lineHeight: 1,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {saving ? 'Enviando…' : 'Reportar actualización'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
