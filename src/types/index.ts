@@ -40,8 +40,15 @@ export interface Profile {
    * flow entirely so their rows stay NULL.
    */
   onboarded_at: string | null;
+  /** Per-user UI preferences, e.g. `{ board_column_order: { [boardId]: sectionId[] } }`. */
+  preferences?: UserPreferences;
   created_at: string;
   updated_at: string;
+}
+
+export interface UserPreferences {
+  board_column_order?: Record<string, string[]>;
+  [key: string]: unknown;
 }
 
 export interface UserWorkspace {

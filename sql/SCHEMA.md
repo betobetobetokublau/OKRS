@@ -44,6 +44,9 @@ runtime behavior is identical.
 
 ---
 
+- `save_checkin(p_workspace_id, p_period_id, p_summary, p_entries jsonb, p_task_ids uuid[]) → uuid` — SECURITY INVOKER RPC (2026-09-11). Single transaction for the check-in submit: inserts `checkins`, applies objective progress/status updates (rows locked FOR UPDATE, previous values read server-side), writes `checkin_entries`, `progress_logs` and the "Check-in …" timeline `comments`, and completes `p_task_ids`. RLS applies as the caller. The client (`check-in/page.tsx`) calls only this.
+- Realtime publication `supabase_realtime` contains `notifications`, `comments`, `task_activity`.
+
 ## Tables
 
 ### workspaces
@@ -67,6 +70,7 @@ runtime behavior is identical.
 | avatar_url | text | YES | | |
 | must_change_password | boolean | YES | true | |
 | onboarded_at | timestamptz | YES | | NULL = never completed carousel |
+| preferences | jsonb | NO | `'{}'` | Per-user UI prefs, e.g. `{ board_column_order: { [boardId]: sectionId[] } }` (added 2026-09-11) |
 | created_at | timestamptz | YES | now() | |
 | updated_at | timestamptz | NO | now() | auto-updated by trigger |
 

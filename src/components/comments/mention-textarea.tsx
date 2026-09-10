@@ -4,11 +4,25 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { MENTION_TOKEN } from '@/lib/validators/board';
 import type { Profile } from '@/types';
+import { findMentionSpans, safeMentionName, serializeMentions, type MentionMember } from './mentions';
+
+export { mentionToken, serializeMentions, deserializeMentions } from './mentions';
 
 interface MentionTextareaProps {
+  /** Display text: mentions appear as `@Nombre`. */
   value: string;
-  onChange: (value: string) => void;
+  /**
+   * Called with the display text and its serialised form, where every
+   * `@Nombre` of a known member is `@[Nombre](uuid)` (what gets stored).
+   */
+  onChange: (display: string, serialized: string) => void;
   members: Profile[];
+  /**
+   * Members referenced by an existing comment being edited (from
+   * `deserializeMentions`). They stay resolvable even if they left the
+   * workspace and no longer appear in `members`.
+   */
+  initialMentions?: MentionMember[];
   placeholder?: string;
   rows?: number;
   disabled?: boolean;
@@ -18,31 +32,57 @@ interface MentionTextareaProps {
 const ACTIVE_MENTION = /(^|\s)@([^\s@[\]()]*)$/;
 const MAX_SUGGESTIONS = 6;
 
-/** Serialise a member as the token stored in `comments.content`. */
-export function mentionToken(member: Pick<Profile, 'id' | 'full_name'>): string {
-  // Square brackets inside the name would break the token grammar.
-  const safeName = member.full_name.replace(/[[\]]/g, '');
-  return `@[${safeName}](${member.id})`;
-}
+/**
+ * Box metrics shared by the textarea and its highlight backdrop. Both must
+ * lay text out identically so the pills sit exactly under the typed names.
+ */
+const TEXT_BOX: React.CSSProperties = {
+  margin: 0,
+  padding: '0.8rem 1.2rem',
+  fontSize: '1.4rem',
+  lineHeight: 1.5,
+  fontFamily: 'inherit',
+  fontWeight: 400,
+  letterSpacing: 'normal',
+  border: '1px solid transparent',
+  borderRadius: '4px',
+  boxSizing: 'border-box',
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'break-word',
+  wordBreak: 'break-word',
+  scrollbarGutter: 'stable',
+  textAlign: 'left',
+};
 
 /**
- * Textarea with an @mention popover. Typing "@" followed by text filters the
- * workspace members; arrow keys move, Enter/Tab picks, Esc closes. Picking
- * inserts `@[Full Name](uuid) ` so the id survives later renames.
+ * Textarea with an @mention popover and live pills. Typing "@" followed by
+ * text filters the workspace members; arrow keys move, Enter/Tab picks, Esc
+ * closes. Picking inserts `@Nombre ` into the visible text; the pill is drawn
+ * by a backdrop `div` positioned exactly behind the (transparent) textarea, so
+ * the user keeps editing plain text with a normal caret. `onChange` also
+ * receives the serialised `@[Nombre](uuid)` form for storage.
  */
 export function MentionTextarea({
   value,
   onChange,
   members,
+  initialMentions,
   placeholder,
   rows = 3,
   disabled,
 }: MentionTextareaProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const [caret, setCaret] = useState<number>(0);
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
   const [highlight, setHighlight] = useState(0);
   const pendingCaret = useRef<number | null>(null);
+  // Mentions inserted via the picker (plus any seeded ones): name → member.
+  const [picked, setPicked] = useState<MentionMember[]>(() => initialMentions ?? []);
+
+  // Picked mentions win over `members` so a renamed/removed member still
+  // serialises to the id the user actually chose.
+  const known = useMemo<MentionMember[]>(() => [...picked, ...members], [picked, members]);
 
   const active = useMemo(() => {
     const before = value.slice(0, caret);
@@ -86,13 +126,30 @@ export function MentionTextarea({
     if (el) setCaret(el.selectionStart ?? 0);
   }
 
+  function syncScroll() {
+    const el = ref.current;
+    const bd = backdropRef.current;
+    if (el && bd) {
+      bd.scrollTop = el.scrollTop;
+      bd.scrollLeft = el.scrollLeft;
+    }
+  }
+
+  function emit(display: string, mentions: MentionMember[] = known) {
+    onChange(display, serializeMentions(display, mentions));
+  }
+
   function pick(member: Profile) {
     if (!active) return;
-    const token = `${mentionToken(member)} `;
-    const next = value.slice(0, active.start) + token + value.slice(caret);
-    pendingCaret.current = active.start + token.length;
+    const insert = `@${safeMentionName(member.full_name)} `;
+    const next = value.slice(0, active.start) + insert + value.slice(caret);
+    pendingCaret.current = active.start + insert.length;
     setDismissedFor(null);
-    onChange(next);
+    const nextPicked = picked.some((p) => p.id === member.id)
+      ? picked
+      : [...picked, { id: member.id, full_name: member.full_name }];
+    setPicked(nextPicked);
+    emit(next, [...nextPicked, ...members]);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -117,6 +174,24 @@ export function MentionTextarea({
 
   return (
     <div style={{ position: 'relative' }}>
+      {/* Highlight backdrop: same text, transparent ink, pills behind names. */}
+      <div
+        ref={backdropRef}
+        aria-hidden
+        style={{
+          ...TEXT_BOX,
+          position: 'absolute',
+          inset: 0,
+          overflow: 'hidden',
+          pointerEvents: 'none',
+          userSelect: 'none',
+          color: 'transparent',
+          backgroundColor: disabled ? '#f4f6f8' : 'white',
+        }}
+      >
+        {renderHighlightedText(value, known)}
+      </div>
+
       <textarea
         ref={ref}
         value={value}
@@ -124,30 +199,28 @@ export function MentionTextarea({
         disabled={disabled}
         placeholder={placeholder}
         onChange={(e) => {
-          onChange(e.target.value);
+          emit(e.target.value);
           setCaret(e.target.selectionStart ?? e.target.value.length);
         }}
         onKeyDown={handleKeyDown}
         onKeyUp={syncCaret}
         onClick={syncCaret}
         onSelect={syncCaret}
+        onScroll={syncScroll}
         onBlur={() => {
           // Delay so a mousedown on a suggestion can win before we close.
           setTimeout(() => setDismissedFor(key), 150);
         }}
         aria-autocomplete="list"
         style={{
+          ...TEXT_BOX,
+          position: 'relative',
+          display: 'block',
           width: '100%',
-          padding: '0.8rem 1.2rem',
-          fontSize: '1.4rem',
-          lineHeight: 1.5,
           color: '#212b36',
-          border: '1px solid #c4cdd5',
-          borderRadius: '4px',
+          borderColor: '#c4cdd5',
+          backgroundColor: 'transparent',
           resize: 'vertical',
-          fontFamily: 'inherit',
-          backgroundColor: disabled ? '#f4f6f8' : 'white',
-          boxSizing: 'border-box',
         }}
       />
 
@@ -208,6 +281,39 @@ export function MentionTextarea({
       )}
     </div>
   );
+}
+
+/**
+ * Backdrop content: the display text verbatim, with each known `@Nombre`
+ * wrapped in a pill. Text stays transparent (the real textarea draws the
+ * glyphs on top); only the pill background shows through.
+ */
+function renderHighlightedText(display: string, known: MentionMember[]): React.ReactNode {
+  const spans = findMentionSpans(display, known);
+  const nodes: React.ReactNode[] = [];
+  let last = 0;
+  spans.forEach((span, i) => {
+    if (span.start > last) nodes.push(display.slice(last, span.start));
+    nodes.push(
+      <span
+        key={`p-${i}`}
+        style={{
+          backgroundColor: '#eef0fb',
+          borderRadius: '4px',
+          boxDecorationBreak: 'clone',
+          WebkitBoxDecorationBreak: 'clone',
+        }}
+      >
+        {display.slice(span.start, span.end)}
+      </span>,
+    );
+    last = span.end;
+  });
+  if (last < display.length) nodes.push(display.slice(last));
+  // A trailing newline would collapse without a following glyph; the
+  // zero-width space keeps the backdrop the same height as the textarea.
+  nodes.push('\u200b');
+  return <>{nodes}</>;
 }
 
 /**

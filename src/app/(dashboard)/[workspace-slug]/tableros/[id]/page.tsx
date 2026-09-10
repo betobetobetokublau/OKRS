@@ -2,18 +2,33 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { createClient } from '@/lib/supabase/client';
-import { useBoard, createSection, deleteSection, moveTask, renameSection, reorderCards, reorderSections } from '@/hooks/use-boards';
+import {
+  useBoard,
+  createSection,
+  deleteSection,
+  loadColumnOrder,
+  moveTask,
+  renameSection,
+  reorderCards,
+  reorderSections,
+  saveColumnOrder,
+} from '@/hooks/use-boards';
 import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
-import { TaskForm } from '@/components/tasks/task-form';
 import { BlockReasonDialog } from '@/components/tasks/block-reason-dialog';
 import { BoardKanban, type DropPayload } from '@/components/boards/board-kanban';
+import { BoardList } from '@/components/boards/board-list';
 import { BoardToolbar } from '@/components/boards/board-toolbar';
+import { BoardHeader } from '@/components/boards/board-header';
+import { BoardFormModal } from '@/components/boards/board-form-modal';
+import { TaskComposer } from '@/components/boards/task-composer';
 import { StandupMode } from '@/components/boards/standup-mode';
+import { useBoardPageData } from '@/components/boards/use-board-page-data';
 import {
   DEFAULT_VIEW,
+  applyColumnOrder,
   applyFilters,
   groupItems,
   isTaskOverdue,
@@ -24,51 +39,31 @@ import {
   type BoardView,
 } from '@/components/boards/board-filters';
 import { canManageContent } from '@/lib/utils/permissions';
-import type { BoardTask, Department, Profile, TaskStatus } from '@/types';
+import type { BoardTask, TaskStatus } from '@/types';
 
 export default function TableroPage() {
   const params = useParams<{ 'workspace-slug': string; id: string }>();
   const slug = params?.['workspace-slug'] ?? '';
   const boardId = params?.id;
-  const { currentWorkspace, activePeriod, userWorkspace, profile } = useWorkspaceStore();
+  const router = useRouter();
+  const { currentWorkspace, activePeriod, userWorkspace, profile, setProfile } = useWorkspaceStore();
   const { data, loading, error, refetch } = useBoard(boardId);
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
+  const { members, departments, objectives, boardMembers, refetchBoardMembers } = useBoardPageData(currentWorkspace?.id, activePeriod?.id, boardId);
 
-  const [members, setMembers] = useState<Profile[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
   const [view, setView] = useState<BoardView>(DEFAULT_VIEW);
   const [viewLoaded, setViewLoaded] = useState(false);
+  /** Per-user left-to-right section order (profiles.preferences). undefined = DB position order. */
+  const [columnOrder, setColumnOrder] = useState<string[] | undefined>(undefined);
   /** Optimistic status per task id while the write + refetch are in flight. */
   const [statusOverrides, setStatusOverrides] = useState<Record<string, TaskStatus>>({});
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
-  const [taskFormSection, setTaskFormSection] = useState<{ sectionId: string | null } | null>(null);
+  const [composerKey, setComposerKey] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const [standup, setStandup] = useState(false);
   const [blockPending, setBlockPending] = useState<{ taskId: string; wasBlocked: boolean } | null>(null);
 
-  // Workspace members (for the "Asignado" pill + grouping by assignee) and departments (for the detail panel).
-  useEffect(() => {
-    if (!currentWorkspace?.id) return;
-    let cancelled = false;
-    (async () => {
-      const supabase = createClient();
-      const [uwRes, deptRes] = await Promise.all([
-        supabase.from('user_workspaces').select('profile:profiles(*)').eq('workspace_id', currentWorkspace.id),
-        supabase.from('departments').select('*').eq('workspace_id', currentWorkspace.id).order('name', { ascending: true }),
-      ]);
-      if (cancelled) return;
-      const profiles = ((uwRes.data || []) as unknown as Array<{ profile: Profile | null }>)
-        .map((r) => r.profile)
-        .filter((p): p is Profile => Boolean(p))
-        .sort((a, b) => a.full_name.localeCompare(b.full_name, 'es'));
-      setMembers(profiles);
-      setDepartments((deptRes.data || []) as Department[]);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentWorkspace?.id]);
-
-  // Per-board view persistence.
+  // Per-board view persistence (localStorage) + per-user column order (profile prefs).
   useEffect(() => {
     if (!boardId) return;
     setView(loadView(boardId));
@@ -77,6 +72,9 @@ export default function TableroPage() {
   useEffect(() => {
     if (boardId && viewLoaded) saveView(boardId, view);
   }, [boardId, view, viewLoaded]);
+  useEffect(() => {
+    if (boardId) setColumnOrder(loadColumnOrder(profile, boardId));
+  }, [boardId, profile]);
 
   const refresh = useCallback(async () => {
     await refetch();
@@ -97,12 +95,9 @@ export default function TableroPage() {
     [allItems, view.filters, view.sort, profile?.id],
   );
 
-  const sections = useMemo(() => data?.sections ?? [], [data?.sections]);
-  const columns = useMemo(
-    () => groupItems(visibleItems, view.grouping, sections, members),
-    [visibleItems, view.grouping, sections, members],
-  );
-
+  const sections = useMemo(() => applyColumnOrder(data?.sections ?? [], columnOrder), [data?.sections, columnOrder]);
+  const columns = useMemo(() => groupItems(visibleItems, view.grouping, sections, members), [visibleItems, view.grouping, sections, members]);
+  const firstSectionId = sections[0]?.id ?? null;
   const overdueCount = allItems.filter(isTaskOverdue).length;
 
   // ---------- Handlers ----------
@@ -175,13 +170,26 @@ export default function TableroPage() {
     await refresh();
   }
 
+  async function persistColumnOrder(ids: string[]) {
+    if (!boardId) return;
+    setColumnOrder(ids);
+    if (!profile) return;
+    const preferences = await saveColumnOrder(profile.id, boardId, ids);
+    if (preferences) setProfile({ ...profile, preferences });
+  }
+
   async function handleAddSection(name: string, index: number) {
     if (!boardId) return;
-    const ordered = [...sections].sort((a, b) => a.position - b.position);
-    // Shift everything at/after the insertion point to keep positions dense.
-    const shifted = ordered.filter((s) => s.position >= index).map((s) => ({ id: s.id, position: s.position + 1 }));
+    // `index` is a position in the user's order; in the DB we insert at the same index and shift the rest.
+    const shifted = sections.filter((_, i) => i >= index).map((s, i) => ({ id: s.id, position: index + i + 1 }));
     if (shifted.length > 0) await reorderSections(shifted);
-    await createSection(boardId, name, index);
+    const { data: created } = await createSection(boardId, name, index);
+    const newId = (created as { id: string } | null)?.id;
+    if (newId && columnOrder) {
+      const next = sections.map((s) => s.id);
+      next.splice(index, 0, newId);
+      await persistColumnOrder(next);
+    }
     await refresh();
   }
 
@@ -202,13 +210,24 @@ export default function TableroPage() {
     await refresh();
   }
 
-  function openTaskForm(column?: BoardColumn) {
-    const firstSection = [...sections].sort((a, b) => a.position - b.position)[0];
-    const sectionId = column && column.kind === 'section' ? column.sectionId ?? null : firstSection?.id ?? null;
-    setTaskFormSection({ sectionId });
-  }
-
   const openTask = (item: BoardTask) => setPanelTarget({ type: 'task', id: item.task_id });
+
+  const renderComposer = (column: BoardColumn) =>
+    currentWorkspace && boardId ? (
+      <TaskComposer
+        key={column.key}
+        workspaceId={currentWorkspace.id}
+        boardId={boardId}
+        sectionId={column.kind === 'section' ? column.sectionId ?? null : firstSectionId}
+        presetStatus={column.kind === 'status' ? column.status : undefined}
+        presetAssigneeId={column.kind === 'assignee' ? column.assigneeId ?? null : null}
+        members={members}
+        objectives={objectives}
+        compact={view.tab === 'list'}
+        onSaved={refresh}
+        onCancel={() => setComposerKey(null)}
+      />
+    ) : null;
 
   // ---------- Render ----------
   if (loading) {
@@ -228,6 +247,7 @@ export default function TableroPage() {
   }
 
   const { board } = data;
+  const composerProps = canEdit ? { composerColumnKey: composerKey, renderComposer, onAddTask: (c: BoardColumn) => setComposerKey(c.key) } : {};
 
   const renderKanban = (cols: BoardColumn[], scale: 'normal' | 'large', sectionTools: boolean) => (
     <BoardKanban
@@ -235,46 +255,31 @@ export default function TableroPage() {
       grouping={view.grouping}
       scale={scale}
       canEdit={canEdit}
+      members={members}
       onToggleComplete={handleToggleComplete}
       onOpen={openTask}
       onDrop={handleDrop}
-      onAddTask={openTaskForm}
+      onChanged={refresh}
+      {...composerProps}
       onAddSection={sectionTools ? handleAddSection : undefined}
       onRenameSection={sectionTools ? handleRenameSection : undefined}
       onDeleteSection={sectionTools ? handleDeleteSection : undefined}
+      onReorderColumns={view.grouping === 'section' ? persistColumnOrder : undefined}
     />
   );
 
   return (
     <div>
-      <Link href={`/${slug}/tableros`} style={{ color: '#637381', fontSize: '1.2rem', textDecoration: 'none' }}>
-        ← Tableros
-      </Link>
-
-      {/* Header */}
-      <div style={{ margin: '0.8rem 0 1.2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <span style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: board.color, display: 'inline-block' }} />
-          <h1 style={{ fontSize: '2.2rem', fontWeight: 600, color: '#212b36', margin: 0 }}>{board.name}</h1>
-          <span style={{ fontSize: '1.3rem', color: '#637381' }}>
-            · {allItems.length} {allItems.length === 1 ? 'tarea' : 'tareas'} ·{' '}
-            <span style={{ color: overdueCount > 0 ? '#bf0711' : '#637381' }}>
-              {overdueCount} {overdueCount === 1 ? 'vencida' : 'vencidas'}
-            </span>
-          </span>
-        </div>
-        <p style={{ margin: '0.4rem 0 0', fontSize: '1.3rem', color: '#637381' }}>
-          {board.visibility === 'private' ? 'Tablero privado' : 'Tablero del equipo · visible para todo el workspace'}
-          {board.description ? ` · ${board.description}` : ''}
-        </p>
-      </div>
-
-      {/* Tabs */}
-      <div role="tablist" style={{ display: 'flex', gap: '0.4rem', borderBottom: '1px solid #dfe3e8', marginBottom: '1.6rem' }}>
-        <TabButton active>Tablero</TabButton>
-        <TabButton disabled>Lista</TabButton>
-        <TabButton disabled>Calendario</TabButton>
-      </div>
+      <BoardHeader
+        slug={slug}
+        board={board}
+        taskCount={allItems.length}
+        overdueCount={overdueCount}
+        boardMembers={boardMembers}
+        onOpenSettings={canEdit ? () => setShowSettings(true) : undefined}
+        tab={view.tab}
+        onTabChange={(tab) => setView((v) => ({ ...v, tab }))}
+      />
 
       <BoardToolbar
         canEdit={canEdit}
@@ -287,34 +292,25 @@ export default function TableroPage() {
         onGroupingChange={(grouping) => setView((v) => ({ ...v, grouping }))}
         standupActive={standup}
         onToggleStandup={() => setStandup((s) => !s)}
-        onAddTask={() => openTaskForm()}
+        onAddTask={() => columns[0] && setComposerKey(columns[0].key)}
+        onOpenSettings={canEdit ? () => setShowSettings(true) : undefined}
       />
 
-      {renderKanban(columns, 'normal', view.grouping === 'section')}
+      {view.tab === 'list' ? (
+        <BoardList columns={columns} canEdit={canEdit} members={members} onOpen={openTask} onChanged={refresh} {...composerProps} />
+      ) : (
+        renderKanban(columns, 'normal', view.grouping === 'section')
+      )}
 
       {standup && (
         <StandupMode
           board={board}
           items={visibleItems}
-          escEnabled={!panelTarget && !taskFormSection && !blockPending}
+          escEnabled={!panelTarget && !composerKey && !blockPending && !showSettings}
           onClose={() => setStandup(false)}
           renderKanban={(stageItems, personSelected) => {
             const cols = groupItems(stageItems, view.grouping, sections, members).filter((c) => !personSelected || c.items.length > 0);
             return renderKanban(cols, 'large', false);
-          }}
-        />
-      )}
-
-      {taskFormSection && currentWorkspace && (
-        <TaskForm
-          workspaceId={currentWorkspace.id}
-          periodId={activePeriod?.id}
-          allowObjectivePicker
-          boardPlacement={{ boardId: board.id, sectionId: taskFormSection.sectionId }}
-          onClose={() => setTaskFormSection(null)}
-          onSaved={() => {
-            setTaskFormSection(null);
-            refresh();
           }}
         />
       )}
@@ -329,33 +325,26 @@ export default function TableroPage() {
         />
       )}
 
+      {currentWorkspace && (
+        <BoardFormModal
+          open={showSettings}
+          workspaceId={currentWorkspace.id}
+          members={members}
+          board={board}
+          onClose={() => setShowSettings(false)}
+          onSaved={() => {
+            setShowSettings(false);
+            refresh();
+            refetchBoardMembers();
+          }}
+          onArchived={() => {
+            setShowSettings(false);
+            router.push(`/${slug}/tableros`);
+          }}
+        />
+      )}
+
       <OkrDetailPanel target={panelTarget} departments={departments} canEdit={canEdit} onClose={() => setPanelTarget(null)} onChanged={refresh} />
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-function TabButton({ active, disabled, children }: { active?: boolean; disabled?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={Boolean(active)}
-      disabled={disabled}
-      title={disabled ? 'Próximamente' : undefined}
-      style={{
-        padding: '0.8rem 1.6rem',
-        fontSize: '1.4rem',
-        fontWeight: active ? 600 : 500,
-        color: active ? '#5c6ac4' : disabled ? '#c4cdd5' : '#637381',
-        backgroundColor: 'transparent',
-        border: 'none',
-        borderBottom: active ? '2px solid #5c6ac4' : '2px solid transparent',
-        marginBottom: '-1px',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-      }}
-    >
-      {children}
-    </button>
   );
 }

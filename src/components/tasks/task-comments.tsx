@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { MentionTextarea, renderCommentContent } from '@/components/comments/mention-textarea';
+import { useLiveRefetch } from '@/components/comments/use-live-comments';
 import { extractMentionIds } from '@/lib/validators/board';
 import { formatRelative } from '@/lib/utils/dates';
 import { useWorkspaceStore } from '@/stores/workspace-store';
@@ -31,7 +32,10 @@ export function TaskComments({ taskId, workspaceId, canComment = true }: TaskCom
   const [activity, setActivity] = useState<TaskActivity[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
+  // `draft` is what the user sees (`@Nombre`); `serialized` carries the
+  // `@[Nombre](uuid)` tokens that get stored and drive notifications.
   const [draft, setDraft] = useState('');
+  const [serialized, setSerialized] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +69,16 @@ export function TaskComments({ taskId, workspaceId, canComment = true }: TaskCom
     load();
   }, [load]);
 
+  // Live updates: another user's comment or activity row lands → refetch.
+  useLiveRefetch(
+    `task-comments-${taskId}`,
+    [
+      { table: 'comments', filter: `task_id=eq.${taskId}` },
+      { table: 'task_activity', filter: `task_id=eq.${taskId}` },
+    ],
+    load,
+  );
+
   const nameById = useMemo(() => {
     const map = new Map<string, string>();
     for (const m of members) map.set(m.id, m.full_name);
@@ -76,11 +90,11 @@ export function TaskComments({ taskId, workspaceId, canComment = true }: TaskCom
   const lookupName = useCallback((id: string) => nameById.get(id) ?? null, [nameById]);
 
   const mentionedOthers = useMemo(
-    () => extractMentionIds(draft).filter((id) => id !== profile?.id).length,
-    [draft, profile?.id],
+    () => extractMentionIds(serialized).filter((id) => id !== profile?.id).length,
+    [serialized, profile?.id],
   );
 
-  const trimmed = draft.trim();
+  const trimmed = serialized.trim();
   const canSubmit = trimmed.length > 0 && !submitting;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -107,6 +121,7 @@ export function TaskComments({ taskId, workspaceId, canComment = true }: TaskCom
       return;
     }
     setDraft('');
+    setSerialized('');
     load();
   }
 
@@ -156,7 +171,10 @@ export function TaskComments({ taskId, workspaceId, canComment = true }: TaskCom
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
               <MentionTextarea
                 value={draft}
-                onChange={setDraft}
+                onChange={(display, stored) => {
+                  setDraft(display);
+                  setSerialized(stored);
+                }}
                 members={members}
                 placeholder="Escribe un comentario… usa @ para mencionar"
                 rows={3}

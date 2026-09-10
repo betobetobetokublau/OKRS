@@ -1,15 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useWorkspaceStore } from '@/stores/workspace-store';
-import { useBoards, createBoard, updateBoard } from '@/hooks/use-boards';
-import { AnimatedModal } from '@/components/common/animated-modal';
-import { INPUT_STYLE, TEXTAREA_STYLE } from '@/lib/styles/form';
+import { useBoards, fetchWorkspaceMembers, updateBoard } from '@/hooks/use-boards';
+import { BoardFormModal } from '@/components/boards/board-form-modal';
 import { canManageContent } from '@/lib/utils/permissions';
-import type { Board, BoardVisibility } from '@/types';
-
-const PALETTE = ['#5c6ac4', '#306DF6', '#47c1bf', '#50b83c', '#eec200', '#f49342', '#de3618', '#9c6ade'];
+import type { Board, Profile } from '@/types';
 
 export default function TablerosPage() {
   const params = useParams<{ 'workspace-slug': string }>();
@@ -18,7 +15,19 @@ export default function TablerosPage() {
   const { currentWorkspace, userWorkspace } = useWorkspaceStore();
   const { boards, loading, refetch } = useBoards(currentWorkspace?.id);
   const [showCreate, setShowCreate] = useState(false);
+  const [members, setMembers] = useState<Profile[]>([]);
   const canCreate = Boolean(userWorkspace && canManageContent(userWorkspace.role));
+
+  useEffect(() => {
+    if (!currentWorkspace?.id || !canCreate) return;
+    let cancelled = false;
+    fetchWorkspaceMembers(currentWorkspace.id).then((list) => {
+      if (!cancelled) setMembers(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentWorkspace?.id, canCreate]);
 
   // Favorites first (the query already orders this way; re-sort so a star toggle re-orders instantly after refetch).
   const sorted = [...boards].sort((a, b) => Number(b.is_favorite) - Number(a.is_favorite) || a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'es'));
@@ -68,11 +77,12 @@ export default function TablerosPage() {
       )}
 
       {currentWorkspace && (
-        <CreateBoardModal
+        <BoardFormModal
           open={showCreate}
           workspaceId={currentWorkspace.id}
+          members={members}
           onClose={() => setShowCreate(false)}
-          onCreated={(board) => {
+          onSaved={(board) => {
             setShowCreate(false);
             refetch();
             router.push(`/${slug}/tableros/${board.id}`);
@@ -139,138 +149,5 @@ function BoardCardTile({ board, onOpen, onToggleFavorite }: { board: Board; onOp
         <span>{board.visibility === 'private' ? 'Privado' : 'Todo el workspace'}</span>
       </div>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-function CreateBoardModal({ open, workspaceId, onClose, onCreated }: { open: boolean; workspaceId: string; onClose: () => void; onCreated: (b: Board) => void }) {
-  const { profile } = useWorkspaceStore();
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [color, setColor] = useState<string>(PALETTE[0]!);
-  const [visibility, setVisibility] = useState<BoardVisibility>('workspace');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function reset() {
-    setName('');
-    setDescription('');
-    setColor(PALETTE[0]!);
-    setVisibility('workspace');
-    setError(null);
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || saving) return;
-    setSaving(true);
-    setError(null);
-    const board = await createBoard({
-      workspace_id: workspaceId,
-      name: name.trim(),
-      description: description.trim() || null,
-      color,
-      visibility,
-      owner_id: visibility === 'private' ? profile?.id ?? null : null,
-    });
-    setSaving(false);
-    if (!board) {
-      setError('No pudimos crear el tablero. Intenta de nuevo.');
-      return;
-    }
-    reset();
-    onCreated(board);
-  }
-
-  const labelStyle = { display: 'block', fontSize: '1.3rem', fontWeight: 600, color: '#212b36', marginBottom: '0.6rem' } as const;
-
-  return (
-    <AnimatedModal
-      open={open}
-      onClose={() => {
-        reset();
-        onClose();
-      }}
-      width={480}
-    >
-      <form onSubmit={handleSubmit}>
-        <h2 style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36', marginBottom: '1.6rem' }}>Nuevo tablero</h2>
-
-        <div style={{ marginBottom: '1.4rem' }}>
-          <label htmlFor="board-name" style={labelStyle}>
-            Nombre
-          </label>
-          <input id="board-name" autoFocus required value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Roadmap Q4" style={INPUT_STYLE} />
-        </div>
-
-        <div style={{ marginBottom: '1.4rem' }}>
-          <label htmlFor="board-desc" style={labelStyle}>
-            Descripción <span style={{ color: '#919eab', fontWeight: 400 }}>(opcional)</span>
-          </label>
-          <textarea id="board-desc" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} style={TEXTAREA_STYLE} />
-        </div>
-
-        <div style={{ marginBottom: '1.4rem' }}>
-          <span style={labelStyle}>Color</span>
-          <div style={{ display: 'flex', gap: '0.8rem' }}>
-            {PALETTE.map((c) => (
-              <button
-                key={c}
-                type="button"
-                aria-label={`Color ${c}`}
-                aria-pressed={color === c}
-                onClick={() => setColor(c)}
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: '50%',
-                  backgroundColor: c,
-                  border: color === c ? '3px solid #212b36' : '3px solid white',
-                  boxShadow: '0 0 0 1px #dfe3e8',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div style={{ marginBottom: '2rem' }}>
-          <span style={labelStyle}>Visibilidad</span>
-          <div style={{ display: 'flex', gap: '1.6rem', fontSize: '1.3rem', color: '#212b36' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-              <input type="radio" name="visibility" checked={visibility === 'workspace'} onChange={() => setVisibility('workspace')} />
-              Todo el workspace
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-              <input type="radio" name="visibility" checked={visibility === 'private'} onChange={() => setVisibility('private')} />
-              Privado
-            </label>
-          </div>
-        </div>
-
-        {error && <p style={{ color: '#bf0711', fontSize: '1.3rem', marginBottom: '1.2rem' }}>{error}</p>}
-
-        <div style={{ display: 'flex', gap: '0.8rem', justifyContent: 'flex-end' }}>
-          <button
-            type="button"
-            onClick={() => {
-              reset();
-              onClose();
-            }}
-            style={{ padding: '0.8rem 1.6rem', fontSize: '1.4rem', fontWeight: 500, color: '#637381', backgroundColor: '#f4f6f8', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={saving || !name.trim()}
-            style={{ padding: '0.8rem 1.6rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: saving || !name.trim() ? '#9ea6dc' : '#5c6ac4', border: 'none', borderRadius: '4px', cursor: saving || !name.trim() ? 'not-allowed' : 'pointer' }}
-          >
-            {saving ? 'Creando...' : 'Crear tablero'}
-          </button>
-        </div>
-      </form>
-    </AnimatedModal>
   );
 }

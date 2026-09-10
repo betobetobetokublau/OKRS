@@ -3,14 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 
 interface SectionMenuProps {
-  onRename: () => void;
   onAddBefore: () => void;
   onAddAfter: () => void;
   onDelete: () => void;
 }
 
 /** "···" popover on a section column header. */
-export function SectionMenu({ onRename, onAddBefore, onAddAfter, onDelete }: SectionMenuProps) {
+export function SectionMenu({ onAddBefore, onAddAfter, onDelete }: SectionMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -74,7 +73,6 @@ export function SectionMenu({ onRename, onAddBefore, onAddAfter, onDelete }: Sec
             zIndex: 50,
           }}
         >
-          <MenuItem onClick={run(onRename)}>Renombrar</MenuItem>
           <MenuItem onClick={run(onAddBefore)}>Agregar sección antes</MenuItem>
           <MenuItem onClick={run(onAddAfter)}>Agregar sección después</MenuItem>
           <div style={{ height: '1px', backgroundColor: '#f1f3f5', margin: '0.4rem 0' }} />

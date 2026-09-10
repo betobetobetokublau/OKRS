@@ -338,120 +338,52 @@ export default function CheckinPage() {
     setSaveError('');
     const supabase = createClient();
 
-    const { data: checkinData, error: checkinErr } = await supabase
-      .from('checkins')
-      .insert({
-        user_id: profile.id,
-        workspace_id: currentWorkspace.id,
-        period_id: activePeriod.id,
-        // Free-form note from the "¿En qué estás pensando?" card. NULL
-        // when empty so the activity feed doesn't render an empty quote.
-        summary: thought.trim() || null,
-      })
-      .select('id')
-      .single();
+    // Everything below runs inside ONE database transaction (save_checkin,
+    // SECURITY INVOKER so RLS still applies): the checkin row, objective
+    // updates, checkin_entries, progress_logs and timeline comments either
+    // all land or none do. Previous values are read server-side under
+    // FOR UPDATE, so stale client state can't produce a wrong delta.
+    const entries = Array.from(objectiveEdits.entries())
+      .filter(([objId]) => objectives.some((o) => o.id === objId))
+      .map(([objId, edit]) => ({
+        objective_id: objId,
+        new_progress: edit.new_progress ?? null,
+        new_status: edit.new_status ?? null,
+        comment: edit.comment?.trim() || null,
+      }));
+    const taskIds = Array.from(tasksToComplete).filter((taskId) => {
+      const fromObj = objectives.flatMap((o) => o.tasks).find((t) => t.id === taskId);
+      const fromMine = myAssignedTasks.find((t) => t.id === taskId);
+      const task = fromObj || fromMine;
+      return Boolean(task) && task!.status !== 'completed';
+    });
 
-    if (checkinErr || !checkinData) {
-      setSaveError(checkinErr?.message || 'No se pudo crear el check-in');
+    try {
+      const { error } = await supabase.rpc('save_checkin', {
+        p_workspace_id: currentWorkspace.id,
+        p_period_id: activePeriod.id,
+        p_summary: thought.trim() || null,
+        p_entries: entries,
+        p_task_ids: taskIds,
+      });
+      if (error) throw error;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo guardar el check-in';
+      setSaveError(`No se pudo guardar el check-in. ${message}`);
       setSaving(false);
       return;
     }
-    const checkinId = checkinData.id as string;
-
-    const timelineInserts: Array<Promise<unknown>> = [];
-    const checkinEntryInserts: Array<Record<string, unknown>> = [];
-
-    const editEntries = Array.from(objectiveEdits.entries());
-    for (const [objId, edit] of editEntries) {
-      const obj = objectives.find((o) => o.id === objId);
-      if (!obj) continue;
-
-      const updates: Record<string, unknown> = {};
-      if (edit.new_progress !== undefined) updates.manual_progress = edit.new_progress;
-      if (edit.new_status !== undefined) updates.status = edit.new_status;
-      if (Object.keys(updates).length > 0) {
-        await supabase.from('objectives').update(updates).eq('id', objId);
-      }
-
-      checkinEntryInserts.push({
-        checkin_id: checkinId,
-        objective_id: objId,
-        previous_progress: obj.manual_progress,
-        new_progress: edit.new_progress ?? null,
-        previous_status: obj.status,
-        new_status: edit.new_status ?? null,
-        note: edit.comment?.trim() || null,
-      });
-
-      if (edit.new_progress !== undefined && edit.new_progress !== obj.manual_progress) {
-        timelineInserts.push(
-          Promise.resolve(
-            supabase.from('progress_logs').insert({
-              user_id: profile.id,
-              workspace_id: currentWorkspace.id,
-              period_id: activePeriod.id,
-              objective_id: objId,
-              previous_value: obj.manual_progress,
-              new_value: edit.new_progress,
-              comment: edit.comment?.trim() || null,
-            }),
-          ),
-        );
-      }
-      const parts: string[] = ['Check-in'];
-      if (edit.new_status !== undefined && edit.new_status !== obj.status) {
-        parts.push(`cambió estado a "${objectiveStatusChip(edit.new_status).label}"`);
-      }
-      if (edit.comment?.trim()) {
-        parts.push(`— ${edit.comment.trim()}`);
-      }
-      if (parts.length > 1) {
-        timelineInserts.push(
-          Promise.resolve(
-            supabase.from('comments').insert({
-              user_id: profile.id,
-              objective_id: objId,
-              content: parts.join(' '),
-            }),
-          ),
-        );
-      }
-    }
-
-    const taskIds = Array.from(tasksToComplete);
-    for (const taskId of taskIds) {
-      // Task could live either in the team objectives OR in myAssignedTasks;
-      // look up previous status from whichever source has it.
-      const fromObj = objectives
-        .flatMap((o) => o.tasks)
-        .find((t) => t.id === taskId);
-      const fromMine = myAssignedTasks.find((t) => t.id === taskId);
-      const task = fromObj || fromMine;
-      if (!task) continue;
-      if (task.status === 'completed') continue;
-
-      await supabase.from('tasks').update({ status: 'completed' }).eq('id', taskId);
-
-      checkinEntryInserts.push({
-        checkin_id: checkinId,
-        task_id: taskId,
-        previous_status: task.status,
-        new_status: 'completed',
-      });
-    }
-
-    if (checkinEntryInserts.length > 0) {
-      await supabase.from('checkin_entries').insert(checkinEntryInserts);
-    }
-    await Promise.all(timelineInserts);
 
     setObjectiveEdits(new Map());
     setTasksToComplete(new Set());
     setThought('');
     setConfirmingCheckin(false);
     setSavedToastId((n) => n + 1);
-    await load();
-    setSaving(false);
+    try {
+      await load();
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Save button is rendered in-page (see the purple "Guardar check-in"
@@ -577,28 +509,33 @@ export default function CheckinPage() {
 
   return (
     <div>
-      {/* Sticky check-in banner (design D — compact card).
-          OUTER wrapper: bleeds to the edges of <main> (which has 2.4rem
-          padding), carries the page background so content scrolling beneath
-          is masked, and pins at top:56px (just under the topbar). Its
-          vertical padding keeps the card from sitting tight against the
-          topbar above or the content below. Living inside <main> (which is
-          margin-offset from the sidebar), it never overlaps the side nav.
-          INNER: the proposal-D horizontal card. */}
+      {/* Single-column container — capped at 600px and centered on the
+          page. Holds the hero, day header, primary CTA, and the
+          per-KPI tables. Mis tareas + Actividad were retired from
+          this view; the thought card now lives inside the
+          confirmation modal opened by the CTA. */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '2rem',
+          maxWidth: '900px',
+          margin: '0 auto',
+        }}
+      >
+        {activePeriod && (
+          <CheckinHero
+            periodName={activePeriod.name}
+            periodStart={new Date(activePeriod.start_date)}
+            periodEnd={new Date(activePeriod.end_date)}
+            checkinsCount={checkinsCount}
+          />
+        )}
+
+        {/* Day header + primary CTA (design D compact card), placed inline
+            between the hero and the objective sections — not pinned. */}
       {activePeriod && (
-        <div
-          style={{
-            position: 'sticky',
-            top: '56px',
-            zIndex: 140,
-            // Cancel <main>'s 2.4rem padding: flush under the topbar + full
-            // content-column width. Vertical padding is the requested
-            // breathing room above/below the card.
-            margin: '-2.4rem -2.4rem 0',
-            padding: '1.6rem 2.4rem',
-            backgroundColor: 'var(--color-bg)',
-          }}
-        >
+        <div>
           <div
             style={{
               display: 'flex',
@@ -651,8 +588,6 @@ export default function CheckinPage() {
                     aria-live="polite"
                     className="anim-fade-in"
                     style={{
-                      // Drops DOWN from the button (the banner is pinned to
-                      // the top, so popping up would collide with the topbar).
                       position: 'absolute',
                       top: 'calc(100% + 1.2rem)',
                       right: 0,
@@ -718,31 +653,6 @@ export default function CheckinPage() {
         </div>
       )}
 
-      {/* Single-column container — capped at 600px and centered on the
-          page. Holds the hero, day header, primary CTA, and the
-          per-KPI tables. Mis tareas + Actividad were retired from
-          this view; the thought card now lives inside the
-          confirmation modal opened by the CTA. */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '2rem',
-          maxWidth: '900px',
-          margin: '0 auto',
-        }}
-      >
-        {activePeriod && (
-          <CheckinHero
-            periodName={activePeriod.name}
-            periodStart={new Date(activePeriod.start_date)}
-            periodEnd={new Date(activePeriod.end_date)}
-            checkinsCount={checkinsCount}
-          />
-        )}
-
-        {/* Day header + primary CTA were relocated to the sticky banner
-            pinned under the topbar (see the top of this component). */}
 
         {saveError && (
           <div style={{ padding: '1rem 1.2rem', backgroundColor: '#fbeae5', color: '#bf0711', borderRadius: '4px', fontSize: '1.3rem' }}>

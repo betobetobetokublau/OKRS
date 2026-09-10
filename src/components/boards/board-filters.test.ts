@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  applyColumnOrder,
   applyFilters,
+  loadView,
   countActiveFilters,
   groupItems,
   sortItems,
@@ -158,5 +160,43 @@ describe('groupItems', () => {
     expect(cols[0]?.assigneeId).toBe(ME);
     expect(cols[2]?.key).toBe(UNASSIGNED_KEY);
     expect(cols[2]?.items.map((i) => i.task_id)).toEqual(['d']);
+  });
+});
+
+describe('applyColumnOrder', () => {
+  const s3: BoardSection = { id: 's3', board_id: 'b', name: 'Hecho', position: 2, wip_limit: null, created_at: '' };
+  const all = [...sections, s3];
+
+  it('falls back to position order without a saved order', () => {
+    expect(applyColumnOrder(all, undefined).map((s) => s.id)).toEqual(['s1', 's2', 's3']);
+    expect(applyColumnOrder(all, []).map((s) => s.id)).toEqual(['s1', 's2', 's3']);
+  });
+
+  it('applies the saved order and renumbers positions', () => {
+    const out = applyColumnOrder(all, ['s3', 's1', 's2']);
+    expect(out.map((s) => s.id)).toEqual(['s3', 's1', 's2']);
+    expect(out.map((s) => s.position)).toEqual([0, 1, 2]);
+  });
+
+  it('skips deleted ids and appends unknown sections in position order', () => {
+    const out = applyColumnOrder(all, ['ghost', 's2']);
+    expect(out.map((s) => s.id)).toEqual(['s2', 's1', 's3']);
+  });
+
+  it('does not mutate the input', () => {
+    const copy = all.map((s) => ({ ...s }));
+    applyColumnOrder(all, ['s2']);
+    expect(all).toEqual(copy);
+  });
+
+  it('feeds groupItems so columns follow the user order', () => {
+    const cols = groupItems(items, 'section', applyColumnOrder(sections, ['s2', 's1']), []);
+    expect(cols.map((c) => c.title)).toEqual(['En curso', 'Por hacer', 'Sin sección']);
+  });
+});
+
+describe('loadView', () => {
+  it('defaults tab to board when absent or unknown', () => {
+    expect(loadView('nope').tab).toBe('board');
   });
 });

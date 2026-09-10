@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { formatRelative } from '@/lib/utils/dates';
 import { MentionTextarea, renderCommentContent } from '@/components/comments/mention-textarea';
+import { useLiveRefetch } from '@/components/comments/use-live-comments';
 import { extractMentionIds } from '@/lib/validators/board';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import type { Comment, ProgressLog, Profile } from '@/types';
@@ -26,7 +27,10 @@ export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
+  // `newComment` is the display text (`@Nombre`); `serialized` holds the
+  // `@[Nombre](uuid)` tokens that get stored.
   const [newComment, setNewComment] = useState('');
+  const [serialized, setSerialized] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -79,6 +83,17 @@ export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
     loadEntries();
   }, [loadEntries]);
 
+  // Live updates: new comments on this objective / KPI from other users.
+  useLiveRefetch(
+    `comment-timeline-${objectiveId ?? 'none'}-${kpiId ?? 'none'}`,
+    objectiveId
+      ? [{ table: 'comments', filter: `objective_id=eq.${objectiveId}` }]
+      : kpiId
+        ? [{ table: 'comments', filter: `kpi_id=eq.${kpiId}` }]
+        : [],
+    loadEntries,
+  );
+
   // Workspace members for the @mention popover.
   useEffect(() => {
     if (!workspaceId) return;
@@ -101,14 +116,17 @@ export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
 
   async function handleSubmitComment(e: React.FormEvent) {
     e.preventDefault();
-    if (!newComment.trim()) return;
+    const content = serialized.trim();
+    if (!content) return;
     setSubmitting(true);
 
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setSubmitting(false);
+      return;
+    }
 
-    const content = newComment.trim();
     const commentData: Record<string, string | string[]> = {
       user_id: user.id,
       content,
@@ -119,6 +137,7 @@ export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
 
     await supabase.from('comments').insert(commentData);
     setNewComment('');
+    setSerialized('');
     setSubmitting(false);
     loadEntries();
   }
@@ -132,7 +151,10 @@ export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
         <div style={{ marginBottom: '0.8rem' }}>
           <MentionTextarea
             value={newComment}
-            onChange={setNewComment}
+            onChange={(display, stored) => {
+              setNewComment(display);
+              setSerialized(stored);
+            }}
             members={members}
             placeholder="Escribe un comentario... usa @ para mencionar"
             rows={2}

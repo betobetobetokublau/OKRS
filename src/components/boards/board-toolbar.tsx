@@ -27,6 +27,8 @@ interface BoardToolbarProps {
   standupActive: boolean;
   onToggleStandup: () => void;
   onAddTask: () => void;
+  /** Opens "Configuración del tablero"; the button is disabled when omitted. */
+  onOpenSettings?: () => void;
 }
 
 const PILL: CSSProperties = {
@@ -79,6 +81,7 @@ export function BoardToolbar({
   standupActive,
   onToggleStandup,
   onAddTask,
+  onOpenSettings,
 }: BoardToolbarProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const popRef = useRef<HTMLDivElement>(null);
@@ -253,7 +256,14 @@ export function BoardToolbar({
         ))}
       </select>
 
-      <button type="button" disabled title="Próximamente" style={{ ...PILL, padding: '0 1rem', color: '#c4cdd5', cursor: 'not-allowed' }}>
+      <button
+        type="button"
+        onClick={onOpenSettings}
+        disabled={!onOpenSettings}
+        aria-label="Configuración del tablero"
+        title={onOpenSettings ? 'Configuración del tablero' : 'Solo administradores'}
+        style={{ ...PILL, padding: '0 1rem', color: onOpenSettings ? '#212b36' : '#c4cdd5', cursor: onOpenSettings ? 'pointer' : 'not-allowed' }}
+      >
         ⚙
       </button>
     </div>

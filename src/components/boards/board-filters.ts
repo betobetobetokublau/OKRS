@@ -21,15 +21,17 @@ export interface BoardFilters {
 
 export type BoardSort = 'manual' | 'priority' | 'due_date' | 'status' | 'assignee' | 'alpha';
 export type BoardGrouping = 'section' | 'status' | 'assignee';
+export type BoardTab = 'board' | 'list';
 
 export interface BoardView {
   filters: BoardFilters;
   sort: BoardSort;
   grouping: BoardGrouping;
+  tab: BoardTab;
 }
 
 export const EMPTY_FILTERS: BoardFilters = { quick: [], statuses: [], priorities: [], assignee: 'all' };
-export const DEFAULT_VIEW: BoardView = { filters: EMPTY_FILTERS, sort: 'manual', grouping: 'section' };
+export const DEFAULT_VIEW: BoardView = { filters: EMPTY_FILTERS, sort: 'manual', grouping: 'section', tab: 'board' };
 
 export const QUICK_FILTER_LABELS: Record<QuickFilter, string> = {
   incomplete: 'Incompletas',
@@ -148,6 +150,28 @@ export function sortItems(items: BoardTask[], sort: BoardSort): BoardTask[] {
   }
 }
 
+/**
+ * Applies a per-user column order to the board's sections. Ids in `saved`
+ * come first (in that order, skipping ids that no longer exist); sections not
+ * mentioned (new ones) are appended in `position` order. Returns a new array
+ * whose `position` values are renumbered so `groupItems` reflects the order.
+ */
+export function applyColumnOrder(sections: BoardSection[], saved: string[] | undefined): BoardSection[] {
+  const byPosition = [...sections].sort((a, b) => a.position - b.position);
+  if (!saved || saved.length === 0) return byPosition;
+  const byId = new Map(byPosition.map((s) => [s.id, s]));
+  const ordered: BoardSection[] = [];
+  for (const id of saved) {
+    const s = byId.get(id);
+    if (s) {
+      ordered.push(s);
+      byId.delete(id);
+    }
+  }
+  for (const s of byPosition) if (byId.has(s.id)) ordered.push(s);
+  return ordered.map((s, i) => (s.position === i ? s : { ...s, position: i }));
+}
+
 export interface BoardColumn {
   /** Stable id used as the dnd-kit droppable id. */
   key: string;
@@ -262,6 +286,7 @@ export function loadView(boardId: string): BoardView {
       },
       sort: parsed.sort && SORT_VALUES.has(parsed.sort) ? parsed.sort : 'manual',
       grouping: parsed.grouping && GROUPING_VALUES.has(parsed.grouping) ? parsed.grouping : 'section',
+      tab: parsed.tab === 'list' ? 'list' : 'board',
     };
   } catch {
     return DEFAULT_VIEW;
