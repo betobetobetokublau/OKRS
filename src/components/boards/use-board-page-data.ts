@@ -3,19 +3,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { fetchBoardMembers, fetchWorkspaceMembers } from '@/hooks/use-boards';
-import type { ComposerObjective } from './task-composer';
+import { useObjectiveOptions } from '@/hooks/use-objective-options';
 import type { Department, Profile } from '@/types';
 
 /**
  * Reference data for the board page, loaded once per workspace / board:
  * workspace members (assignee dropdowns, grouping), departments (detail
- * panel), objectives of the active period (composer) and board members
- * (header avatars).
+ * panel), objectives of the active period grouped by department (composer)
+ * and board members (header avatars).
  */
 export function useBoardPageData(workspaceId: string | undefined, periodId: string | undefined, boardId: string | undefined) {
   const [members, setMembers] = useState<Profile[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [objectives, setObjectives] = useState<ComposerObjective[]>([]);
   const [boardMembers, setBoardMembers] = useState<Profile[]>([]);
 
   useEffect(() => {
@@ -36,21 +35,9 @@ export function useBoardPageData(workspaceId: string | undefined, periodId: stri
     };
   }, [workspaceId]);
 
-  useEffect(() => {
-    if (!workspaceId || !periodId) {
-      setObjectives([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const supabase = createClient();
-      const { data } = await supabase.from('objectives').select('id, title').eq('workspace_id', workspaceId).eq('period_id', periodId).order('title', { ascending: true });
-      if (!cancelled) setObjectives((data || []) as ComposerObjective[]);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [workspaceId, periodId]);
+  // Grouped (per department) for the composer's <optgroup>s; the flat list is kept for callers that need it.
+  // Without an active period the hook would return every period's objectives, so it is gated on `periodId`.
+  const { groups: objectiveGroups, objectives } = useObjectiveOptions(periodId ? workspaceId : undefined, periodId);
 
   const refetchBoardMembers = useCallback(async () => {
     if (!boardId) return;
@@ -61,5 +48,5 @@ export function useBoardPageData(workspaceId: string | undefined, periodId: stri
     refetchBoardMembers();
   }, [refetchBoardMembers]);
 
-  return { members, departments, objectives, boardMembers, refetchBoardMembers };
+  return { members, departments, objectives, objectiveGroups, boardMembers, refetchBoardMembers };
 }

@@ -3,13 +3,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createTaskOnBoard } from '@/hooks/use-boards';
 import { PRIORITY_CHIPS } from '@/components/tasks/priority';
+import { NO_DEPARTMENT_LABEL, type ObjectiveOptionGroup } from '@/hooks/use-objective-options';
 import { UserIcon } from './assignee-popover';
 import type { Profile, TaskPriority, TaskStatus } from '@/types';
-
-export interface ComposerObjective {
-  id: string;
-  title: string;
-}
 
 interface TaskComposerProps {
   workspaceId: string;
@@ -17,7 +13,8 @@ interface TaskComposerProps {
   /** Section the new card lands in (null = "Sin sección"). */
   sectionId: string | null;
   members: Profile[];
-  objectives: ComposerObjective[];
+  /** Objectives of the active period, one `<optgroup>` per department. */
+  objectiveGroups: ObjectiveOptionGroup[];
   /** Pre-filled when composing inside a status / assignee column. */
   presetStatus?: TaskStatus;
   presetAssigneeId?: string | null;
@@ -66,7 +63,7 @@ export function TaskComposer({
   boardId,
   sectionId,
   members,
-  objectives,
+  objectiveGroups,
   presetStatus,
   presetAssigneeId,
   compact,
@@ -168,10 +165,14 @@ export function TaskComposer({
       </span>
       <select aria-label="Objetivo" value={objective} onChange={(e) => setObjective(e.target.value)} onKeyDown={onKeyDown} style={chipStyle(Boolean(objective))}>
         <option value="">Objetivo</option>
-        {objectives.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.title}
-          </option>
+        {objectiveGroups.map((g) => (
+          <optgroup key={g.department?.id ?? 'none'} label={g.department?.name ?? NO_DEPARTMENT_LABEL}>
+            {g.objectives.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.title}
+              </option>
+            ))}
+          </optgroup>
         ))}
       </select>
     </>

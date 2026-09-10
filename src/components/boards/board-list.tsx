@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { InlinePrioritySelect } from '@/components/okrs/inline-priority-select';
 import { InlineStatusSelect } from '@/components/okrs/inline-status-select';
-import { formatDate } from '@/lib/utils/dates';
+import { formatDate, formatOverdue } from '@/lib/utils/dates';
 import { AssigneePopover } from './assignee-popover';
 import { isTaskOverdue, type BoardColumn } from './board-filters';
 import type { BoardTask, Profile } from '@/types';
@@ -123,7 +123,7 @@ function Row({ item, canEdit, members, onOpen, onChanged }: { item: BoardTask; c
         <AssigneePopover taskId={task.id} current={task.assigned_user ?? null} members={members} canEdit={canEdit} withName onChanged={onChanged} />
       </div>
       <div style={{ ...CELL, color: overdue ? '#bf0711' : task.due_date ? '#212b36' : '#919eab', fontWeight: overdue ? 600 : 400 }}>
-        {task.due_date ? `${overdue ? '⚠ ' : ''}${formatDate(task.due_date)}` : '—'}
+        {task.due_date ? (overdue ? `⚠ ${formatOverdue(task.due_date)}` : formatDate(task.due_date)) : '—'}
       </div>
       <div style={CELL} onClick={(e) => e.stopPropagation()}>
         <InlineStatusSelect entity="task" id={task.id} currentStatus={task.status} canEdit={canEdit} onChanged={onChanged} />

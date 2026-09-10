@@ -49,7 +49,7 @@ export default function TableroPage() {
   const { currentWorkspace, activePeriod, userWorkspace, profile, setProfile } = useWorkspaceStore();
   const { data, loading, error, refetch } = useBoard(boardId);
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
-  const { members, departments, objectives, boardMembers, refetchBoardMembers } = useBoardPageData(currentWorkspace?.id, activePeriod?.id, boardId);
+  const { members, departments, objectiveGroups, boardMembers, refetchBoardMembers } = useBoardPageData(currentWorkspace?.id, activePeriod?.id, boardId);
 
   const [view, setView] = useState<BoardView>(DEFAULT_VIEW);
   const [viewLoaded, setViewLoaded] = useState(false);
@@ -222,7 +222,7 @@ export default function TableroPage() {
         presetStatus={column.kind === 'status' ? column.status : undefined}
         presetAssigneeId={column.kind === 'assignee' ? column.assigneeId ?? null : null}
         members={members}
-        objectives={objectives}
+        objectiveGroups={objectiveGroups}
         compact={view.tab === 'list'}
         onSaved={refresh}
         onCancel={() => setComposerKey(null)}

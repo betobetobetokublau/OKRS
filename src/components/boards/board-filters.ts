@@ -1,6 +1,6 @@
 import type { BoardSection, BoardTask, Profile, TaskPriority, TaskStatus } from '@/types';
 import { priorityRank } from '@/components/tasks/priority';
-import { isOverdue } from '@/lib/utils/dates';
+import { isPastDue } from '@/lib/utils/dates';
 
 /**
  * Pure filter / sort / group helpers for the Tableros Kanban. No React, no
@@ -75,7 +75,7 @@ export function countActiveFilters(filters: BoardFilters): number {
 export function isTaskOverdue(item: BoardTask): boolean {
   const t = item.task;
   if (!t) return false;
-  return t.status !== 'completed' && isOverdue(t.due_date);
+  return t.status !== 'completed' && isPastDue(t.due_date);
 }
 
 export function applyFilters(items: BoardTask[], filters: BoardFilters, currentUserId: string | null | undefined): BoardTask[] {

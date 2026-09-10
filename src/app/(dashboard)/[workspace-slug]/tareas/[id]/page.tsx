@@ -7,17 +7,16 @@ import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { canManageContent } from '@/lib/utils/permissions';
 import { fetchTaskBoards } from '@/hooks/use-boards';
-import { formatRelative } from '@/lib/utils/dates';
-import { isOverdue } from '@/lib/utils/dates';
-import { UserAvatar } from '@/components/common/user-avatar';
+import { formatRelative, isOverdue } from '@/lib/utils/dates';
 import { InlineStatusSelect } from '@/components/okrs/inline-status-select';
 import { InlinePrioritySelect } from '@/components/okrs/inline-priority-select';
 import { InlineUserSelect } from '@/components/okrs/inline-user-select';
-import { AsanaDueDateValue, AsanaEmpty } from '@/components/okrs/asana-detail-shell';
+import { InlineTextEdit } from '@/components/okrs/inline-text-edit';
+import { InlineDateSelect } from '@/components/okrs/inline-date-select';
+import { InlineObjectiveSelect } from '@/components/okrs/inline-objective-select';
 import { TaskBoardsBlock } from '@/components/tasks/task-boards-block';
 import { SubtasksSection } from '@/components/tasks/subtasks-section';
 import { TaskComments } from '@/components/tasks/task-comments';
-import { TaskForm } from '@/components/tasks/task-form';
 import type { BoardTask, Objective, Profile, Task } from '@/types';
 
 const TASK_SELECT =
@@ -28,13 +27,14 @@ type LoadedTask = Task & { creator?: Profile | null };
 /**
  * Full-page task view (`/{workspace}/tareas/[id]`). Two columns: content on
  * the left (title, description, subtasks, comments/activity) and a sticky
- * properties card on the right with quick actions.
+ * properties card on the right with quick actions. No edit mode: every field
+ * is inline-editable for all roles; `canEdit` only gates Duplicar/Eliminar.
  */
 export default function TaskPage() {
   const params = useParams();
   const router = useRouter();
   const taskId = params.id as string;
-  const { currentWorkspace, userWorkspace } = useWorkspaceStore();
+  const { currentWorkspace, userWorkspace, activePeriod } = useWorkspaceStore();
   const slug = currentWorkspace?.slug ?? (params['workspace-slug'] as string | undefined) ?? '';
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
 
@@ -42,7 +42,6 @@ export default function TaskPage() {
   const [placements, setPlacements] = useState<BoardTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [showEditForm, setShowEditForm] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<'duplicate' | 'delete' | null>(null);
@@ -202,8 +201,8 @@ export default function TaskPage() {
         {/* Left column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', minWidth: 0 }}>
           <div style={cardStyle}>
-            <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36', lineHeight: 1.25, margin: 0, letterSpacing: '-0.01em' }}>
-              {task.title}
+            <h1 style={{ margin: 0 }}>
+              <InlineTextEdit id={task.id} mode="title" value={task.title} onChanged={refresh} />
             </h1>
             <p style={{ fontSize: '1.2rem', color: '#919eab', margin: '0.8rem 0 0', display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
               <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{shortId}</span>
@@ -227,14 +226,16 @@ export default function TaskPage() {
             )}
 
             <h2 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#212b36', margin: '2rem 0 0.8rem' }}>Descripción</h2>
-            {task.description ? (
-              <p style={{ color: '#212b36', fontSize: '1.4rem', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>{task.description}</p>
-            ) : (
-              <p style={{ color: '#919eab', fontSize: '1.3rem', margin: 0 }}>Sin descripción.</p>
-            )}
+            <InlineTextEdit
+              id={task.id}
+              mode="description"
+              value={task.description}
+              placeholder="Agrega una descripción…"
+              onChanged={refresh}
+            />
           </div>
 
-          <SubtasksSection key={`sub-${refreshKey}`} parentTask={task} canEdit={canEdit} onChanged={() => load()} />
+          <SubtasksSection key={`sub-${refreshKey}`} parentTask={task} canEdit onChanged={() => load()} />
 
           <TaskComments key={`com-${refreshKey}`} taskId={task.id} workspaceId={task.workspace_id} />
         </div>
@@ -243,51 +244,42 @@ export default function TaskPage() {
         <aside style={{ position: 'sticky', top: '2rem', display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
           <div style={{ ...cardStyle, padding: '1.6rem' }}>
             <PropertyRow label="Estado">
-              <InlineStatusSelect entity="task" id={task.id} currentStatus={task.status} canEdit={canEdit} onChanged={refresh} />
+              <InlineStatusSelect entity="task" id={task.id} currentStatus={task.status} canEdit onChanged={refresh} />
             </PropertyRow>
             <PropertyRow label="Prioridad">
-              <InlinePrioritySelect id={task.id} currentPriority={task.priority} canEdit={canEdit} onChanged={refresh} />
+              <InlinePrioritySelect id={task.id} currentPriority={task.priority} canEdit onChanged={refresh} />
             </PropertyRow>
             <PropertyRow label="Asignada a">
-              {canEdit ? (
-                <InlineUserSelect
-                  entity="task"
-                  id={task.id}
-                  workspaceId={task.workspace_id}
-                  currentUserId={task.assigned_user_id}
-                  currentUser={task.assigned_user ?? null}
-                  canEdit
-                  onChanged={refresh}
-                />
-              ) : task.assigned_user ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <UserAvatar user={task.assigned_user} size="small" />
-                  <span>{task.assigned_user.full_name}</span>
-                </span>
-              ) : (
-                <AsanaEmpty />
-              )}
+              <InlineUserSelect
+                entity="task"
+                id={task.id}
+                workspaceId={task.workspace_id}
+                currentUserId={task.assigned_user_id}
+                currentUser={task.assigned_user ?? null}
+                canEdit
+                onChanged={refresh}
+              />
             </PropertyRow>
             <PropertyRow label="Fecha límite">
-              <AsanaDueDateValue iso={task.due_date} overdue={overdue} />
+              <InlineDateSelect id={task.id} iso={task.due_date} overdue={overdue} onChanged={refresh} />
             </PropertyRow>
             <PropertyRow label="Objetivo">
-              {objective ? (
-                <Link href={`/${slug}/objetivos/${objective.id}`} style={{ color: '#5c6ac4', fontWeight: 500, textDecoration: 'none' }}>
-                  {objective.title}
-                </Link>
-              ) : (
-                <AsanaEmpty>Sin objetivo</AsanaEmpty>
-              )}
+              <InlineObjectiveSelect
+                id={task.id}
+                workspaceId={task.workspace_id}
+                periodId={activePeriod?.id}
+                currentObjective={objective}
+                slug={slug}
+                onChanged={refresh}
+              />
             </PropertyRow>
             <PropertyRow label="Tableros" last>
-              <TaskBoardsBlock key={`boards-${refreshKey}`} task={task} canEdit={canEdit} onChanged={() => load()} />
+              <TaskBoardsBlock key={`boards-${refreshKey}`} task={task} canEdit onChanged={() => load()} />
             </PropertyRow>
           </div>
 
           {canEdit && (
             <div style={{ ...cardStyle, padding: '1.2rem 1.6rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              <ActionButton onClick={() => setShowEditForm(true)}>Editar</ActionButton>
               <ActionButton onClick={handleDuplicate} disabled={actionBusy !== null}>
                 {actionBusy === 'duplicate' ? 'Duplicando...' : 'Duplicar'}
               </ActionButton>
@@ -324,26 +316,6 @@ export default function TaskPage() {
         >
           {toast}
         </div>
-      )}
-
-      {showEditForm && (
-        <TaskForm
-          objectiveId={task.objective_id ?? undefined}
-          workspaceId={task.workspace_id}
-          onClose={() => setShowEditForm(false)}
-          onSaved={() => {
-            setShowEditForm(false);
-            refresh();
-          }}
-          initialData={{
-            id: task.id,
-            title: task.title,
-            description: task.description ?? '',
-            assigned_user_id: task.assigned_user_id,
-            due_date: task.due_date,
-            priority: task.priority,
-          }}
-        />
       )}
     </div>
   );

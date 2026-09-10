@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { parseISO } from 'date-fns';
 
 /**
  * Shared visual scaffold for KPI / Objective / Task detail views.
@@ -34,7 +35,7 @@ interface AsanaDetailShellProps {
    * non-text element. Takes precedence over `breadcrumb` when set.
    */
   breadcrumbContent?: React.ReactNode;
-  title: string;
+  title: React.ReactNode;
   titleAfter?: React.ReactNode;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -252,7 +253,9 @@ export function AsanaEmpty({ children = 'Sin asignar' }: { children?: React.Reac
 
 export function formatShortDate(iso: string | null): string | null {
   if (!iso) return null;
-  const d = new Date(iso);
+  // Date-only strings (`2026-09-08`) must parse as LOCAL midnight; `new Date`
+  // treats them as UTC and shifts the day back in America/Mexico_City.
+  const d = parseISO(iso);
   if (!Number.isFinite(d.getTime())) return null;
   return `${d.getDate()} ${MONTHS_ES_SHORT[d.getMonth()]} ${d.getFullYear()}`;
 }

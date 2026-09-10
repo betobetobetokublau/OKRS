@@ -6,16 +6,18 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
+  closestCenter,
   closestCorners,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { BoardCard, SCALE, type KanbanScale } from './board-card';
-import { Column, NewSectionColumn, columnKeyFromSortableId, columnSortableId, isColumnSortableId } from './board-column';
+import { Column, ColumnOverlay, NewSectionColumn, columnKeyFromSortableId, columnSortableId, isColumnSortableId } from './board-column';
 import type { BoardColumn, BoardGrouping } from './board-filters';
 import type { BoardTask, Profile } from '@/types';
 
@@ -53,9 +55,18 @@ interface BoardKanbanProps {
 /**
  * Horizontal Kanban with dnd-kit. Keeps a local mirror of `columns` so cards
  * can move between containers while dragging; on drop it reports the final
- * destination + order and lets the page persist (and refetch). Column headers
- * are a second, horizontal sortable (ids prefixed `col:`) driven by a grip.
+ * destination + order and lets the page persist (and refetch). Columns are a
+ * second, horizontal sortable (ids prefixed `col:`) dragged by their header:
+ * the overlay carries a copy of the whole column while siblings slide aside.
  */
+
+/** Columns only collide with other column sortables; cards keep closest-corners across cards and columns. */
+const collisionDetection: CollisionDetection = (args) => {
+  if (isColumnSortableId(String(args.active.id))) {
+    return closestCenter({ ...args, droppableContainers: args.droppableContainers.filter((c) => isColumnSortableId(String(c.id))) });
+  }
+  return closestCorners(args);
+};
 export function BoardKanban({
   columns,
   grouping,
@@ -194,11 +205,32 @@ export function BoardKanban({
     setCols(columns);
   }
 
-  const activeItem = activeId && !isColumnSortableId(activeId) ? cols.flatMap((c) => c.items).find((it) => it.task_id === activeId) ?? null : null;
+  const activeIsColumn = activeId != null && isColumnSortableId(activeId);
+  const activeItem = activeId && !activeIsColumn ? cols.flatMap((c) => c.items).find((it) => it.task_id === activeId) ?? null : null;
+  const activeColumn = activeIsColumn ? cols.find((c) => c.key === columnKeyFromSortableId(activeId)) ?? null : null;
   const sectionTools = grouping === 'section' && canEdit && Boolean(onAddSection);
+  // Header drag works wherever the page can persist an order (board view and standup share it).
+  const reorderable = grouping === 'section' && canEdit && Boolean(onReorderColumns);
   // Index in `cols` after the last real section (before "Sin sección").
   const lastSectionIndex = cols.filter((c) => c.sectionId !== null).length;
   const columnSortableIds = cols.filter((c) => c.sectionId != null).map((c) => columnSortableId(c.key));
+
+  const columnFrameProps = (col: BoardColumn, idx: number) => ({
+    column: col,
+    scale,
+    canEdit,
+    members,
+    onToggleComplete,
+    onOpen,
+    onChanged,
+    composer: null,
+    onAddTask: onAddTask ? () => onAddTask(col) : undefined,
+    sectionTools: sectionTools && col.sectionId != null,
+    onRename: (name: string) => col.sectionId && onRenameSection?.(col.sectionId, name),
+    onAddBefore: () => setNewSectionAt(idx),
+    onAddAfter: () => setNewSectionAt(idx + 1),
+    onDelete: () => col.sectionId && onDeleteSection?.(col.sectionId),
+  });
 
   const renderNewSectionInput = (index: number) => (
     <NewSectionColumn
@@ -215,7 +247,7 @@ export function BoardKanban({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -236,20 +268,9 @@ export function BoardKanban({
             <div key={col.key} style={{ display: 'contents' }}>
               {sectionTools && newSectionAt === idx && idx < lastSectionIndex && renderNewSectionInput(idx)}
               <Column
-                column={col}
-                scale={scale}
-                canEdit={canEdit}
-                members={members}
-                onToggleComplete={onToggleComplete}
-                onOpen={onOpen}
-                onChanged={onChanged}
+                {...columnFrameProps(col, idx)}
+                reorderable={reorderable && col.sectionId != null}
                 composer={composerColumnKey === col.key && renderComposer ? renderComposer(col) : null}
-                onAddTask={onAddTask ? () => onAddTask(col) : undefined}
-                sectionTools={sectionTools && col.sectionId != null}
-                onRename={(name) => col.sectionId && onRenameSection?.(col.sectionId, name)}
-                onAddBefore={() => setNewSectionAt(idx)}
-                onAddAfter={() => setNewSectionAt(idx + 1)}
-                onDelete={() => col.sectionId && onDeleteSection?.(col.sectionId)}
               />
             </div>
           ))}
@@ -285,6 +306,7 @@ export function BoardKanban({
             <BoardCard item={activeItem} scale={scale} canEdit={false} onToggleComplete={() => {}} onOpen={() => {}} overlay />
           </div>
         )}
+        {activeColumn && <ColumnOverlay {...columnFrameProps(activeColumn, cols.indexOf(activeColumn))} />}
       </DragOverlay>
     </DndContext>
   );

@@ -3,7 +3,7 @@
 import type { CSSProperties } from 'react';
 import { PRIORITY_CHIPS } from '@/components/tasks/priority';
 import { taskStatusChip } from '@/components/okrs/status-chips';
-import { formatDate } from '@/lib/utils/dates';
+import { formatDate, formatOverdue } from '@/lib/utils/dates';
 import { AssigneePopover } from './assignee-popover';
 import { isTaskOverdue } from './board-filters';
 import type { BoardTask, Profile } from '@/types';
@@ -166,8 +166,7 @@ export function BoardCard({
               whiteSpace: 'nowrap',
             }}
           >
-            {overdue ? '⚠ ' : ''}
-            {formatDate(task.due_date)}
+            {overdue ? `⚠ ${formatOverdue(task.due_date)}` : formatDate(task.due_date)}
           </span>
         )}
         <span style={{ flex: 1 }} />
