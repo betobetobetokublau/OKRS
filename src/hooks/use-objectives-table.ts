@@ -44,6 +44,7 @@ export function useObjectivesTable(workspaceId: string | undefined, periodId: st
       `)
       .eq('workspace_id', workspaceId)
       .eq('period_id', periodId)
+      .is('tasks.parent_task_id', null)
       .order('created_at', { ascending: false });
     if (isStale()) return;
 

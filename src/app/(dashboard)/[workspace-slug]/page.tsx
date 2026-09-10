@@ -34,7 +34,12 @@ export default function DashboardPage() {
       const [kpisRes, objectivesRes, tasksRes] = await Promise.all([
         supabase.from('kpis').select('*, manual_progress').eq('workspace_id', currentWorkspace.id).eq('period_id', activePeriod.id),
         supabase.from('objectives').select('*, manual_progress, status').eq('workspace_id', currentWorkspace.id).eq('period_id', activePeriod.id).order('created_at', { ascending: false }),
-        supabase.from('tasks').select('*, objective:objectives!tasks_objective_id_fkey(workspace_id, period_id)').order('created_at', { ascending: false }),
+        supabase
+          .from('tasks')
+          .select('*, objective:objectives!tasks_objective_id_fkey(workspace_id, period_id)')
+          .eq('workspace_id', currentWorkspace.id)
+          .is('parent_task_id', null)
+          .order('created_at', { ascending: false }),
       ]);
       if (cancelled) return;
 
@@ -52,8 +57,10 @@ export default function DashboardPage() {
 
       const kpis = (kpisRes.data || []) as KPI[];
       const objectives = (objectivesRes.data || []) as Objective[];
-      const allTasks = ((tasksRes.data || []) as (Task & { objective: { workspace_id: string; period_id: string } })[])
-        .filter(t => t.objective?.workspace_id === currentWorkspace.id && t.objective?.period_id === activePeriod.id);
+      // Period filter through the objective when present; tasks without an
+      // objective (boards / backlog) belong to the workspace as a whole.
+      const allTasks = ((tasksRes.data || []) as (Task & { objective: { workspace_id: string; period_id: string } | null })[])
+        .filter(t => !t.objective || t.objective.period_id === activePeriod.id);
 
       const avgKpi = kpis.length > 0
         ? Math.round(kpis.reduce((s, k) => s + k.manual_progress, 0) / kpis.length)

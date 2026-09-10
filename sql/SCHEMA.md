@@ -1,8 +1,11 @@
 # Supabase Database Schema — Source of Truth
 
 > Last verified: 2026-05-20 against production after applying
-> `2026-05-20-schema-reconciliation.sql`. Update this file whenever
-> a migration changes the schema.
+> `2026-05-20-schema-reconciliation.sql`; amended 2026-09-10 for
+> `supabase/migrations/20260910220000_boards_tasks_comments.sql`
+> (boards, task priority/subtasks/workspace_id, task comments, activity
+> trail, trigger-driven notifications). Update this file whenever a
+> migration changes the schema.
 
 ## Status-value conventions
 
@@ -18,15 +21,26 @@ runtime behavior is identical.
 | `kpis.progress_mode` / `objectives.progress_mode` | text | manual, auto, hybrid |
 | `objectives.status` | text | upcoming, in_progress, paused, deprecated |
 | `tasks.status` | text | pending, in_progress, completed, blocked |
+| `tasks.priority` | text | high, medium, low (or NULL = sin prioridad) |
+| `boards.visibility` | text | workspace, private |
+| `task_activity.kind` | text | created, status, priority, assignee, due_date, objective, title, board_added, board_removed, section, subtask_added |
 | `kpis.status` | text | on_track, at_risk, off_track, achieved |
-| `notifications.type` | text | monthly_review_reminder, quarterly_session, task_assigned, task_blocked, objective_updated, general (default `'info'`) |
+| `notifications.type` | text | monthly_review_reminder, quarterly_session, task_assigned, task_blocked, comment_mention, objective_updated, general (default `'info'`) |
 
 ## Helper functions & triggers
 
 - `user_is_in_workspace(_workspace_id uuid) → boolean` — SECURITY DEFINER; checks if `auth.uid()` belongs to the workspace. Used by most RLS policies.
 - `user_shares_workspace(_profile_id uuid) → boolean` — SECURITY DEFINER; checks if `auth.uid()` shares any workspace with the given profile.
 - `set_created_by()` — BEFORE INSERT trigger on `objectives`, `kpis`, `tasks`. Stamps `NEW.created_by := auth.uid()` when `NULL`. Service-role inserts (admin client) leave `created_by` NULL since `auth.uid()` is NULL in that context.
-- `set_updated_at()` — BEFORE UPDATE trigger on `workspaces`, `profiles`, `kpis`, `objectives`, `tasks`. Stamps `NEW.updated_at := now()` on every row change.
+- `set_updated_at()` — BEFORE UPDATE trigger on `workspaces`, `profiles`, `kpis`, `objectives`, `tasks`, `boards`. Stamps `NEW.updated_at := now()` on every row change.
+- `tasks_sync_workspace()` — BEFORE INSERT / UPDATE OF objective_id, workspace_id, parent_task_id on `tasks`. Derives `workspace_id` from the objective (or the parent task) when omitted; raises if task and objective belong to different workspaces or a task is its own parent.
+- `board_is_visible(_board_id uuid) → boolean` — SECURITY DEFINER; true when the caller is in the board's workspace AND (visibility = 'workspace' OR owner OR listed in `board_members`). Used by every RLS policy on `boards`, `board_members`, `board_sections`, `board_tasks`.
+- `board_tasks_check_section()` / `board_tasks_check_workspace()` — BEFORE triggers on `board_tasks`: the section must belong to the same board; board and task must share a workspace; `added_by` defaults to `auth.uid()`.
+- `tasks_log_activity()` — AFTER INSERT / UPDATE on `tasks` (SECURITY DEFINER). Writes `task_activity` rows for created / status / priority / assignee / due_date / objective / title changes and `subtask_added` on the parent.
+- `board_tasks_log_activity()` — AFTER INSERT / UPDATE / DELETE on `board_tasks` (SECURITY DEFINER). Writes `board_added` / `board_removed` / `section` activity.
+- `notify_task_events()` — AFTER INSERT / UPDATE OF assigned_user_id, status on `tasks` (SECURITY DEFINER). Inserts `notifications` of type `task_assigned` (to the new assignee) and `task_blocked` (to assignee + creator), never to the actor. `action_url` = `/{slug}/tareas/{task_id}`.
+- `notify_comment_mentions()` — AFTER INSERT on `comments` (SECURITY DEFINER). For each id in `mentions` that is a workspace member (and not the author) inserts a `comment_mention` notification titled "Te mencionaron" linking to the task / objective / KPI.
+- **Realtime:** `public.notifications` is in the `supabase_realtime` publication (added 2026-09-10 — before that the publication was empty and the in-app bell never fired).
 
 ---
 
@@ -146,18 +160,107 @@ runtime behavior is identical.
 | Column | Type | Nullable | Default | FK / Notes |
 |--------|------|----------|---------|------------|
 | id | uuid | NO | gen_random_uuid() | PK |
-| objective_id | uuid | NO | | → objectives(id) |
+| workspace_id | uuid | NO | | → workspaces(id) ON DELETE CASCADE; **added 2026-09-10**; derived by `tasks_sync_workspace` when omitted — still send it explicitly |
+| objective_id | uuid | YES | | → objectives(id); **NULLABLE since 2026-09-10** (boards / backlog tasks) |
+| parent_task_id | uuid | YES | | → tasks(id) ON DELETE CASCADE; set on subtasks (checklist items) |
 | title | text | NO | | |
 | description | text | YES | | |
 | status | text | YES | 'pending' | CHECK pending/in_progress/completed/blocked |
+| priority | text | YES | | CHECK high/medium/low or NULL |
 | block_reason | text | YES | | |
 | assigned_user_id | uuid | YES | | → profiles(id) |
 | due_date | date | YES | | |
+| sort_order | integer | NO | 0 | |
 | created_by | uuid | YES | | → auth.users(id); auto-set by trigger |
 | created_at | timestamptz | YES | now() | |
 | updated_at | timestamptz | NO | now() | auto-updated by trigger |
 
-**No `workspace_id`** — reach workspace through `objective_id → objectives.workspace_id`.
+Indexes: `tasks_workspace_id_idx`, `tasks_parent_task_id_idx`, `tasks_assigned_user_id_idx`.
+RLS: single policy `tasks_workspace_members` (FOR ALL) on `user_is_in_workspace(workspace_id)` — no objective hop anymore.
+Triggers: `tasks_sync_workspace` (BEFORE), `tasks_log_activity` (AFTER), `tasks_notify` (AFTER, → `notify_task_events`), plus `set_created_by` / `set_updated_at`.
+Listing top-level tasks? Always add `parent_task_id is null` — subtasks share the table.
+
+### boards
+
+A board is a *lens* over tasks, orthogonal to KPI › Objective › Task. Boards never roll up progress.
+
+| Column | Type | Nullable | Default | FK / Notes |
+|--------|------|----------|---------|------------|
+| id | uuid | NO | gen_random_uuid() | PK |
+| workspace_id | uuid | NO | | → workspaces(id) ON DELETE CASCADE |
+| name | text | NO | | |
+| description | text | YES | | |
+| color | text | NO | '#5c6ac4' | |
+| icon | text | YES | | |
+| visibility | text | NO | 'workspace' | CHECK workspace/private |
+| owner_id | uuid | YES | | → profiles(id) ON DELETE SET NULL |
+| department_id | uuid | YES | | → departments(id) ON DELETE SET NULL |
+| is_favorite | boolean | NO | false | |
+| sort_order | integer | NO | 0 | |
+| archived_at | timestamptz | YES | | soft archive |
+| created_by | uuid | YES | | → auth.users(id); auto-set by trigger |
+| created_at | timestamptz | NO | now() | |
+| updated_at | timestamptz | NO | now() | auto-updated by trigger |
+
+RLS: select via `board_is_visible(id)`; insert/update require `user_is_in_workspace(workspace_id)`; delete requires visibility AND (`visibility = 'workspace'` OR owner). Every workspace was seeded with three boards (Sprint / Backlog / Iniciativas) on 2026-09-10.
+
+### board_members
+
+Explicit allow-list for `visibility = 'private'` boards.
+
+| Column | Type | Nullable | Default | FK / Notes |
+|--------|------|----------|---------|------------|
+| board_id | uuid | NO | | → boards(id) ON DELETE CASCADE; PK part |
+| user_id | uuid | NO | | → profiles(id) ON DELETE CASCADE; PK part |
+| created_at | timestamptz | NO | now() | |
+
+RLS: `board_members_all` (FOR ALL) on `board_is_visible(board_id)`.
+
+### board_sections
+
+Columns of a board. Sections ≠ status: moving a card never changes `tasks.status`.
+
+| Column | Type | Nullable | Default | FK / Notes |
+|--------|------|----------|---------|------------|
+| id | uuid | NO | gen_random_uuid() | PK |
+| board_id | uuid | NO | | → boards(id) ON DELETE CASCADE |
+| name | text | NO | | |
+| position | integer | NO | 0 | |
+| wip_limit | integer | YES | | |
+| created_at | timestamptz | NO | now() | |
+
+RLS: `board_sections_all` (FOR ALL) on `board_is_visible(board_id)`. Index `(board_id, position)`.
+
+### board_tasks
+
+One row per (board, task): a task lives in N boards, in exactly ONE section per board.
+
+| Column | Type | Nullable | Default | FK / Notes |
+|--------|------|----------|---------|------------|
+| board_id | uuid | NO | | → boards(id) ON DELETE CASCADE; PK part |
+| task_id | uuid | NO | | → tasks(id) ON DELETE CASCADE; PK part |
+| section_id | uuid | YES | | → board_sections(id) ON DELETE SET NULL (NULL = "Sin sección") |
+| position | integer | NO | 0 | |
+| added_by | uuid | YES | | → auth.users(id); defaults to `auth.uid()` via trigger |
+| created_at | timestamptz | NO | now() | |
+
+RLS: `board_tasks_all` (FOR ALL) on `board_is_visible(board_id)`. Triggers: `board_tasks_check_section`, `board_tasks_check_workspace` (BEFORE), `board_tasks_log_activity` (AFTER). Indexes on `task_id` and `(board_id, section_id, position)`.
+
+### task_activity
+
+Per-task audit trail. **Only triggers write here** — there are no insert/update/delete policies on purpose.
+
+| Column | Type | Nullable | Default | FK / Notes |
+|--------|------|----------|---------|------------|
+| id | uuid | NO | gen_random_uuid() | PK |
+| task_id | uuid | NO | | → tasks(id) ON DELETE CASCADE |
+| workspace_id | uuid | NO | | → workspaces(id) ON DELETE CASCADE |
+| actor_id | uuid | YES | | → profiles(id) ON DELETE SET NULL; `auth.uid()` at write time |
+| kind | text | NO | | CHECK — see conventions table |
+| payload | jsonb | NO | '{}' | e.g. `{from, to}`, `{board_id, board, section}`, `{subtask_id, title}` |
+| created_at | timestamptz | NO | now() | |
+
+RLS: `task_activity_select` on `user_is_in_workspace(workspace_id)`. Index `(task_id, created_at desc)`.
 
 ### kpi_objectives
 
@@ -197,10 +300,14 @@ Exists in the database but **is NOT used by application code**. All KPI-objectiv
 | user_id | uuid | NO | | → auth.users(id) AND → profiles(id) (dual FK) |
 | kpi_id | uuid | YES | | → kpis(id) |
 | objective_id | uuid | YES | | → objectives(id) |
+| task_id | uuid | YES | | → tasks(id) ON DELETE CASCADE; **added 2026-09-10** |
+| mentions | uuid[] | NO | '{}' | profile ids @mentioned in `content` (`@[Nombre](uuid)` tokens); **added 2026-09-10** |
 | content | text | NO | | |
 | created_at | timestamptz | YES | now() | |
 
-Code expects at least one of `kpi_id` / `objective_id` to be set. **No CHECK constraint enforces this in production** — enforce at application layer.
+CHECK `comments_target_check`: at least one of `objective_id` / `kpi_id` / `task_id` must be set (added 2026-09-10).
+RLS: `comments_workspace_members` — visible when the caller is in the workspace of the referenced objective / KPI / task; inserts additionally require `user_id = auth.uid()`.
+Trigger `comments_notify_mentions` (AFTER INSERT → `notify_comment_mentions`) turns `mentions` into `comment_mention` notifications.
 
 ### progress_logs
 
@@ -290,10 +397,12 @@ Code expects at least one of `objective_id` / `task_id` to be set. No CHECK cons
 
 ## Gotchas
 
-- **`tasks` has no `workspace_id`** — always join through `objective_id → objectives.workspace_id`.
+- **`tasks.workspace_id` exists (since 2026-09-10)** and `tasks.objective_id` is nullable — filter tasks by `workspace_id` directly and never assume a task has an objective. Subtasks share the table: add `parent_task_id is null` when listing top-level tasks.
 - **`progress_logs` has no `task_id`** — progress logs only track objective/KPI changes.
 - **`objective_kpis` is dead** — use `kpi_objectives` exclusively.
 - **No PostgreSQL enums** — all status/role/mode columns are TEXT with CHECK constraints.
 - **Dual user_id FKs** on `user_workspaces`, `user_departments`, `comments`, `progress_logs` — each references both `auth.users(id)` and `profiles(id)`. Both should resolve to the same UUID.
 - **Legacy columns** on `kpis` (`target_value`, `current_value`, `unit`) and `objectives` (`progress`) are unused by application code; ignore in new logic.
-- **`comments` / `progress_logs` / `checkin_entries`** lack the "at least one target" CHECK constraint — enforce in code.
+- **`progress_logs` / `checkin_entries`** lack the "at least one target" CHECK constraint — enforce in code. (`comments` got `comments_target_check` on 2026-09-10.)
+- **`task_activity` is trigger-only** — clients can read it but never insert; do not build write paths against it.
+- **Notifications are produced by DB triggers** (`task_assigned`, `task_blocked`, `comment_mention`) — the client never inserts notifications for other users.

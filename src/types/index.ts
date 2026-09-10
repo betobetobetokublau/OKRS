@@ -8,11 +8,14 @@ export type ProgressMode = 'manual' | 'auto' | 'hybrid';
 export type ObjectiveStatus = 'in_progress' | 'paused' | 'deprecated' | 'upcoming';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked';
 export type KPIStatus = 'on_track' | 'at_risk' | 'off_track' | 'achieved';
+export type TaskPriority = 'high' | 'medium' | 'low';
+export type BoardVisibility = 'workspace' | 'private';
 export type NotificationType =
   | 'monthly_review_reminder'
   | 'quarterly_session'
   | 'task_assigned'
   | 'task_blocked'
+  | 'comment_mention'
   | 'objective_updated'
   | 'general';
 
@@ -126,17 +129,95 @@ export interface Objective {
 
 export interface Task {
   id: string;
-  objective_id: string;
+  workspace_id: string;
+  /** Nullable since 2026-09-10: backlog / personal-board items may not belong to an OKR yet. */
+  objective_id: string | null;
+  /** Set when this task is a subtask (checklist item) of another task. */
+  parent_task_id: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
+  priority: TaskPriority | null;
   block_reason: string | null;
   assigned_user_id: string | null;
   due_date: string | null;
+  sort_order: number;
+  created_by?: string | null;
   created_at: string;
   updated_at: string;
   assigned_user?: Profile;
-  objective?: Objective;
+  objective?: Objective | null;
+  subtasks?: Task[];
+}
+
+// ---------- Boards (tableros) ----------
+// A board is a lens over tasks, orthogonal to KPI › Objective › Task. Tasks live
+// in N boards, in exactly one section per board. Boards never roll up progress.
+
+export interface Board {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  color: string;
+  icon: string | null;
+  visibility: BoardVisibility;
+  owner_id: string | null;
+  department_id: string | null;
+  is_favorite: boolean;
+  sort_order: number;
+  archived_at: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  sections?: BoardSection[];
+  /** Populated by list queries: number of tasks placed on the board. */
+  task_count?: number;
+}
+
+export interface BoardSection {
+  id: string;
+  board_id: string;
+  name: string;
+  position: number;
+  wip_limit: number | null;
+  created_at: string;
+}
+
+export interface BoardTask {
+  board_id: string;
+  task_id: string;
+  section_id: string | null;
+  position: number;
+  added_by: string | null;
+  created_at: string;
+  task?: Task;
+  board?: Board;
+  section?: BoardSection | null;
+}
+
+export type TaskActivityKind =
+  | 'created'
+  | 'status'
+  | 'priority'
+  | 'assignee'
+  | 'due_date'
+  | 'objective'
+  | 'title'
+  | 'board_added'
+  | 'board_removed'
+  | 'section'
+  | 'subtask_added';
+
+export interface TaskActivity {
+  id: string;
+  task_id: string;
+  workspace_id: string;
+  actor_id: string | null;
+  kind: TaskActivityKind;
+  payload: Record<string, unknown>;
+  created_at: string;
+  actor?: Profile | null;
 }
 
 export interface ProgressLog {
@@ -158,7 +239,10 @@ export interface Comment {
   user_id: string;
   kpi_id: string | null;
   objective_id: string | null;
+  task_id: string | null;
   content: string;
+  /** Profile ids @mentioned in `content`; the DB trigger notifies them. */
+  mentions: string[];
   created_at: string;
   user?: Profile;
 }

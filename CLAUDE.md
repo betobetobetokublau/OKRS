@@ -20,7 +20,11 @@ tables have columns the spec doesn't show, and some spec columns don't
 exist in the real DB.
 
 Key gotchas:
-- `tasks` has NO `workspace_id` — join through `objectives` to reach it.
+- `tasks.workspace_id` exists since 2026-09-10 (NOT NULL; a BEFORE trigger
+  derives it from `objective_id` / `parent_task_id` when omitted — still send
+  it explicitly). `tasks.objective_id` is now NULLABLE (boards / backlog
+  tasks); never assume a task has an objective. Filter `parent_task_id is
+  null` wherever you list top-level tasks — subtasks live in the same table.
 - `progress_logs` has NO `task_id`. Canonical columns are
   `previous_value` / `new_value` / `comment` (older `progress_value` /
   `note` no longer exist).

@@ -315,29 +315,37 @@ function ActivityText({
     );
   }
 
-  if (kind === 'task_created' && event.target && event.parent) {
+  // Task events: the parent objective is optional (board / backlog tasks
+  // have none), so the trailing "en <objetivo>" only renders when present.
+  const inParent = event.parent ? (
+    <>
+      {' '}en <EntityLink entity={event.parent} />
+    </>
+  ) : null;
+
+  if (kind === 'task_created' && event.target) {
     return (
       <>
-        <b>{actor}</b> creó la tarea <EntityLink entity={event.target} /> en{' '}
-        <EntityLink entity={event.parent} />
+        <b>{actor}</b> creó la tarea <EntityLink entity={event.target} />
+        {inParent}
       </>
     );
   }
 
-  if (kind === 'task_completed' && event.target && event.parent) {
+  if (kind === 'task_completed' && event.target) {
     return (
       <>
-        <b>{actor}</b> completó la tarea <EntityLink entity={event.target} /> en{' '}
-        <EntityLink entity={event.parent} />
+        <b>{actor}</b> completó la tarea <EntityLink entity={event.target} />
+        {inParent}
       </>
     );
   }
 
-  if (kind === 'task_blocked' && event.target && event.parent) {
+  if (kind === 'task_blocked' && event.target) {
     return (
       <>
-        <b>{actor}</b> marcó como bloqueada <EntityLink entity={event.target} /> en{' '}
-        <EntityLink entity={event.parent} />
+        <b>{actor}</b> marcó como bloqueada <EntityLink entity={event.target} />
+        {inParent}
       </>
     );
   }

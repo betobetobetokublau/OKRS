@@ -154,6 +154,7 @@ export default function CheckinPage() {
         )
         .eq('workspace_id', currentWorkspace.id)
         .eq('period_id', activePeriod.id)
+        .is('tasks.parent_task_id', null)
         .order('created_at', { ascending: false }),
       supabase.from('objective_departments').select('objective_id, department_id'),
       supabase.from('kpi_objectives').select('objective_id, kpi_id'),
@@ -230,6 +231,8 @@ export default function CheckinPage() {
       .from('tasks')
       .select('*, objective:objectives!tasks_objective_id_fkey(*)')
       .eq('assigned_user_id', profile.id)
+      .eq('workspace_id', currentWorkspace.id)
+      .is('parent_task_id', null)
       .order('created_at', { ascending: true });
     // Supabase typings can flatten the nested `objective` into an array in some
     // versions; normalize to a single object before filtering so we don't
@@ -240,10 +243,10 @@ export default function CheckinPage() {
       ...t,
       objective: Array.isArray(t.objective) ? t.objective[0] ?? null : t.objective,
     })) as Array<Task & { objective: Objective | null }>;
+    // Period filter only for tasks that hang off an objective; tasks without
+    // one (boards / backlog) always show.
     const filtered = normalized.filter(
-      (t) =>
-        t.objective?.workspace_id === currentWorkspace.id &&
-        t.objective?.period_id === activePeriod.id,
+      (t) => !t.objective || t.objective.period_id === activePeriod.id,
     );
     setMyAssignedTasks(filtered);
 

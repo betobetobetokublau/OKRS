@@ -3,9 +3,11 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import type { WorkspaceRole } from '@/types';
+import type { Board, WorkspaceRole } from '@/types';
 import { canManageTeam } from '@/lib/utils/permissions';
 import { useSidebarStore } from '@/stores/sidebar-store';
+import { useWorkspaceStore } from '@/stores/workspace-store';
+import { useBoards } from '@/hooks/use-boards';
 
 interface SidebarProps {
   workspaceSlug: string;
@@ -34,27 +36,36 @@ const ICON_SIZE_COLLAPSED = 24;
 const ICON_PADDING_COLLAPSED = 18;
 export const SIDEBAR_COLLAPSED_WIDTH =
   ICON_SIZE_COLLAPSED + ICON_PADDING_COLLAPSED * 2;
+/** Boards shown as sub-items under "Tableros" in the expanded drawer. */
+const MAX_SIDEBAR_BOARDS = 6;
 
 export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
   const pathname = usePathname();
   const base = `/${workspaceSlug}`;
   const collapsed = useSidebarStore((s) => s.collapsed);
   const [hovered, setHovered] = useState(false);
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
+  // Non-archived boards, listed under "Tableros" in the expanded drawer only.
+  const { boards } = useBoards(workspaceId);
+  const sidebarBoards = boards.slice(0, MAX_SIDEBAR_BOARDS);
 
   // Members see only the Funcionalidades section. Managers and admins
   // see all three sections (Funcionalidades, Listados, Administración).
   const isMember = role === 'member';
 
+  const tablerosHref = `${base}/tableros`;
   const funcionalidadesItems: NavItem[] = [
     { label: 'Check-in', href: `${base}/check-in`, icon: 'M5 13l4 4L19 7' },
     { label: 'Objetivos', href: `${base}/objetivos`, icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+    // Kanban glyph: three columns of decreasing height.
+    { label: 'Tableros', href: tablerosHref, icon: 'M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v6h-4z' },
+    { label: 'Mis Tareas', href: `${base}/mis-tareas`, icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
   ];
 
   const listadosItems: NavItem[] = [
     { label: 'Dashboard', href: base, icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
     { label: 'OKRs', href: `${base}/okrs`, icon: 'M4 6h16M4 10h10M4 14h16M4 18h10' },
     { label: 'KPIs', href: `${base}/kpis`, icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-    { label: 'Mis Tareas', href: `${base}/mis-tareas`, icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
     { label: 'Revisión Mensual', href: `${base}/revision-mensual`, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', badge: pendingReview },
     { label: 'Trimestral', href: `${base}/trimestral`, icon: 'M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z' },
     { label: 'Departamentos', href: `${base}/departamentos`, icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
@@ -187,7 +198,27 @@ export function Sidebar({ workspaceSlug, role, pendingReview }: SidebarProps) {
             {!isMember && <SectionHeading first>Funcionalidades</SectionHeading>}
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {funcionalidadesItems.map((item) => (
-                <ExpandedLink key={item.href} item={item} active={isActive(item.href)} iconColor={iconColor} />
+                <ExpandedLink
+                  key={item.href}
+                  item={item}
+                  // "Tableros" is only highlighted on the index; a specific
+                  // board lights up its own sub-item instead.
+                  active={item.href === tablerosHref ? pathname === tablerosHref : isActive(item.href)}
+                  iconColor={iconColor}
+                >
+                  {item.href === tablerosHref && sidebarBoards.length > 0 && (
+                    <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                      {sidebarBoards.map((b) => (
+                        <BoardSubLink
+                          key={b.id}
+                          board={b}
+                          href={`${tablerosHref}/${b.id}`}
+                          active={pathname.startsWith(`${tablerosHref}/${b.id}`)}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </ExpandedLink>
               ))}
             </ul>
 
@@ -306,10 +337,13 @@ function ExpandedLink({
   item,
   active,
   iconColor,
+  children,
 }: {
   item: NavItem;
   active: boolean;
   iconColor: (a: boolean) => string;
+  /** Optional nested list rendered under the link (board sub-items). */
+  children?: React.ReactNode;
 }) {
   return (
     <li>
@@ -358,6 +392,48 @@ function ExpandedLink({
             }}
           />
         )}
+      </Link>
+      {children}
+    </li>
+  );
+}
+
+/** Indented board row under "Tableros": colour dot + name. Expanded drawer only. */
+function BoardSubLink({ board, href, active }: { board: Board; href: string; active: boolean }) {
+  return (
+    <li>
+      <Link
+        href={href}
+        title={board.name}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          padding: '0.3rem 1.2rem 0.3rem 4.4rem',
+          margin: '0 0.8rem 1px',
+          borderRadius: '3px',
+          color: active ? '#202e78' : '#637381',
+          backgroundColor: active ? 'rgba(92, 106, 196, 0.12)' : 'transparent',
+          textDecoration: 'none',
+          fontSize: '1.3rem',
+          fontWeight: active ? 600 : 500,
+          lineHeight: '2.2rem',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          transition: 'background 0.15s ease',
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            backgroundColor: board.color,
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{board.name}</span>
       </Link>
     </li>
   );

@@ -5,17 +5,27 @@ import { createClient } from '@/lib/supabase/client';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { formatDate, isOverdue } from '@/lib/utils/dates';
 import { BlockReasonDialog } from './block-reason-dialog';
+import { PRIORITY_CHIPS } from './priority';
 import type { Task, TaskStatus } from '@/types';
 
 interface TaskRowProps {
   task: Task;
   onUpdated: () => void;
   showObjective?: boolean;
+  /** When provided the title becomes a button (used to open the detail panel). */
+  onOpen?: () => void;
 }
 
-export function TaskRow({ task, onUpdated, showObjective }: TaskRowProps) {
+export function TaskRow({ task, onUpdated, showObjective, onOpen }: TaskRowProps) {
   const [showBlockDialog, setShowBlockDialog] = useState(false);
   const overdue = isOverdue(task.due_date) && task.status !== 'completed';
+  const priority = task.priority ? PRIORITY_CHIPS[task.priority] : null;
+  const titleStyle: React.CSSProperties = {
+    fontSize: '1.3rem',
+    fontWeight: 500,
+    color: task.status === 'completed' ? '#637381' : '#212b36',
+    textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+  };
 
   async function handleStatusChange(newStatus: TaskStatus) {
     if (newStatus === 'blocked') {
@@ -72,18 +82,51 @@ export function TaskRow({ task, onUpdated, showObjective }: TaskRowProps) {
         </select>
 
         {/* Task info */}
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <span
-              style={{
-                fontSize: '1.3rem',
-                fontWeight: 500,
-                color: task.status === 'completed' ? '#637381' : '#212b36',
-                textDecoration: task.status === 'completed' ? 'line-through' : 'none',
-              }}
-            >
-              {task.title}
-            </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+            {onOpen ? (
+              <button
+                type="button"
+                onClick={onOpen}
+                style={{
+                  ...titleStyle,
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  font: 'inherit',
+                  fontSize: '1.3rem',
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#5c6ac4'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = titleStyle.color as string; }}
+              >
+                {task.title}
+              </button>
+            ) : (
+              <span style={titleStyle}>{task.title}</span>
+            )}
+            {priority && (
+              <span
+                title={`Prioridad ${priority.label.toLowerCase()}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  padding: '2px 8px',
+                  borderRadius: '5px',
+                  fontSize: '1.1rem',
+                  fontWeight: 700,
+                  backgroundColor: priority.bg,
+                  color: priority.fg,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span aria-hidden style={{ fontSize: '0.9rem' }}>{priority.glyph}</span>
+                {priority.label}
+              </span>
+            )}
             {overdue && (
               <span style={{ fontSize: '1.1rem', color: '#de3618', fontWeight: 500 }}>Vencida</span>
             )}

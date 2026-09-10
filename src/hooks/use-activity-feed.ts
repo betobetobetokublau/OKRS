@@ -148,13 +148,11 @@ async function loadActivity(
         .limit(limit),
       supabase
         .from('tasks')
-        // Include the whole task row so `created_by` travels along
-        // when present. The embedded `objective` join keeps the parent
-        // title / workspace scope filter working.
-        .select(
-          '*, objective:objectives!inner(id, title, workspace_id)',
-        )
-        .eq('objective.workspace_id', workspaceId)
+        // tasks.workspace_id exists since 2026-09-10, so we scope directly.
+        // The embedded `objective` join is optional now: board / backlog
+        // tasks have no parent objective.
+        .select('*, objective:objectives!tasks_objective_id_fkey(id, title, workspace_id)')
+        .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
         .limit(limit),
       supabase
@@ -198,6 +196,7 @@ async function loadActivity(
       addUser(r.user_id);
       addObj(r.objective_id);
       addKpi(r.kpi_id);
+      if (typeof r.task_id === 'string') taskIdsFromEntries.add(r.task_id);
     });
     (checkinsRes.data || []).forEach((r: any) => {
       addUser(r.user_id);
@@ -230,10 +229,10 @@ async function loadActivity(
     const missingKpiIds = Array.from(kpiIds).filter(
       (id) => !(kpisRes.data || []).some((k: MinimalKpi) => k.id === id),
     );
-    // Tasks referenced by check-in entries — we already know the
-    // tasks loaded in `tasksRes` are in-workspace, so subtract those
-    // first. What's left needs to be fetched; we'll filter to the
-    // same workspace via the nested objective join.
+    // Tasks referenced by check-in entries / task comments — we already
+    // know the tasks loaded in `tasksRes` are in-workspace, so subtract
+    // those first. What's left needs to be fetched; we'll filter to the
+    // same workspace via tasks.workspace_id.
     const missingTaskIds = Array.from(taskIdsFromEntries).filter(
       (id) => !(tasksRes.data || []).some((t: any) => t.id === id),
     );
@@ -251,8 +250,9 @@ async function loadActivity(
       missingTaskIds.length
         ? supabase
             .from('tasks')
-            .select('id, title, objective:objectives!inner(id, title, workspace_id)')
+            .select('id, title, workspace_id, objective:objectives!tasks_objective_id_fkey(id, title, workspace_id)')
             .in('id', missingTaskIds)
+            .eq('workspace_id', workspaceId)
         : Promise.resolve({ data: [] as any[] }),
     ]);
 
@@ -300,11 +300,11 @@ async function loadActivity(
       });
     });
 
-    // Comments → "X comentó en Y" + quote. Same dual-target resolution
-    // as progress logs; the in-memory workspace filter happens via the
-    // ref helpers.
+    // Comments → "X comentó en Y" + quote. Comments can target an
+    // objective, a KPI or (since boards) a task; the in-memory workspace
+    // filter happens via the ref helpers.
     (commentsRes.data || []).forEach((r: any) => {
-      const target = refForObj(r.objective_id) ?? refForKpi(r.kpi_id);
+      const target = refForObj(r.objective_id) ?? refForKpi(r.kpi_id) ?? refForTaskId(r.task_id);
       if (!target) return;
       out.push({
         id: `comment-${r.id}`,
@@ -347,13 +347,13 @@ async function loadActivity(
     // until we have a per-status audit trail.
     (tasksRes.data || []).forEach((r: any) => {
       if (!r?.id) return;
+      // Subtasks are checklist items; they'd only add noise to the feed.
+      if (r.parent_task_id) return;
       const objective = Array.isArray(r.objective) ? r.objective[0] : r.objective;
-      if (!objective?.id) return;
-      const parent: EntityRef = {
-        type: 'objective',
-        id: objective.id,
-        title: objective.title ?? '',
-      };
+      // Tasks without an objective (boards / backlog) simply have no parent.
+      const parent: EntityRef | undefined = objective?.id
+        ? { type: 'objective', id: objective.id, title: objective.title ?? '' }
+        : undefined;
       const target: EntityRef = { type: 'task', id: r.id, title: r.title ?? '' };
       const actor = actorFor(r.created_by);
 
@@ -456,7 +456,7 @@ async function loadActivity(
 
 type MinimalObj = { id: string; title: string; workspace_id: string };
 type MinimalKpi = { id: string; title: string; workspace_id: string };
-type TaskMapEntry = { id: string; title: string; objectiveId: string; objectiveTitle: string };
+type TaskMapEntry = { id: string; title: string; objectiveId: string | null; objectiveTitle: string | null };
 
 interface LookupSources {
   profsRes: { data: { id: string; full_name: string }[] | null };
@@ -498,29 +498,28 @@ function buildLookupMaps(sources: LookupSources, workspaceId: string) {
     kpiByIdMap.set(k.id, { id: k.id, title: k.title ?? '', workspace_id: k.workspace_id });
   });
 
+  // Tasks may have no objective (boards / backlog) — the entry still
+  // resolves so comments / check-in entries on them render.
   const taskById = new Map<string, TaskMapEntry>();
   const normalizeJoinedObj = (raw: any) => (Array.isArray(raw) ? raw[0] : raw);
+  const toEntry = (t: any): TaskMapEntry => {
+    const obj = normalizeJoinedObj(t.objective);
+    return {
+      id: t.id,
+      title: t.title ?? '',
+      objectiveId: obj?.id ?? null,
+      objectiveTitle: obj?.title ?? null,
+    };
+  };
   (sources.tasksRes.data || []).forEach((t: any) => {
     if (!t?.id) return;
-    const obj = normalizeJoinedObj(t.objective);
-    if (!obj?.id) return;
-    taskById.set(t.id, {
-      id: t.id,
-      title: t.title ?? '',
-      objectiveId: obj.id,
-      objectiveTitle: obj.title ?? '',
-    });
+    taskById.set(t.id, toEntry(t));
   });
   (sources.extraTasksRes.data || []).forEach((t: any) => {
-    if (!t?.id) return;
-    const obj = normalizeJoinedObj(t.objective);
-    if (!obj?.id || obj.workspace_id !== workspaceId) return;
-    taskById.set(t.id, {
-      id: t.id,
-      title: t.title ?? '',
-      objectiveId: obj.id,
-      objectiveTitle: obj.title ?? '',
-    });
+    // The extra query is already filtered by workspace_id; double-check
+    // defensively in case the column is missing from the row.
+    if (!t?.id || (t.workspace_id && t.workspace_id !== workspaceId)) return;
+    taskById.set(t.id, toEntry(t));
   });
 
   return { profileByUserId, objById, kpiByIdMap, taskById };

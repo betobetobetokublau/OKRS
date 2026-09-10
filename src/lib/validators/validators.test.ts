@@ -83,15 +83,31 @@ describe('objectiveSchema', () => {
 
 describe('taskSchema', () => {
   it('accepts pending task without optional fields', () => {
-    const r = taskSchema.safeParse({ title: 'Do X', objective_id: UUID });
+    const r = taskSchema.safeParse({ title: 'Do X', objective_id: UUID, workspace_id: UUID });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.status).toBe('pending');
+  });
+
+  it('accepts a task without objective (board / backlog item)', () => {
+    const r = taskSchema.safeParse({ title: 'Idea', workspace_id: UUID, objective_id: null, priority: 'high' });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects a task without workspace_id', () => {
+    const r = taskSchema.safeParse({ title: 'Do X', objective_id: UUID });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects an unknown priority', () => {
+    const r = taskSchema.safeParse({ title: 'Do X', workspace_id: UUID, priority: 'urgent' });
+    expect(r.success).toBe(false);
   });
 
   it('rejects block_reason over 500 chars', () => {
     const r = taskSchema.safeParse({
       title: 't',
       objective_id: UUID,
+      workspace_id: UUID,
       status: 'blocked',
       block_reason: 'x'.repeat(501),
     });

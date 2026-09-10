@@ -23,6 +23,7 @@ export function useObjectives(workspaceId: string | undefined, periodId: string 
       `)
       .eq('workspace_id', workspaceId)
       .eq('period_id', periodId)
+      .is('tasks.parent_task_id', null)
       .order('created_at', { ascending: false });
 
     if (data) setObjectives(data as Objective[]);

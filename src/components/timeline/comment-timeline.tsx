@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { formatRelative } from '@/lib/utils/dates';
+import { MentionTextarea, renderCommentContent } from '@/components/comments/mention-textarea';
+import { extractMentionIds } from '@/lib/validators/board';
+import { useWorkspaceStore } from '@/stores/workspace-store';
 import type { Comment, ProgressLog, Profile } from '@/types';
 
 interface TimelineEntry {
@@ -20,7 +23,9 @@ interface CommentTimelineProps {
 }
 
 export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspace?.id);
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
+  const [members, setMembers] = useState<Profile[]>([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -74,6 +79,26 @@ export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
     loadEntries();
   }, [loadEntries]);
 
+  // Workspace members for the @mention popover.
+  useEffect(() => {
+    if (!workspaceId) return;
+    let cancelled = false;
+    async function loadMembers() {
+      const supabase = createClient();
+      const { data } = await supabase.from('user_workspaces').select('profile:profiles(*)').eq('workspace_id', workspaceId);
+      if (cancelled) return;
+      setMembers(
+        ((data || []) as Array<{ profile: Profile | Profile[] | null }>)
+          .map((uw) => (Array.isArray(uw.profile) ? uw.profile[0] ?? null : uw.profile))
+          .filter((p): p is Profile => Boolean(p)),
+      );
+    }
+    loadMembers();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId]);
+
   async function handleSubmitComment(e: React.FormEvent) {
     e.preventDefault();
     if (!newComment.trim()) return;
@@ -83,9 +108,11 @@ export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const commentData: Record<string, string> = {
+    const content = newComment.trim();
+    const commentData: Record<string, string | string[]> = {
       user_id: user.id,
-      content: newComment.trim(),
+      content,
+      mentions: extractMentionIds(content),
     };
     if (objectiveId) commentData.objective_id = objectiveId;
     if (kpiId) commentData.kpi_id = kpiId;
@@ -102,13 +129,16 @@ export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
 
       {/* Comment form */}
       <form onSubmit={handleSubmitComment} style={{ marginBottom: '2rem' }}>
-        <textarea
-          value={newComment}
-          onChange={(e) => setNewComment(e.target.value)}
-          placeholder="Escribe un comentario..."
-          rows={2}
-          style={{ width: '100%', padding: '0.8rem 1.2rem', fontSize: '1.4rem', border: '1px solid #c4cdd5', borderRadius: '4px', resize: 'vertical', marginBottom: '0.8rem' }}
-        />
+        <div style={{ marginBottom: '0.8rem' }}>
+          <MentionTextarea
+            value={newComment}
+            onChange={setNewComment}
+            members={members}
+            placeholder="Escribe un comentario... usa @ para mencionar"
+            rows={2}
+            disabled={submitting}
+          />
+        </div>
         <button
           type="submit"
           disabled={submitting || !newComment.trim()}
@@ -147,7 +177,7 @@ export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
                     {entry.content}
                   </p>
                 ) : (
-                  <p style={{ fontSize: '1.3rem', color: '#212b36', lineHeight: '1.5' }}>{entry.content}</p>
+                  <p style={{ fontSize: '1.3rem', color: '#212b36', lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderCommentContent(entry.content, members)}</p>
                 )}
               </div>
             </li>

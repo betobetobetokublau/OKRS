@@ -30,10 +30,14 @@ function obj(partial: Partial<Objective>): Objective {
 function task(status: Task['status']): Task {
   return {
     id: Math.random().toString(),
+    workspace_id: 'w1',
     objective_id: 'o1',
+    parent_task_id: null,
     title: 't',
     description: null,
     status,
+    priority: null,
+    sort_order: 0,
     block_reason: null,
     assigned_user_id: null,
     due_date: null,

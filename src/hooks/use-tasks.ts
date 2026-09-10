@@ -18,19 +18,25 @@ export function useTasks(objectiveId?: string, assignedUserId?: string, workspac
       objective:objectives!tasks_objective_id_fkey(*)
     `);
 
+    // Subtasks are rendered inside their parent's detail panel, never as
+    // top-level rows.
+    query = query.is('parent_task_id', null);
+
     if (objectiveId) {
       query = query.eq('objective_id', objectiveId);
     }
 
-    if (assignedUserId && workspaceId && periodId) {
-      query = query
-        .eq('assigned_user_id', assignedUserId)
-        .eq('objective.workspace_id', workspaceId)
-        .eq('objective.period_id', periodId);
+    if (assignedUserId && workspaceId) {
+      query = query.eq('assigned_user_id', assignedUserId).eq('workspace_id', workspaceId);
     }
 
     const { data } = await query.order('created_at', { ascending: false });
-    if (data) setTasks(data as Task[]);
+    // Period filter only applies to tasks that hang off an objective; tasks
+    // without one (boards / backlog) are always kept.
+    const rows = ((data || []) as Task[]).filter(
+      (t) => !periodId || !t.objective || t.objective.period_id === periodId,
+    );
+    setTasks(rows);
     setLoading(false);
   }, [objectiveId, assignedUserId, workspaceId, periodId]);
 

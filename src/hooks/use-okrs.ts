@@ -78,6 +78,7 @@ export function useOkrs(workspaceId: string | undefined, periodId: string | unde
       `)
       .eq('workspace_id', workspaceId)
       .eq('period_id', periodId)
+      .is('tasks.parent_task_id', null)
       .order('created_at', { ascending: true });
     if (isStale()) return;
 

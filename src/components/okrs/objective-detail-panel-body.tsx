@@ -52,7 +52,7 @@ export function ObjectiveDetailPanelBody({
     const supabase = createClient();
     const [objRes, tasksRes, kpiRes, deptRes] = await Promise.all([
       supabase.from('objectives').select('*, responsible_user:profiles!objectives_responsible_user_id_fkey(*), responsible_department:departments!objectives_responsible_department_id_fkey(*)').eq('id', objectiveId).single(),
-      supabase.from('tasks').select('*, assigned_user:profiles!tasks_assigned_user_id_fkey(*)').eq('objective_id', objectiveId).order('created_at', { ascending: true }),
+      supabase.from('tasks').select('*, assigned_user:profiles!tasks_assigned_user_id_fkey(*)').eq('objective_id', objectiveId).is('parent_task_id', null).order('created_at', { ascending: true }),
       supabase.from('kpi_objectives').select('kpi:kpis(*)').eq('objective_id', objectiveId),
       supabase.from('objective_departments').select('department:departments(*)').eq('objective_id', objectiveId),
     ]);

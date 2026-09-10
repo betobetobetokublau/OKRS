@@ -14,7 +14,7 @@ interface NotificationBellProps {
  * (the team-wide activity timeline). The badge count still reflects the
  * user's unread targeted notifications (monthly review reminders, etc.).
  */
-export function NotificationBell({ workspaceId }: NotificationBellProps) {
+export function NotificationBell({ userId, workspaceId }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const { unreadCount } = useNotificationStore();
 
@@ -63,7 +63,7 @@ export function NotificationBell({ workspaceId }: NotificationBellProps) {
         )}
       </button>
 
-      <ActivityPanel open={open} onClose={() => setOpen(false)} workspaceId={workspaceId} />
+      <ActivityPanel open={open} onClose={() => setOpen(false)} workspaceId={workspaceId} userId={userId} />
     </>
   );
 }
