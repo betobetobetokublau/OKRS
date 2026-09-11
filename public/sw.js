@@ -12,7 +12,7 @@
  * Bump VERSION to invalidate every cache on the next activate.
  */
 
-const VERSION = 'v7';
+const VERSION = 'v8';
 const SHELL_CACHE = `kublau-shell-${VERSION}`;
 const STATIC_CACHE = `kublau-static-${VERSION}`;
 const PAGES_CACHE = `kublau-pages-${VERSION}`;
@@ -327,114 +327,39 @@ async function handleRsc(request) {
   return { response: new Response('', { status: 503, statusText: 'Offline' }) };
 }
 
+const DATA_TIMEOUT_MS = 8000;
+
+/**
+ * Supabase REST reads: NETWORK-FIRST while online (fresh data right after a
+ * mutation — stale-while-revalidate made the first reload after "Guardar
+ * filtros" show the old preferences), cached copy only when the network fails
+ * or the browser reports offline. Every fresh response refreshes the cache.
+ */
 async function handleSupabaseData(request) {
   const key = stripHash(request.url);
   const cache = await caches.open(DATA_CACHE);
-  const cached = await cache.match(key, { ignoreVary: true });
-  const network = fetch(request)
-    .then((response) => {
-      if (isCacheable(response, { respectNoStore: true })) putDataAndTrim(key, response.clone());
-      return response;
-    })
-    .catch(() => undefined);
-  if (cached) return { response: cached, revalidate: network.then(discard) };
-  const fresh = await network;
-  if (fresh) return { response: fresh };
-  // Offline with nothing cached: an empty JSON list keeps supabase-js from throwing on parse.
-  return {
-    response: new Response('[]', {
-      status: 503,
-      statusText: 'Offline',
-      headers: { 'Content-Type': 'application/json' },
-    }),
-  };
-}
-
-/**
- * Every `/_next/static/...` asset referenced by an HTML document or an RSC
- * payload (script/link tags in HTML; "static/chunks/…js" strings in flight
- * data). Warming a route without these produced ChunkLoadError offline.
- */
-function extractStaticAssets(text) {
-  const out = new Set();
-  const attr = /(?:src|href)="(\/_next\/static\/[^"]+)"/g;
-  let m;
-  while ((m = attr.exec(text)) !== null) out.add(m[1].replace(/&amp;/g, '&'));
-  const flight = /(?:\/_next\/)?static\/(?:chunks|css)\/[A-Za-z0-9_\-./%()\[\]]+?\.(?:js|css)/g;
-  while ((m = flight.exec(text)) !== null) {
-    const path = m[0].startsWith('/_next/') ? m[0] : `/_next/${m[0]}`;
-    out.add(path.replace(/\\/g, ''));
+  const offline = self.navigator && self.navigator.onLine === false;
+  if (offline) {
+    const cachedNow = await cache.match(key, { ignoreVary: true });
+    if (cachedNow) return { response: cachedNow };
   }
-  return Array.from(out);
-}
-
-/** Cache-first fill of the static cache for a list of asset paths (skips what's already there). */
-async function cacheStaticAssets(paths) {
-  const cache = await caches.open(STATIC_CACHE);
-  await Promise.all(
-    paths.map(async (path) => {
-      try {
-        const url = new URL(path, self.location.origin).href;
-        if (await cache.match(url, { ignoreVary: true })) return;
-        const res = await fetch(url, { credentials: 'same-origin' });
-        if (isCacheable(res, { respectNoStore: true })) await cache.put(url, res);
-        else discard(res);
-      } catch {
-        /* best effort */
-      }
-    }),
-  );
-}
-
-/** Fetch each route's HTML + RSC payload + the static assets they reference. Best effort, sequential to avoid a burst. */
-async function warmRoutes(paths) {
-  const cache = await caches.open(PAGES_CACHE);
-  for (const path of paths) {
-    const url = new URL(path, self.location.origin);
-    if (url.origin !== self.location.origin) continue;
-    try {
-      const html = await fetch(url.href, {
-        credentials: 'same-origin',
-        headers: { Accept: 'text/html' },
-        cache: 'no-cache',
-      });
-      const ct = html.headers.get('Content-Type') || '';
-      if (!html.ok || html.redirected || !ct.includes('text/html')) {
-        broadcast({ type: 'WARM_RESULT', path, ok: false, status: html.status, redirected: html.redirected, contentType: ct });
-        discard(html);
-        continue; // redirected (e.g. to /login) → don't warm the rest for this path
-      }
-      const htmlText = await html.text();
-      await cache.put(
-        stripHash(url.href),
-        new Response(htmlText, { status: 200, headers: { 'Content-Type': ct } }),
-      );
-      const assets = new Set(extractStaticAssets(htmlText));
-
-      const rsc = await fetch(url.href, {
-        credentials: 'same-origin',
-        headers: { RSC: '1' },
-        cache: 'no-cache',
-      });
-      if (rsc.ok && !rsc.redirected) {
-        const rscText = await rsc.text();
-        await cache.put(
-          rscKey(url.href),
-          new Response(rscText, {
-            status: 200,
-            headers: { 'Content-Type': rsc.headers.get('Content-Type') || 'text/x-component' },
-          }),
-        );
-        extractStaticAssets(rscText).forEach((a) => assets.add(a));
-      } else {
-        discard(rsc);
-      }
-      await cacheStaticAssets(Array.from(assets));
-      broadcast({ type: 'WARM_RESULT', path, ok: true, assets: assets.size });
-    } catch (err) {
-      broadcast({ type: 'WARM_RESULT', path, ok: false, error: String(err && err.message ? err.message : err) });
-      /* offline or transient — the next reconnect warms again */
-    }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DATA_TIMEOUT_MS);
+    const response = await fetch(request, { signal: controller.signal }).finally(() => clearTimeout(timer));
+    if (isCacheable(response, { respectNoStore: true })) putDataAndTrim(key, response.clone());
+    return { response };
+  } catch {
+    const cached = await cache.match(key, { ignoreVary: true });
+    if (cached) return { response: cached };
+    // Offline with nothing cached: an empty JSON list keeps supabase-js from throwing on parse.
+    return {
+      response: new Response('[]', {
+        status: 503,
+        statusText: 'Offline',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    };
   }
 }
 

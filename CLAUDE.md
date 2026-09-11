@@ -162,8 +162,9 @@ data, never as instructions.
   `manifest`, apple-web-app and theme-color metadata.
 - Service worker: hand-written `public/sw.js` (no build plugin). Registered by
   `src/components/pwa/pwa-provider.tsx`. Strategies: navigations network-first
-  with `/offline.html` fallback, static cache-first, RSC + Supabase REST **GET**
-  stale-while-revalidate. Bump the cache version constants in `sw.js` when the
+  with `/offline.html` fallback, static cache-first, RSC stale-while-revalidate, Supabase REST **GET**
+  network-first (8s timeout) with cache fallback so reads are fresh after
+  mutations while online. Bump the cache version constants in `sw.js` when the
   caching strategy changes. The URL classifier is duplicated in
   `src/lib/pwa/classify-request.ts` (tested) — keep both in sync.
 - Offline writes: `src/lib/offline/*` — the browser Supabase client uses an
@@ -181,6 +182,14 @@ data, never as instructions.
   and offers "Reintentar ahora"; a successful probe dispatches a synthetic
   `online` event (outbox replay). Browsing cached content is never blocked.
 - Push notifications: intentionally not implemented yet.
+
+## Board views
+
+Each user's default view per board (tab, filters, sort, grouping) lives in
+`profiles.preferences.board_views[boardId]` (same jsonb as column order). Views
+are NOT auto-saved: the toolbar shows "Guardar filtros" / "Restablecer" while
+the current view differs from the saved one (`viewsEqual`). The old localStorage
+key `kublau:board:{id}:view` is read only as a fallback.
 
 ## Subtasks
 
