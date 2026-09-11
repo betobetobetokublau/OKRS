@@ -12,7 +12,7 @@
  * Bump VERSION to invalidate every cache on the next activate.
  */
 
-const VERSION = 'v5';
+const VERSION = 'v6';
 const SHELL_CACHE = `kublau-shell-${VERSION}`;
 const STATIC_CACHE = `kublau-static-${VERSION}`;
 const PAGES_CACHE = `kublau-pages-${VERSION}`;
@@ -126,10 +126,25 @@ function discard(response) {
   }
 }
 
+/**
+ * Navigation-safe fetch with timeout. NEVER call `fetch(request, init)` with a
+ * `mode: 'navigate'` Request — Chrome throws synchronously ("Cannot construct a
+ * Request with a Request whose mode is 'navigate' and a non-empty RequestInit"),
+ * which we used to swallow as "offline" and answer with the fallback page.
+ * We fetch by URL instead. `redirect: 'manual'` yields an opaqueredirect that a
+ * navigation respondWith() may return, so /login redirects keep working.
+ */
 function fetchWithTimeout(request, ms) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
-  return fetch(request, { signal: controller.signal }).finally(() => clearTimeout(timer));
+  const init = {
+    signal: controller.signal,
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: { Accept: request.headers.get('Accept') || 'text/html' },
+  };
+  if (request.mode === 'navigate') init.redirect = 'manual';
+  return fetch(request.url, init).finally(() => clearTimeout(timer));
 }
 
 async function putSafely(cacheName, key, response) {
