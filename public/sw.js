@@ -12,7 +12,7 @@
  * Bump VERSION to invalidate every cache on the next activate.
  */
 
-const VERSION = 'v6';
+const VERSION = 'v7';
 const SHELL_CACHE = `kublau-shell-${VERSION}`;
 const STATIC_CACHE = `kublau-static-${VERSION}`;
 const PAGES_CACHE = `kublau-pages-${VERSION}`;
@@ -156,6 +156,16 @@ async function putSafely(cacheName, key, response) {
   }
 }
 
+/** Diagnostics: tell every open page what the worker just did (warm results, fallbacks). */
+async function broadcast(message) {
+  try {
+    const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+    clients.forEach((c) => c.postMessage({ source: 'kublau-sw', ...message }));
+  } catch {
+    /* ignore */
+  }
+}
+
 let dataPutsSinceTrim = 0;
 /** LRU-ish cap: Cache keys are in insertion order; we delete+put on every hit so the oldest untouched entry comes first. */
 async function putDataAndTrim(key, response) {
@@ -252,8 +262,9 @@ async function handleNavigate(request) {
       }
     }
     return response;
-  } catch {
+  } catch (err) {
     const cached = await caches.match(stripHash(request.url), { ignoreVary: true });
+    broadcast({ type: 'NAV_FALLBACK', url: request.url, error: String(err && err.message ? err.message : err), served: cached ? 'cache' : 'offline' });
     if (cached) return cached;
     const offline = await caches.match(OFFLINE_URL, { ignoreVary: true });
     if (offline) return offline;
@@ -389,6 +400,7 @@ async function warmRoutes(paths) {
       });
       const ct = html.headers.get('Content-Type') || '';
       if (!html.ok || html.redirected || !ct.includes('text/html')) {
+        broadcast({ type: 'WARM_RESULT', path, ok: false, status: html.status, redirected: html.redirected, contentType: ct });
         discard(html);
         continue; // redirected (e.g. to /login) → don't warm the rest for this path
       }
@@ -418,7 +430,9 @@ async function warmRoutes(paths) {
         discard(rsc);
       }
       await cacheStaticAssets(Array.from(assets));
-    } catch {
+      broadcast({ type: 'WARM_RESULT', path, ok: true, assets: assets.size });
+    } catch (err) {
+      broadcast({ type: 'WARM_RESULT', path, ok: false, error: String(err && err.message ? err.message : err) });
       /* offline or transient — the next reconnect warms again */
     }
   }
