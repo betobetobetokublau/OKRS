@@ -200,3 +200,23 @@ describe('loadView', () => {
     expect(loadView('nope').tab).toBe('board');
   });
 });
+
+import { normalizeView, viewsEqual, DEFAULT_VIEW } from './board-filters';
+
+describe('normalizeView / viewsEqual', () => {
+  it('fills defaults for partial or garbage input', () => {
+    const v = normalizeView({ tab: 'list', sort: 'bogus' as never, filters: { quick: ['mine'] } as never });
+    expect(v.tab).toBe('list');
+    expect(v.sort).toBe('manual');
+    expect(v.filters.quick).toEqual(['mine']);
+    expect(v.filters.assignee).toBe('all');
+    expect(normalizeView(undefined)).toEqual(DEFAULT_VIEW);
+  });
+  it('compares views ignoring array order', () => {
+    const a = normalizeView({ filters: { quick: ['mine', 'overdue'], statuses: [], priorities: [], assignee: 'all' } });
+    const b = normalizeView({ filters: { quick: ['overdue', 'mine'], statuses: [], priorities: [], assignee: 'all' } });
+    expect(viewsEqual(a, b)).toBe(true);
+    expect(viewsEqual(a, { ...a, tab: 'list' })).toBe(false);
+    expect(viewsEqual(a, { ...a, filters: { ...a.filters, assignee: 'u1' } })).toBe(false);
+  });
+});

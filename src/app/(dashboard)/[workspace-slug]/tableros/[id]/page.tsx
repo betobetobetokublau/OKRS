@@ -9,7 +9,9 @@ import {
   useBoard,
   createSection,
   deleteSection,
+  loadBoardView,
   loadColumnOrder,
+  saveBoardView,
   moveTask,
   renameSection,
   reorderCards,
@@ -33,7 +35,7 @@ import {
   groupItems,
   isTaskOverdue,
   loadView,
-  saveView,
+  viewsEqual,
   sortItems,
   type BoardColumn,
   type BoardView,
@@ -63,15 +65,29 @@ export default function TableroPage() {
   const [standup, setStandup] = useState(false);
   const [blockPending, setBlockPending] = useState<{ taskId: string; wasBlocked: boolean } | null>(null);
 
-  // Per-board view persistence (localStorage) + per-user column order (profile prefs).
+  // Per-user default view (profile prefs; legacy localStorage as fallback) +
+  // per-user column order. Changes are NOT auto-saved: the toolbar shows
+  // "Guardar filtros" while the current view differs from the saved default.
+  const [savedView, setSavedView] = useState<BoardView>(DEFAULT_VIEW);
+  const [savingView, setSavingView] = useState(false);
   useEffect(() => {
-    if (!boardId) return;
-    setView(loadView(boardId));
+    if (!boardId || viewLoaded) return;
+    const initial = loadBoardView(profile, boardId) ?? loadView(boardId);
+    setSavedView(initial);
+    setView(initial);
     setViewLoaded(true);
-  }, [boardId]);
-  useEffect(() => {
-    if (boardId && viewLoaded) saveView(boardId, view);
-  }, [boardId, view, viewLoaded]);
+  }, [boardId, profile, viewLoaded]);
+  const viewDirty = viewLoaded && !viewsEqual(view, savedView);
+  async function handleSaveView() {
+    if (!boardId || !profile?.id) return;
+    setSavingView(true);
+    const preferences = await saveBoardView(profile.id, boardId, view);
+    if (preferences) {
+      setSavedView(view);
+      setProfile({ ...profile, preferences });
+    }
+    setSavingView(false);
+  }
   useEffect(() => {
     if (boardId) setColumnOrder(loadColumnOrder(profile, boardId));
   }, [boardId, profile]);
@@ -294,6 +310,10 @@ export default function TableroPage() {
         onToggleStandup={() => setStandup((s) => !s)}
         onAddTask={() => columns[0] && setComposerKey(columns[0].key)}
         onOpenSettings={canEdit ? () => setShowSettings(true) : undefined}
+        viewDirty={viewDirty}
+        savingView={savingView}
+        onSaveView={handleSaveView}
+        onResetView={() => setView(savedView)}
       />
 
       {view.tab === 'list' ? (

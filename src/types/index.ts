@@ -48,6 +48,8 @@ export interface Profile {
 
 export interface UserPreferences {
   board_column_order?: Record<string, string[]>;
+  /** Saved default view per board (tab + filters + sort + grouping), shape = BoardView. */
+  board_views?: Record<string, unknown>;
   [key: string]: unknown;
 }
 

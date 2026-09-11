@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { PARENT_EMBED } from './use-tasks';
 import type { Board, BoardSection, BoardTask, Profile, Task, TaskPriority, TaskStatus, UserPreferences } from '@/types';
+import { normalizeView, type BoardView } from '@/components/boards/board-filters';
 
 /**
  * Data layer for Tableros. Boards are a lens over tasks: a task lives in N
@@ -333,4 +334,25 @@ export async function createTaskOnBoard(
 export async function updateTaskAssignee(taskId: string, assigneeId: string | null) {
   const supabase = createClient();
   return supabase.from('tasks').update({ assigned_user_id: assigneeId }).eq('id', taskId);
+}
+
+// ---------------------------------------------------------------------------
+// Per-user default view for a board (tab + filters + sort + grouping)
+// ---------------------------------------------------------------------------
+export function loadBoardView(profile: Profile | null | undefined, boardId: string): BoardView | undefined {
+  const raw = profile?.preferences?.board_views?.[boardId];
+  return raw && typeof raw === 'object' ? normalizeView(raw as Partial<BoardView>) : undefined;
+}
+
+/** Read-modify-write of profiles.preferences.board_views[boardId]. Returns merged prefs or null on error. */
+export async function saveBoardView(profileId: string, boardId: string, view: BoardView): Promise<UserPreferences | null> {
+  const supabase = createClient();
+  const { data } = await supabase.from('profiles').select('preferences').eq('id', profileId).single();
+  const prev = ((data as { preferences?: UserPreferences } | null)?.preferences ?? {}) as UserPreferences;
+  const preferences: UserPreferences = {
+    ...prev,
+    board_views: { ...(prev.board_views ?? {}), [boardId]: view },
+  };
+  const { error } = await supabase.from('profiles').update({ preferences }).eq('id', profileId);
+  return error ? null : preferences;
 }

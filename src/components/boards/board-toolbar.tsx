@@ -29,6 +29,13 @@ interface BoardToolbarProps {
   onAddTask: () => void;
   /** Opens "Configuración del tablero"; the button is disabled when omitted. */
   onOpenSettings?: () => void;
+  /** Current view differs from the user's saved default for this board. */
+  viewDirty?: boolean;
+  savingView?: boolean;
+  /** Persist the current view as this user's default for the board. */
+  onSaveView?: () => void;
+  /** Discard changes and go back to the saved default. */
+  onResetView?: () => void;
 }
 
 const PILL: CSSProperties = {
@@ -82,6 +89,10 @@ export function BoardToolbar({
   onToggleStandup,
   onAddTask,
   onOpenSettings,
+  viewDirty,
+  savingView,
+  onSaveView,
+  onResetView,
 }: BoardToolbarProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const popRef = useRef<HTMLDivElement>(null);
@@ -266,6 +277,35 @@ export function BoardToolbar({
       >
         ⚙
       </button>
+      {viewDirty && onSaveView && (
+        <>
+          <button
+            type="button"
+            onClick={onSaveView}
+            disabled={savingView}
+            title="Guardar como vista predeterminada de este tablero (solo para ti)"
+            style={{
+              ...PILL,
+              backgroundColor: savingView ? '#8c92c4' : '#5c6ac4',
+              borderColor: savingView ? '#8c92c4' : '#5c6ac4',
+              color: '#ffffff',
+              fontWeight: 600,
+              cursor: savingView ? 'default' : 'pointer',
+            }}
+          >
+            {savingView ? 'Guardando…' : 'Guardar filtros'}
+          </button>
+          {onResetView && (
+            <button
+              type="button"
+              onClick={onResetView}
+              style={{ ...PILL, border: 'none', backgroundColor: 'transparent', color: '#637381', textDecoration: 'underline', padding: '0 0.4rem' }}
+            >
+              Restablecer
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }

@@ -270,24 +270,44 @@ export function viewStorageKey(boardId: string): string {
 const SORT_VALUES = new Set<string>(SORT_OPTIONS.map((o) => o.value));
 const GROUPING_VALUES = new Set<string>(GROUPING_OPTIONS.map((o) => o.value));
 
+/** Coerce a possibly-partial / untrusted object (localStorage, profile jsonb) into a valid BoardView. */
+export function normalizeView(parsed: Partial<BoardView> | null | undefined): BoardView {
+  const f: Partial<BoardFilters> = parsed?.filters ?? {};
+  return {
+    filters: {
+      quick: Array.isArray(f.quick) ? f.quick : [],
+      statuses: Array.isArray(f.statuses) ? f.statuses : [],
+      priorities: Array.isArray(f.priorities) ? f.priorities : [],
+      assignee: typeof f.assignee === 'string' ? f.assignee : 'all',
+    },
+    sort: parsed?.sort && SORT_VALUES.has(parsed.sort) ? parsed.sort : 'manual',
+    grouping: parsed?.grouping && GROUPING_VALUES.has(parsed.grouping) ? parsed.grouping : 'section',
+    tab: parsed?.tab === 'list' ? 'list' : 'board',
+  };
+}
+
+/** Order-insensitive equality of two views (filter arrays are sets). */
+export function viewsEqual(a: BoardView, b: BoardView): boolean {
+  const sameSet = (x: readonly string[], y: readonly string[]) =>
+    x.length === y.length && [...x].sort().every((v, i) => v === [...y].sort()[i]);
+  return (
+    a.tab === b.tab &&
+    a.sort === b.sort &&
+    a.grouping === b.grouping &&
+    a.filters.assignee === b.filters.assignee &&
+    sameSet(a.filters.quick, b.filters.quick) &&
+    sameSet(a.filters.statuses, b.filters.statuses) &&
+    sameSet(a.filters.priorities, b.filters.priorities)
+  );
+}
+
+/** Legacy per-device view (pre per-user defaults). Used only as a fallback when the profile has none. */
 export function loadView(boardId: string): BoardView {
   try {
     if (typeof window === 'undefined') return DEFAULT_VIEW;
     const raw = window.localStorage.getItem(viewStorageKey(boardId));
     if (!raw) return DEFAULT_VIEW;
-    const parsed = JSON.parse(raw) as Partial<BoardView>;
-    const f: Partial<BoardFilters> = parsed.filters ?? {};
-    return {
-      filters: {
-        quick: Array.isArray(f.quick) ? f.quick : [],
-        statuses: Array.isArray(f.statuses) ? f.statuses : [],
-        priorities: Array.isArray(f.priorities) ? f.priorities : [],
-        assignee: typeof f.assignee === 'string' ? f.assignee : 'all',
-      },
-      sort: parsed.sort && SORT_VALUES.has(parsed.sort) ? parsed.sort : 'manual',
-      grouping: parsed.grouping && GROUPING_VALUES.has(parsed.grouping) ? parsed.grouping : 'section',
-      tab: parsed.tab === 'list' ? 'list' : 'board',
-    };
+    return normalizeView(JSON.parse(raw) as Partial<BoardView>);
   } catch {
     return DEFAULT_VIEW;
   }
