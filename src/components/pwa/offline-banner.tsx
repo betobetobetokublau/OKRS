@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useOfflineStore } from '@/stores/offline-store';
 import { AnimatedModal } from '@/components/common/animated-modal';
+import { retryConnectivityNow } from './use-connectivity-probe';
+import { formatCountdown } from '@/lib/pwa/connectivity';
 
 export const PWA_BANNER_HEIGHT = 28;
 
@@ -21,6 +23,8 @@ export function OfflineBanner() {
   const failures = useOfflineStore((s) => s.failures);
   const clearFailures = useOfflineStore((s) => s.clearFailures);
   const updateAvailable = useOfflineStore((s) => s.updateAvailable);
+  const retryIn = useOfflineStore((s) => s.retryIn);
+  const probing = useOfflineStore((s) => s.probing);
   const [showFailures, setShowFailures] = useState(false);
 
   let kind: BannerKind = null;
@@ -45,9 +49,12 @@ export function OfflineBanner() {
 
   let text = '';
   if (kind === 'offline') {
+    // Read-only browsing keeps working from cache; writes queue up. The
+    // countdown tells the user when we'll check the connection again.
     text =
-      'Sin conexión — los cambios se guardan en este dispositivo' +
-      (pendingCount > 0 ? ` · ${pendingCount} ${pendingCount === 1 ? 'cambio pendiente' : 'cambios pendientes'}` : '');
+      'Sin conexión — puedes seguir consultando; los cambios se guardan en este dispositivo' +
+      (pendingCount > 0 ? ` · ${pendingCount} ${pendingCount === 1 ? 'cambio pendiente' : 'cambios pendientes'}` : '') +
+      (probing ? ' · comprobando…' : retryIn > 0 ? ` · reintento en ${formatCountdown(retryIn)}` : '');
   } else if (kind === 'syncing') {
     text = `Sincronizando ${pendingCount} ${pendingCount === 1 ? 'cambio' : 'cambios'}…`;
   } else if (kind === 'failures') {
@@ -83,6 +90,28 @@ export function OfflineBanner() {
           }}
         >
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
+          {kind === 'offline' && (
+            <button
+              type="button"
+              onClick={() => void retryConnectivityNow()}
+              disabled={probing}
+              style={{
+                border: '1px solid rgba(255,255,255,0.6)',
+                background: 'transparent',
+                color: '#ffffff',
+                borderRadius: '4px',
+                padding: '0.2rem 0.8rem',
+                fontSize: '1.1rem',
+                fontWeight: 600,
+                cursor: probing ? 'default' : 'pointer',
+                lineHeight: 1.4,
+                opacity: probing ? 0.7 : 1,
+                flexShrink: 0,
+              }}
+            >
+              {probing ? 'Comprobando…' : 'Reintentar ahora'}
+            </button>
+          )}
           {kind === 'failures' && (
             <button
               type="button"

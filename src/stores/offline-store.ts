@@ -25,7 +25,13 @@ interface OfflineState {
   updateAvailable: boolean;
   /** Browser fired `beforeinstallprompt`; the app can offer "Instalar app". */
   installable: boolean;
+  /** Seconds until the next automatic connectivity probe (offline only). */
+  retryIn: number;
+  /** A probe is running right now (manual or automatic). */
+  probing: boolean;
   setOnline: (online: boolean) => void;
+  setRetryIn: (s: number) => void;
+  setProbing: (v: boolean) => void;
   setPendingCount: (n: number) => void;
   setSyncing: (syncing: boolean) => void;
   addFailure: (f: OfflineFailure) => void;
@@ -41,7 +47,11 @@ export const useOfflineStore = create<OfflineState>((set) => ({
   failures: [],
   updateAvailable: false,
   installable: false,
+  retryIn: 0,
+  probing: false,
   setOnline: (online) => set({ online }),
+  setRetryIn: (retryIn) => set({ retryIn }),
+  setProbing: (probing) => set({ probing }),
   setPendingCount: (pendingCount) => set({ pendingCount }),
   setSyncing: (syncing) => set({ syncing }),
   addFailure: (f) => set((s) => ({ failures: [f, ...s.failures].slice(0, 20) })),

@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useOfflineStore } from '@/stores/offline-store';
 import { setDeferredInstallPrompt, type BeforeInstallPromptEvent } from '@/lib/pwa/install-prompt';
 import { OfflineBanner } from './offline-banner';
+import { useConnectivityProbe } from './use-connectivity-probe';
 
 /**
  * Registers /sw.js (dev and prod — dev is needed to test the offline shell),
@@ -15,7 +16,8 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
   const setUpdateAvailable = useOfflineStore((s) => s.setUpdateAvailable);
   const setInstallable = useOfflineStore((s) => s.setInstallable);
 
-  // Connectivity
+  // Connectivity — browser events are the fast path; the real truth comes from
+  // the probe loop below (see useConnectivityProbe).
   useEffect(() => {
     if (typeof navigator === 'undefined') return;
     setOnline(navigator.onLine);
@@ -28,6 +30,8 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener('offline', off);
     };
   }, [setOnline]);
+
+  useConnectivityProbe();
 
   // Install prompt
   useEffect(() => {

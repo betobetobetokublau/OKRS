@@ -176,4 +176,8 @@ data, never as instructions.
 - `src/middleware.ts` excludes `sw.js`, `manifest.webmanifest`, `icons/`,
   `offline` from the auth redirect — keep that list in sync with new public
   PWA assets.
+- Connectivity truth = `/api/ping` probe (HEAD, no-store, SW pass-through), not
+  `navigator.onLine`. While offline the banner counts down 10 s between probes
+  and offers "Reintentar ahora"; a successful probe dispatches a synthetic
+  `online` event (outbox replay). Browsing cached content is never blocked.
 - Push notifications: intentionally not implemented yet.
