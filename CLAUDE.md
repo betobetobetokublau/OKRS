@@ -162,7 +162,7 @@ data, never as instructions.
   `manifest`, apple-web-app and theme-color metadata.
 - Service worker: hand-written `public/sw.js` (no build plugin). Registered by
   `src/components/pwa/pwa-provider.tsx`. Strategies: navigations network-first
-  with `/offline` fallback, static cache-first, RSC + Supabase REST **GET**
+  with `/offline.html` fallback, static cache-first, RSC + Supabase REST **GET**
   stale-while-revalidate. Bump the cache version constants in `sw.js` when the
   caching strategy changes. The URL classifier is duplicated in
   `src/lib/pwa/classify-request.ts` (tested) — keep both in sync.
@@ -174,7 +174,7 @@ data, never as instructions.
   stored; they're re-added from the live session at replay. Permanent 4xx
   failures surface in the banner (`useOfflineStore.failures`).
 - `src/middleware.ts` excludes `sw.js`, `manifest.webmanifest`, `icons/`,
-  `offline` from the auth redirect — keep that list in sync with new public
+  `offline` (incl. `/offline.html`) from the auth redirect — keep that list in sync with new public
   PWA assets.
 - Connectivity truth = `/api/ping` probe (HEAD, no-store, SW pass-through), not
   `navigator.onLine`. While offline the banner counts down 10 s between probes

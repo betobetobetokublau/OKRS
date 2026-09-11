@@ -8,7 +8,7 @@
  */
 
 export type RequestKind =
-  /** Same-origin document navigation: network-first, fallback cache, then /offline. */
+  /** Same-origin document navigation: network-first, fallback cache, then /offline.html. */
   | 'navigate'
   /** Next static chunks, icons, fonts, images: cache-first. */
   | 'static'

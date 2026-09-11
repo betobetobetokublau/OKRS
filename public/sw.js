@@ -12,14 +12,14 @@
  * Bump VERSION to invalidate every cache on the next activate.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v3';
 const SHELL_CACHE = `kublau-shell-${VERSION}`;
 const STATIC_CACHE = `kublau-static-${VERSION}`;
 const PAGES_CACHE = `kublau-pages-${VERSION}`;
 const DATA_CACHE = `kublau-data-${VERSION}`;
 const ALL_CACHES = [SHELL_CACHE, STATIC_CACHE, PAGES_CACHE, DATA_CACHE];
 
-const OFFLINE_URL = '/offline';
+const OFFLINE_URL = '/offline.html';
 const PRECACHE_URLS = [
   OFFLINE_URL,
   '/manifest.webmanifest',
@@ -163,7 +163,7 @@ async function putDataAndTrim(key, response) {
   }
 }
 
-/** Precache the /offline document plus the Next chunks it references so it renders (and hydrates) with zero network. */
+/** Precache the static /offline.html (plain HTML — no React, no chunks) plus manifest and icons. */
 async function precacheShell() {
   const cache = await caches.open(SHELL_CACHE);
   await Promise.all(
@@ -233,7 +233,10 @@ async function handleNavigate(request) {
 
 async function handleStatic(request) {
   const cache = await caches.open(STATIC_CACHE);
-  const cached = await cache.match(request, { ignoreVary: true });
+  // Icons are precached in the shell cache, chunks in the static cache: look
+  // everywhere before going to the network (the /offline page's icon used to
+  // 404 offline because of this).
+  const cached = await caches.match(request, { ignoreVary: true });
   if (cached) return cached;
   const response = await fetch(request);
   if (isCacheable(response, { respectNoStore: true })) cache.put(request, response.clone());
@@ -297,6 +300,38 @@ async function handleSupabaseData(request) {
   };
 }
 
+/** Fetch each route's HTML (and its RSC payload) and store them in the pages cache. Best effort, sequential-ish to avoid a burst. */
+async function warmRoutes(paths) {
+  const cache = await caches.open(PAGES_CACHE);
+  for (const path of paths) {
+    const url = new URL(path, self.location.origin);
+    if (url.origin !== self.location.origin) continue;
+    try {
+      const html = await fetch(url.href, {
+        credentials: 'same-origin',
+        headers: { Accept: 'text/html' },
+        cache: 'no-cache',
+      });
+      const ct = html.headers.get('Content-Type') || '';
+      if (html.ok && !html.redirected && ct.includes('text/html')) {
+        await cache.put(stripHash(url.href), html);
+      } else {
+        discard(html);
+        continue; // redirected (e.g. to /login) → don't warm the rest for this path
+      }
+      const rsc = await fetch(url.href, {
+        credentials: 'same-origin',
+        headers: { RSC: '1' },
+        cache: 'no-cache',
+      });
+      if (rsc.ok && !rsc.redirected) await cache.put(rscKey(url.href), rsc);
+      else discard(rsc);
+    } catch {
+      /* offline or transient — the next reconnect warms again */
+    }
+  }
+}
+
 /* ------------------------------------------------------------------------ */
 /* Lifecycle                                                                 */
 /* ------------------------------------------------------------------------ */
@@ -325,6 +360,10 @@ self.addEventListener('message', (event) => {
   if (!data || typeof data !== 'object') return;
   if (data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  } else if (data.type === 'WARM_ROUTES' && Array.isArray(data.urls)) {
+    // The app asks us to pre-cache its main routes (HTML + RSC payload) so
+    // they open offline even if the user never visited them in this session.
+    event.waitUntil(warmRoutes(data.urls.filter((u) => typeof u === 'string').slice(0, 40)));
   } else if (data.type === 'CLEAR_USER_CACHES') {
     // Sent on logout: user-scoped HTML/RSC and Supabase rows must not survive
     // into the next session on a shared device.

@@ -13,6 +13,8 @@ import { useRealtime } from '@/hooks/use-realtime';
 import { useOfflineSync } from '@/lib/offline/sync';
 import { useSidebarStore } from '@/stores/sidebar-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
+import { useBoards } from '@/hooks/use-boards';
+import { useWarmRoutes } from '@/lib/pwa/warm-routes';
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   const params = useParams();
@@ -26,6 +28,11 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   useRealtime(profile?.id);
+
+  // PWA: pre-cache the daily routes (+ every visible board) so they open
+  // offline even if this session never visited them. Re-runs on reconnect.
+  const { boards } = useBoards(currentWorkspace?.id);
+  useWarmRoutes(currentWorkspace?.slug, boards.map((b) => b.id));
   // Replays writes queued while offline (see src/lib/offline).
   useOfflineSync();
 

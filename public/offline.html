@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#026fff">
+<title>Sin conexión · Kublau OKRs</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="manifest" href="/manifest.webmanifest">
+<style>
+  html { font-size: 62.5%; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:2.4rem; box-sizing:border-box;
+         background:#f4f6f8; color:#212b36; font-family:-apple-system,BlinkMacSystemFont,'San Francisco',Roboto,'Segoe UI','Helvetica Neue',sans-serif; }
+  .card { width:100%; max-width:560px; background:#fff; border:1px solid #dfe3e8; border-radius:12px; padding:3.2rem 2.8rem; box-shadow:0 1px 2px rgba(15,24,48,.05); }
+  .head { display:flex; align-items:center; gap:1.4rem; margin-bottom:2rem; }
+  .head img { width:48px; height:48px; border-radius:12px; }
+  h1 { font-size:2.2rem; font-weight:700; margin:0; line-height:1.2; }
+  #countdown { margin:.4rem 0 0; font-size:1.3rem; color:#637381; }
+  p.lead { font-size:1.4rem; color:#637381; line-height:1.6; margin:0 0 2rem; }
+  .actions { display:flex; gap:1rem; margin-bottom:2.4rem; flex-wrap:wrap; }
+  button { padding:1rem 1.8rem; font-size:1.4rem; font-weight:600; border-radius:8px; cursor:pointer; font-family:inherit; }
+  #retry { color:#fff; background:#5c6ac4; border:none; }
+  #retry[disabled] { opacity:.7; cursor:default; }
+  #back { color:#212b36; background:#fff; border:1px solid #c4cdd5; }
+  h2 { font-size:1.1rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#637381; margin:0 0 1rem; }
+  #cached { display:grid; gap:.8rem; }
+  #cached-empty { font-size:1.3rem; color:#919eab; margin:0; }
+  .item { display:flex; align-items:center; gap:1rem; padding:1rem 1.2rem; border:1px solid #dfe3e8; border-radius:8px; color:#212b36; text-decoration:none; font-size:1.4rem; background:#fff; }
+  .item:hover { border-color:#5c6ac4; color:#5c6ac4; }
+  .item::before { content:''; width:8px; height:8px; border-radius:50%; background:#50b83c; flex:0 0 auto; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="head">
+      <img src="/icons/icon-192.png" alt="">
+      <div>
+        <h1>Sin conexión</h1>
+        <p id="countdown">Volveremos a intentar en 10 s</p>
+      </div>
+    </div>
+    <p class="lead">Esta página aún no está guardada en tu dispositivo. Puedes seguir consultando lo que ya visitaste; tus cambios se guardan aquí y se sincronizan cuando vuelva la conexión.</p>
+    <div class="actions">
+      <button id="retry" type="button">Reintentar ahora</button>
+      <button id="back" type="button">Volver</button>
+    </div>
+    <h2>Disponible sin conexión</h2>
+    <div id="cached" hidden></div>
+    <p id="cached-empty" hidden>Todavía no hay páginas guardadas en este dispositivo. Se guardan automáticamente cuando navegas con conexión.</p>
+  </main>
+  <script>
+(function () {
+  var INTERVAL = 10;
+  var left = INTERVAL;
+  // The SW answers the *requested* URL with this document, so when the
+  // address bar isn't /offline it already points at the page the user wanted.
+  var target = (function () {
+    try {
+      if (location.pathname !== '/offline.html' && location.pathname !== '/offline') return location.href;
+      var u = new URL(location.href); return u.searchParams.get('from') || document.referrer || '/';
+    } catch (e) { return '/'; }
+  })();
+  var countdown = document.getElementById('countdown');
+  var retryBtn = document.getElementById('retry');
+  var backBtn = document.getElementById('back');
+  var list = document.getElementById('cached');
+  var empty = document.getElementById('cached-empty');
+
+  function label(path) {
+    var parts = path.split('/').filter(Boolean);
+    var slug = parts[0] || '';
+    var rest = parts.slice(1);
+    var names = { 'check-in': 'Check-in', objetivos: 'Objetivos', tableros: 'Tableros', 'mis-tareas': 'Mis Tareas', okrs: 'OKRs', kpis: 'KPIs', tareas: 'Tarea', 'revision-mensual': 'Revisión Mensual', trimestral: 'Trimestral', departamentos: 'Departamentos', equipo: 'Equipo', periodos: 'Periodos', configuracion: 'Configuración' };
+    if (rest.length === 0) return slug ? 'Dashboard · ' + slug : 'Inicio';
+    var head = names[rest[0]] || rest[0];
+    if (rest[0] === 'tableros' && rest[1]) return 'Tablero · ' + rest[1].slice(0, 8) + '…';
+    if (rest[0] === 'tareas' && rest[1]) return 'Tarea · ' + rest[1].slice(0, 8) + '…';
+    if (rest.length > 1) return head + ' · ' + rest.slice(1).join('/');
+    return head;
+  }
+
+  function order(path) {
+    var rank = ['', 'check-in', 'tableros', 'objetivos', 'mis-tareas', 'okrs', 'kpis'];
+    var seg = path.split('/').filter(Boolean)[1] || '';
+    var i = rank.indexOf(seg);
+    return i === -1 ? 99 : i;
+  }
+
+  function loadCached() {
+    if (!('caches' in window)) { empty.hidden = false; return; }
+    caches.keys().then(function (keys) {
+      var pages = keys.filter(function (k) { return k.indexOf('kublau-pages-') === 0; });
+      return Promise.all(pages.map(function (k) { return caches.open(k).then(function (c) { return c.keys(); }); }));
+    }).then(function (groups) {
+      var seen = {};
+      var paths = [];
+      groups.forEach(function (reqs) {
+        reqs.forEach(function (r) {
+          try {
+            var u = new URL(r.url);
+            if (u.origin !== location.origin) return;
+            if (u.searchParams.has('_rsc')) return;
+            if (u.pathname === '/offline.html' || u.pathname === '/offline' || u.pathname === '/login' || u.pathname === '/' || u.pathname === location.pathname) return;
+            if (!seen[u.pathname]) { seen[u.pathname] = true; paths.push(u.pathname); }
+          } catch (e) {}
+        });
+      });
+      paths.sort(function (a, b) { return order(a) - order(b) || a.localeCompare(b); });
+      if (paths.length === 0) { empty.hidden = false; return; }
+      paths.forEach(function (p) {
+        var a = document.createElement('a');
+        a.href = p;
+        a.textContent = label(p);
+        a.className = 'item';
+        list.appendChild(a);
+      });
+      list.hidden = false;
+    }).catch(function () { empty.hidden = false; });
+  }
+
+  function probe() {
+    retryBtn.disabled = true;
+    retryBtn.textContent = 'Comprobando…';
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 4000) : null;
+    fetch('/api/ping?t=' + Date.now(), { method: 'HEAD', cache: 'no-store', signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { if (r.ok || r.status === 204) { location.replace(target); } else { fail(); } })
+      .catch(fail)
+      .then(function () { if (timer) clearTimeout(timer); });
+  }
+  function fail() {
+    left = INTERVAL;
+    retryBtn.disabled = false;
+    retryBtn.textContent = 'Reintentar ahora';
+    render();
+  }
+  function render() { countdown.textContent = 'Volveremos a intentar en ' + left + ' s'; }
+
+  retryBtn.addEventListener('click', probe);
+  backBtn.addEventListener('click', function () { if (history.length > 1) history.back(); else location.href = '/'; });
+  window.addEventListener('online', probe);
+  setInterval(function () { left -= 1; if (left <= 0) { probe(); } else { render(); } }, 1000);
+  render();
+  loadCached();
+})();
+  </script>
+</body>
+</html>
