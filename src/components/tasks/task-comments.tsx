@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { getCurrentUser } from '@/lib/supabase/session';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { MentionTextarea, renderCommentContent } from '@/components/comments/mention-textarea';
 import { useLiveRefetch } from '@/components/comments/use-live-comments';
@@ -103,7 +104,7 @@ export function TaskComments({ taskId, workspaceId, canComment = true }: TaskCom
     setSubmitting(true);
     setError(null);
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getCurrentUser(supabase);
     if (!user) {
       setSubmitting(false);
       setError('Tu sesión expiró. Vuelve a iniciar sesión.');

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { getCurrentUser } from '@/lib/supabase/session';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { formatRelative } from '@/lib/utils/dates';
 import { MentionTextarea, renderCommentContent } from '@/components/comments/mention-textarea';
@@ -121,7 +122,7 @@ export function CommentTimeline({ objectiveId, kpiId }: CommentTimelineProps) {
     setSubmitting(true);
 
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getCurrentUser(supabase);
     if (!user) {
       setSubmitting(false);
       return;

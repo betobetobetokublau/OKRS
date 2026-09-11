@@ -14,6 +14,7 @@ export const metadata: Metadata = {
     ],
     apple: '/icons/apple-touch-icon.png',
   },
+  other: { 'mobile-web-app-capable': 'yes' },
   appleWebApp: {
     capable: true,
     title: 'Kublau OKRs',

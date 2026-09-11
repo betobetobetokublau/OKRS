@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useParams, usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { forgetLastUser } from '@/lib/supabase/session';
 import { NotificationBell } from './notification-bell';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { useSidebarStore } from '@/stores/sidebar-store';
@@ -61,6 +62,7 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
   }, []);
 
   async function handleLogout() {
+    forgetLastUser();
     const supabase = createClient();
     await supabase.auth.signOut();
     // Clear the `kublau-pwd-ok` cache cookie so a shared browser can't

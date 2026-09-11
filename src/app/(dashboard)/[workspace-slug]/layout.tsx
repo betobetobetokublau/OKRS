@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Sidebar, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
@@ -36,7 +36,45 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   // Replays writes queued while offline (see src/lib/offline).
   useOfflineSync();
 
-  if (!currentWorkspace || !userWorkspace || !profile) {
+  // Offline safety: if the bootstrap queries never resolve (no cached copy of
+  // this workspace's data), don't spin forever — explain and offer the hub.
+  const [bootTimedOut, setBootTimedOut] = useState(false);
+  const booting = !currentWorkspace || !userWorkspace || !profile;
+  useEffect(() => {
+    if (!booting) {
+      setBootTimedOut(false);
+      return;
+    }
+    const t = setTimeout(() => setBootTimedOut(true), 8000);
+    return () => clearTimeout(t);
+  }, [booting]);
+
+  if (booting && bootTimedOut) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '2.4rem' }}>
+        <div style={{ maxWidth: '46rem', textAlign: 'center' }}>
+          <p style={{ fontSize: '1.8rem', fontWeight: 600, color: '#212b36', margin: '0 0 0.8rem' }}>
+            No pudimos cargar el workspace
+          </p>
+          <p style={{ color: '#637381', fontSize: '1.4rem', lineHeight: 1.6, margin: '0 0 2rem' }}>
+            {typeof navigator !== 'undefined' && !navigator.onLine
+              ? 'Estás sin conexión y esta parte aún no está guardada en tu dispositivo.'
+              : 'La conexión está tardando más de lo normal.'}
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => window.location.reload()} style={{ padding: '1rem 1.8rem', fontSize: '1.4rem', fontWeight: 600, color: '#fff', backgroundColor: '#5c6ac4', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
+              Reintentar
+            </button>
+            <a href="/offline.html" style={{ padding: '1rem 1.8rem', fontSize: '1.4rem', fontWeight: 600, color: '#212b36', backgroundColor: '#fff', border: '1px solid #c4cdd5', borderRadius: '8px', textDecoration: 'none' }}>
+              Ver páginas disponibles sin conexión
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (booting) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
         <div className="Polaris-Spinner" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.2rem' }}>

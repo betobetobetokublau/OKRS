@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { createClient } from '@/lib/supabase/client';
+import { getCurrentUser } from '@/lib/supabase/session';
 import { readImpersonationTarget, writeImpersonationTarget } from '@/lib/impersonation';
 import type { Workspace, UserWorkspace, Period, Profile } from '@/types';
 
@@ -36,7 +37,7 @@ export function useWorkspace(workspaceSlug: string) {
     let cancelled = false;
 
     async function loadWorkspaceData() {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getCurrentUser(supabase);
       if (cancelled || !user) return;
 
       // ── Load the real authenticated user's profile + workspace ────
