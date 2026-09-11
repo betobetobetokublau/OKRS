@@ -12,7 +12,7 @@
  * Bump VERSION to invalidate every cache on the next activate.
  */
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 const SHELL_CACHE = `kublau-shell-${VERSION}`;
 const STATIC_CACHE = `kublau-static-${VERSION}`;
 const PAGES_CACHE = `kublau-pages-${VERSION}`;
@@ -216,7 +216,16 @@ async function handleNavigate(request) {
     const response = await fetchWithTimeout(request, NAVIGATION_TIMEOUT_MS);
     if (isCacheable(response, { respectNoStore: false })) {
       const ct = response.headers.get('Content-Type') || '';
-      if (ct.includes('text/html')) putSafely(PAGES_CACHE, stripHash(request.url), response.clone());
+      if (ct.includes('text/html')) {
+        putSafely(PAGES_CACHE, stripHash(request.url), response.clone());
+        // Make sure the chunks this document needs are cached too, even if the
+        // browser already had them in HTTP cache (and therefore never hit us).
+        response
+          .clone()
+          .text()
+          .then((t) => cacheStaticAssets(extractStaticAssets(t)))
+          .catch(() => undefined);
+      }
     }
     return response;
   } catch {
@@ -238,9 +247,15 @@ async function handleStatic(request) {
   // 404 offline because of this).
   const cached = await caches.match(request, { ignoreVary: true });
   if (cached) return cached;
-  const response = await fetch(request);
-  if (isCacheable(response, { respectNoStore: true })) cache.put(request, response.clone());
-  return response;
+  try {
+    const response = await fetch(request);
+    if (isCacheable(response, { respectNoStore: true })) cache.put(request, response.clone());
+    return response;
+  } catch {
+    // Offline and not cached: answer with a clean 503 instead of a rejected
+    // promise (which surfaced as an uncaught SW error in DevTools).
+    return new Response('', { status: 503, statusText: 'Offline' });
+  }
 }
 
 /** RSC payloads share the URL space with HTML; key them separately so they never collide in kublau-pages. */
@@ -300,7 +315,43 @@ async function handleSupabaseData(request) {
   };
 }
 
-/** Fetch each route's HTML (and its RSC payload) and store them in the pages cache. Best effort, sequential-ish to avoid a burst. */
+/**
+ * Every `/_next/static/...` asset referenced by an HTML document or an RSC
+ * payload (script/link tags in HTML; "static/chunks/…js" strings in flight
+ * data). Warming a route without these produced ChunkLoadError offline.
+ */
+function extractStaticAssets(text) {
+  const out = new Set();
+  const attr = /(?:src|href)="(\/_next\/static\/[^"]+)"/g;
+  let m;
+  while ((m = attr.exec(text)) !== null) out.add(m[1].replace(/&amp;/g, '&'));
+  const flight = /(?:\/_next\/)?static\/(?:chunks|css)\/[A-Za-z0-9_\-./%()\[\]]+?\.(?:js|css)/g;
+  while ((m = flight.exec(text)) !== null) {
+    const path = m[0].startsWith('/_next/') ? m[0] : `/_next/${m[0]}`;
+    out.add(path.replace(/\\/g, ''));
+  }
+  return Array.from(out);
+}
+
+/** Cache-first fill of the static cache for a list of asset paths (skips what's already there). */
+async function cacheStaticAssets(paths) {
+  const cache = await caches.open(STATIC_CACHE);
+  await Promise.all(
+    paths.map(async (path) => {
+      try {
+        const url = new URL(path, self.location.origin).href;
+        if (await cache.match(url, { ignoreVary: true })) return;
+        const res = await fetch(url, { credentials: 'same-origin' });
+        if (isCacheable(res, { respectNoStore: true })) await cache.put(url, res);
+        else discard(res);
+      } catch {
+        /* best effort */
+      }
+    }),
+  );
+}
+
+/** Fetch each route's HTML + RSC payload + the static assets they reference. Best effort, sequential to avoid a burst. */
 async function warmRoutes(paths) {
   const cache = await caches.open(PAGES_CACHE);
   for (const path of paths) {
@@ -313,19 +364,36 @@ async function warmRoutes(paths) {
         cache: 'no-cache',
       });
       const ct = html.headers.get('Content-Type') || '';
-      if (html.ok && !html.redirected && ct.includes('text/html')) {
-        await cache.put(stripHash(url.href), html);
-      } else {
+      if (!html.ok || html.redirected || !ct.includes('text/html')) {
         discard(html);
         continue; // redirected (e.g. to /login) → don't warm the rest for this path
       }
+      const htmlText = await html.text();
+      await cache.put(
+        stripHash(url.href),
+        new Response(htmlText, { status: 200, headers: { 'Content-Type': ct } }),
+      );
+      const assets = new Set(extractStaticAssets(htmlText));
+
       const rsc = await fetch(url.href, {
         credentials: 'same-origin',
         headers: { RSC: '1' },
         cache: 'no-cache',
       });
-      if (rsc.ok && !rsc.redirected) await cache.put(rscKey(url.href), rsc);
-      else discard(rsc);
+      if (rsc.ok && !rsc.redirected) {
+        const rscText = await rsc.text();
+        await cache.put(
+          rscKey(url.href),
+          new Response(rscText, {
+            status: 200,
+            headers: { 'Content-Type': rsc.headers.get('Content-Type') || 'text/x-component' },
+          }),
+        );
+        extractStaticAssets(rscText).forEach((a) => assets.add(a));
+      } else {
+        discard(rsc);
+      }
+      await cacheStaticAssets(Array.from(assets));
     } catch {
       /* offline or transient — the next reconnect warms again */
     }
