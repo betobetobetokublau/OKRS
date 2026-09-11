@@ -23,6 +23,9 @@ const csp = [
   "img-src 'self' data: https:",
   "font-src 'self'",
   "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://api.postmarkapp.com",
+  // PWA: the service worker script and the web app manifest are same-origin.
+  "worker-src 'self'",
+  "manifest-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -44,6 +47,12 @@ const nextConfig = {
         // All routes except Next.js static assets and the favicon.
         source: '/((?!_next/static|_next/image|favicon.ico).*)',
         headers: securityHeaders,
+      },
+      {
+        // The service worker must never be served stale from the HTTP cache,
+        // otherwise a deploy can't roll out a new worker.
+        source: '/sw.js',
+        headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }],
       },
     ];
   },

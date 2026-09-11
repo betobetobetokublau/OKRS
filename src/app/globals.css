@@ -47,6 +47,10 @@ body {
   background-color: var(--color-bg);
   margin: 0;
   padding: 0;
+  /* Set on <html> by <OfflineBanner> while the fixed PWA status bar is
+     visible; the sticky topbar and fixed sidebar offset their `top` by the
+     same variable so nothing is covered. */
+  padding-top: var(--pwa-banner-h, 0px);
   min-height: 100vh;
 }
 

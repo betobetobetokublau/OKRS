@@ -7,6 +7,8 @@ import { NotificationBell } from './notification-bell';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { useSidebarStore } from '@/stores/sidebar-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
+import { useOfflineStore } from '@/stores/offline-store';
+import { clearUserCaches, promptInstall } from '@/lib/pwa/install-prompt';
 import { writeImpersonationTarget } from '@/lib/impersonation';
 import type { Profile } from '@/types';
 import { useState, useRef, useEffect } from 'react';
@@ -28,6 +30,7 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
   const toggleSidebar = useSidebarStore((s) => s.toggle);
   const isImpersonating = useWorkspaceStore((s) => s.isImpersonating);
   const exitImpersonation = useWorkspaceStore((s) => s.exitImpersonation);
+  const installable = useOfflineStore((s) => s.installable);
   const pathname = usePathname() ?? '';
   // On the /check-in route the page shows its own purple "Guardar
   // check-in" button in the header, so the topbar suppresses its
@@ -65,6 +68,9 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
     // expiring via document.cookie still works because we're explicitly
     // overwriting with maxAge=0 on the same path.
     document.cookie = 'kublau-pwd-ok=; Max-Age=0; Path=/; SameSite=Lax';
+    // Drop the SW's user-scoped caches (HTML/RSC + Supabase rows) so the next
+    // user on this device can't browse the previous session offline.
+    clearUserCaches();
     router.push('/login');
   }
 
@@ -79,7 +85,8 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
         justifyContent: 'space-between',
         padding: '0 2.4rem',
         position: 'sticky',
-        top: 0,
+        // Offset by the PWA status banner when it is visible (see globals.css).
+        top: 'var(--pwa-banner-h, 0px)',
         zIndex: 150,
         width: '100%',
         transition: 'background-color 140ms ease',
@@ -261,6 +268,28 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
                 padding: '0.4rem',
               }}
             >
+              {installable && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setMenuOpen(false);
+                    await promptInstall();
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.8rem 1.2rem',
+                    border: 'none',
+                    background: 'none',
+                    cursor: 'pointer',
+                    fontSize: '1.3rem',
+                    color: '#212b36',
+                    textAlign: 'left',
+                    borderRadius: '4px',
+                  }}
+                >
+                  Instalar app
+                </button>
+              )}
               <button
                 onClick={handleLogout}
                 style={{

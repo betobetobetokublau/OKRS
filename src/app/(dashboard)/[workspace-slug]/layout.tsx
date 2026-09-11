@@ -10,6 +10,7 @@ import {
 } from '@/components/onboarding/onboarding-carousel';
 import { useWorkspace } from '@/hooks/use-workspace';
 import { useRealtime } from '@/hooks/use-realtime';
+import { useOfflineSync } from '@/lib/offline/sync';
 import { useSidebarStore } from '@/stores/sidebar-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 
@@ -25,6 +26,8 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   useRealtime(profile?.id);
+  // Replays writes queued while offline (see src/lib/offline).
+  useOfflineSync();
 
   if (!currentWorkspace || !userWorkspace || !profile) {
     return (

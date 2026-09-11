@@ -7,6 +7,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/).*)',
+    // PWA assets and the offline fallback must be reachable without a
+    // session: the service worker, manifest, icons and /offline.
+    '/((?!_next/static|_next/image|favicon.ico|api/|sw\\.js|manifest\\.webmanifest|icons/|offline).*)',
   ],
 };
