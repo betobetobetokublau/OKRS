@@ -12,7 +12,7 @@
  * Bump VERSION to invalidate every cache on the next activate.
  */
 
-const VERSION = 'v4';
+const VERSION = 'v5';
 const SHELL_CACHE = `kublau-shell-${VERSION}`;
 const STATIC_CACHE = `kublau-static-${VERSION}`;
 const PAGES_CACHE = `kublau-pages-${VERSION}`;
@@ -30,7 +30,7 @@ const PRECACHE_URLS = [
   '/icons/apple-touch-icon.png',
 ];
 
-const NAVIGATION_TIMEOUT_MS = 4000;
+const NAVIGATION_TIMEOUT_MS = 12000;
 const DATA_CACHE_MAX_ENTRIES = 300;
 
 /* ------------------------------------------------------------------------ */
@@ -212,7 +212,16 @@ async function precacheShell() {
 /* ------------------------------------------------------------------------ */
 
 async function handleNavigate(request) {
+  // Offline for sure → don't even try the network; go straight to the cache so
+  // the page appears instantly instead of after a timeout.
+  if (self.navigator && self.navigator.onLine === false) {
+    const cachedNow = await caches.match(stripHash(request.url), { ignoreVary: true });
+    if (cachedNow) return cachedNow;
+  }
   try {
+    // Long timeout on purpose: serving a *stale* document while online is
+    // worse than waiting — its chunk hashes may belong to a previous deploy
+    // and 404, which shows up as a blank page / ChunkLoadError.
     const response = await fetchWithTimeout(request, NAVIGATION_TIMEOUT_MS);
     if (isCacheable(response, { respectNoStore: false })) {
       const ct = response.headers.get('Content-Type') || '';
