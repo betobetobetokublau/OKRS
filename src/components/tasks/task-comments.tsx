@@ -10,7 +10,7 @@ import { extractMentionIds } from '@/lib/validators/board';
 import { formatRelative } from '@/lib/utils/dates';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { formatActivityBody } from './task-activity-format';
-import type { Comment, Profile, TaskActivity } from '@/types';
+import type { Comment, Profile, Task, TaskActivity } from '@/types';
 
 interface TaskCommentsProps {
   taskId: string;
@@ -32,6 +32,7 @@ export function TaskComments({ taskId, workspaceId, canComment = true }: TaskCom
   const [comments, setComments] = useState<Comment[]>([]);
   const [activity, setActivity] = useState<TaskActivity[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
+  const [taskTitles, setTaskTitles] = useState<Map<string, string>>(() => new Map());
   const [loading, setLoading] = useState(true);
   // `draft` is what the user sees (`@Nombre`); `serialized` carries the
   // `@[Nombre](uuid)` tokens that get stored and drive notifications.
@@ -56,8 +57,26 @@ export function TaskComments({ taskId, workspaceId, canComment = true }: TaskCom
         .limit(200),
       supabase.from('user_workspaces').select('profile:profiles(*)').eq('workspace_id', workspaceId),
     ]);
+    const activityRows = (activityRes.data || []) as TaskActivity[];
+    // Titles of the parents referenced by re-parenting rows ("movió la tarea bajo …").
+    const parentIds = Array.from(
+      new Set(
+        activityRows
+          .filter((a) => a.kind === 'parent')
+          .map((a) => a.payload?.to)
+          .filter((v): v is string => typeof v === 'string' && v.length > 0),
+      ),
+    );
+    if (parentIds.length > 0) {
+      const { data: parents } = await supabase.from('tasks').select('id, title').in('id', parentIds);
+      const map = new Map<string, string>();
+      for (const p of (parents || []) as Array<Pick<Task, 'id' | 'title'>>) map.set(p.id, p.title);
+      setTaskTitles(map);
+    } else {
+      setTaskTitles(new Map());
+    }
     setComments((commentsRes.data || []) as Comment[]);
-    setActivity((activityRes.data || []) as TaskActivity[]);
+    setActivity(activityRows);
     setMembers(
       ((membersRes.data || []) as Array<{ profile: Profile | Profile[] | null }>)
         .map((uw) => (Array.isArray(uw.profile) ? uw.profile[0] ?? null : uw.profile))
@@ -89,6 +108,7 @@ export function TaskComments({ taskId, workspaceId, canComment = true }: TaskCom
     return map;
   }, [members, activity, comments]);
   const lookupName = useCallback((id: string) => nameById.get(id) ?? null, [nameById]);
+  const lookupTaskTitle = useCallback((id: string) => taskTitles.get(id) ?? null, [taskTitles]);
 
   const mentionedOthers = useMemo(
     () => extractMentionIds(serialized).filter((id) => id !== profile?.id).length,
@@ -223,7 +243,7 @@ export function TaskComments({ taskId, workspaceId, canComment = true }: TaskCom
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: '1.3rem', color: '#637381', fontStyle: 'italic', margin: 0, lineHeight: 1.5 }}>
                   <span style={{ fontWeight: 600, fontStyle: 'normal', color: '#212b36' }}>{a.actor?.full_name ?? 'Alguien'}</span>{' '}
-                  {formatActivityBody(a, lookupName)}
+                  {formatActivityBody(a, lookupName, lookupTaskTitle)}
                 </p>
                 <span style={{ fontSize: '1.1rem', color: '#919eab' }}>{formatRelative(a.created_at)}</span>
               </div>

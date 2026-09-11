@@ -154,6 +154,8 @@ export interface Task {
   updated_at: string;
   assigned_user?: Profile;
   objective?: Objective | null;
+  /** Embedded parent (`parent:parent_task_id(id, title)`) when this is a subtask. */
+  parent?: Pick<Task, 'id' | 'title'> | null;
   subtasks?: Task[];
 }
 
@@ -214,7 +216,9 @@ export type TaskActivityKind =
   | 'board_added'
   | 'board_removed'
   | 'section'
-  | 'subtask_added';
+  | 'subtask_added'
+  /** Re-parented or decoupled; payload `{ from, to }` are task ids (null = top-level). */
+  | 'parent';
 
 export interface TaskActivity {
   id: string;

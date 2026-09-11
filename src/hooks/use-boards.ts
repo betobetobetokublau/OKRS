@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { PARENT_EMBED } from './use-tasks';
 import type { Board, BoardSection, BoardTask, Profile, Task, TaskPriority, TaskStatus, UserPreferences } from '@/types';
 
 /**
@@ -11,8 +12,7 @@ import type { Board, BoardSection, BoardTask, Profile, Task, TaskPriority, TaskS
  * so these hooks never filter on visibility client-side.
  */
 
-const TASK_SELECT =
-  '*, assigned_user:profiles!tasks_assigned_user_id_fkey(*), objective:objectives!tasks_objective_id_fkey(id, title, workspace_id, period_id)';
+const TASK_SELECT = `*, assigned_user:profiles!tasks_assigned_user_id_fkey(*), objective:objectives!tasks_objective_id_fkey(id, title, workspace_id, period_id), ${PARENT_EMBED}`;
 
 // ---------------------------------------------------------------------------
 // List of boards for the sidebar / index page

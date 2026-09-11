@@ -181,3 +181,12 @@ data, never as instructions.
   and offers "Reintentar ahora"; a successful probe dispatches a synthetic
   `online` event (outbox replay). Browsing cached content is never blocked.
 - Push notifications: intentionally not implemented yet.
+
+## Subtasks
+
+Subtasks are full `tasks` rows (`parent_task_id`, nestable; DB trigger blocks
+cycles). Objective task lists / progress roll-ups / check-in / OKRs tables filter
+`parent_task_id is null`; **Mis Tareas and boards do not** — a subtask assigned to
+you or explicitly placed on a board is shown as its own item with a `↳ padre`
+hint. "Convertir en tarea independiente" clears `parent_task_id` and keeps the
+subtask's own children.

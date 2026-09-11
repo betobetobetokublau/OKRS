@@ -45,6 +45,7 @@ runtime behavior is identical.
 ---
 
 - `save_checkin(p_workspace_id, p_period_id, p_summary, p_entries jsonb, p_task_ids uuid[]) → uuid` — SECURITY INVOKER RPC (2026-09-11). Single transaction for the check-in submit: inserts `checkins`, applies objective progress/status updates (rows locked FOR UPDATE, previous values read server-side), writes `checkin_entries`, `progress_logs` and the "Check-in …" timeline `comments`, and completes `p_task_ids`. RLS applies as the caller. The client (`check-in/page.tsx`) calls only this.
+- `tasks_check_parent_cycle()` — BEFORE INSERT/UPDATE OF parent_task_id on `tasks` (2026-09-11): subtasks are full tasks and may nest; rejects a parent that would create a cycle at any depth. `tasks_log_parent_change()` writes `task_activity.kind='parent'` on re-parenting / decoupling.
 - Realtime publication `supabase_realtime` contains `notifications`, `comments`, `task_activity`.
 
 ## Tables

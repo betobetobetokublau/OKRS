@@ -38,6 +38,8 @@ interface AsanaDetailShellProps {
   title: React.ReactNode;
   titleAfter?: React.ReactNode;
   onEdit?: () => void;
+  /** Extra secondary action buttons rendered before Eliminar (e.g. "Convertir en tarea independiente"). */
+  actions?: React.ReactNode;
   onDelete?: () => void;
   deleting?: boolean;
   fields: FieldRow[];
@@ -56,6 +58,7 @@ export function AsanaDetailShell({
   title,
   titleAfter,
   onEdit,
+  actions,
   onDelete,
   deleting,
   fields,
@@ -128,7 +131,8 @@ export function AsanaDetailShell({
           </h1>
           {titleAfter}
         </div>
-        <div style={{ display: 'flex', gap: '0.6rem', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '0.6rem', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {actions}
           {onEdit && (
             <button
               type="button"

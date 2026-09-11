@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { InlinePrioritySelect } from '@/components/okrs/inline-priority-select';
 import { InlineStatusSelect } from '@/components/okrs/inline-status-select';
+import { ParentHint } from '@/components/tasks/task-row';
 import { formatDate, formatOverdue } from '@/lib/utils/dates';
 import { AssigneePopover } from './assignee-popover';
 import { isTaskOverdue, type BoardColumn } from './board-filters';
@@ -114,7 +115,10 @@ function Row({ item, canEdit, members, onOpen, onChanged }: { item: BoardTask; c
         <span aria-hidden style={{ width: 16, height: 16, minWidth: 16, borderRadius: '50%', border: completed ? '1.5px solid #108043' : '1.5px solid #c4cdd5', backgroundColor: completed ? '#108043' : 'white', color: 'white', fontSize: '1rem', lineHeight: '13px', textAlign: 'center' }}>
           {completed ? '✓' : ''}
         </span>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: completed ? '#919eab' : '#212b36', textDecoration: completed ? 'line-through' : 'none', fontWeight: 500 }}>{task.title}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {task.parent && <ParentHint title={task.parent.title} />}
+          <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: completed ? '#919eab' : '#212b36', textDecoration: completed ? 'line-through' : 'none', fontWeight: 500 }}>{task.title}</span>
+        </div>
       </div>
       <div style={CELL} onClick={(e) => e.stopPropagation()}>
         <InlinePrioritySelect id={task.id} currentPriority={task.priority} canEdit={canEdit} onChanged={onChanged} />

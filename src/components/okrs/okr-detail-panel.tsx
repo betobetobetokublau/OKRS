@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { KpiDetailPanelBody } from './kpi-detail-panel-body';
 import { ObjectiveDetailPanelBody } from './objective-detail-panel-body';
 import { TaskDetailPanelBody } from './task-detail-panel-body';
@@ -32,6 +33,10 @@ const CLOSE_ICON = 'M6 18L18 6M6 6l12 12';
 /**
  * Slide-in right-side panel showing the detail body for the selected OKR entity.
  * Closes on ESC, backdrop click, or the X button.
+ *
+ * Tasks can navigate in place (subtask rows, ancestor breadcrumb): the panel
+ * keeps an internal stack of task ids so "← Volver" returns to the previous
+ * one. A new `target` from the caller, or closing, resets the stack.
  */
 export function OkrDetailPanel({ target, departments, canEdit, canEditKpi, onClose, onChanged }: OkrDetailPanelProps) {
   const kpiEditAllowed = canEditKpi ?? canEdit;
@@ -41,22 +46,53 @@ export function OkrDetailPanel({ target, departments, canEdit, canEditKpi, onClo
   // which often didn't fire because React committed both states in one frame).
   const [shown, setShown] = useState<PanelTarget>(null);
   const [closing, setClosing] = useState(false);
+  /** Task ids we navigated away from inside the panel, oldest first. */
+  const [stack, setStack] = useState<string[]>([]);
+
+  // The effect below must react to the *caller's* target only (not to the
+  // in-panel navigation that also updates `shown`), so both are read via refs.
+  const targetRef = useRef<PanelTarget>(target);
+  targetRef.current = target;
+  const shownRef = useRef<PanelTarget>(shown);
+  shownRef.current = shown;
+  const targetKey = target ? `${target.type}:${target.id}` : null;
 
   useEffect(() => {
-    if (target) {
+    const next = targetRef.current;
+    if (next) {
       // Incoming: replace whatever was shown and cancel any pending close.
       setClosing(false);
-      setShown(target);
-    } else if (shown) {
+      setShown(next);
+      setStack([]);
+    } else if (shownRef.current) {
       // Outgoing: trigger exit animation, unmount after it completes.
       setClosing(true);
       const timer = setTimeout(() => {
         setShown(null);
+        setStack([]);
         setClosing(false);
       }, 260);
       return () => clearTimeout(timer);
     }
-  }, [target, shown]);
+  }, [targetKey]);
+
+  const openTask = useCallback((id: string) => {
+    // Read through the ref (not a setState updater) so StrictMode's
+    // double-invoked updaters can't push the same id twice.
+    const current = shownRef.current;
+    if (!current || current.id === id) return;
+    setStack((prev) => [...prev, current.id]);
+    setShown({ type: 'task', id });
+  }, []);
+
+  function goBack() {
+    const prev = stack[stack.length - 1];
+    if (!prev) return;
+    setStack((s) => s.slice(0, -1));
+    setShown({ type: 'task', id: prev });
+  }
+
+  const backToId = stack[stack.length - 1] ?? null;
 
   useEffect(() => {
     if (!shown || closing) return;
@@ -115,17 +151,20 @@ export function OkrDetailPanel({ target, departments, canEdit, canEditKpi, onClo
             flexShrink: 0,
           }}
         >
-          <span
-            style={{
-              fontSize: '1.2rem',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              color: '#637381',
-            }}
-          >
-            {typeLabel}
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: 0 }}>
+            {backToId && <BackLink taskId={backToId} onClick={goBack} />}
+            <span
+              style={{
+                fontSize: '1.2rem',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: '#637381',
+              }}
+            >
+              {typeLabel}
+            </span>
+          </div>
           <button
             type="button"
             aria-label="Cerrar"
@@ -169,13 +208,62 @@ export function OkrDetailPanel({ target, departments, canEdit, canEditKpi, onClo
           )}
           {shown.type === 'task' && (
             <TaskDetailPanelBody
+              key={shown.id}
               taskId={shown.id}
               canEdit={canEdit}
               onChanged={onChanged}
+              onOpenTask={openTask}
             />
           )}
         </div>
       </aside>
     </>
+  );
+}
+
+/** "← Volver a {título}" — resolves the previous task's title with one tiny query. */
+function BackLink({ taskId, onClick }: { taskId: string; onClick: () => void }) {
+  const [title, setTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from('tasks')
+      .select('title')
+      .eq('id', taskId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setTitle((data as { title: string } | null)?.title ?? null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId]);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.4rem',
+        padding: 0,
+        border: 'none',
+        background: 'transparent',
+        color: '#5c6ac4',
+        fontSize: '1.3rem',
+        fontWeight: 500,
+        cursor: 'pointer',
+        maxWidth: '40rem',
+        textAlign: 'left',
+      }}
+    >
+      <span aria-hidden>←</span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        Volver a {title ?? 'la tarea anterior'}
+      </span>
+    </button>
   );
 }

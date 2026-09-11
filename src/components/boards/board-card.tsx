@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react';
 import { PRIORITY_CHIPS } from '@/components/tasks/priority';
+import { ParentHint } from '@/components/tasks/task-row';
 import { taskStatusChip } from '@/components/okrs/status-chips';
 import { formatDate, formatOverdue } from '@/lib/utils/dates';
 import { AssigneePopover } from './assignee-popover';
@@ -117,18 +118,22 @@ export function BoardCard({
         >
           {completed ? '✓' : ''}
         </button>
-        <span
-          style={{
-            fontSize: s.title,
-            fontWeight: 500,
-            color: completed ? '#919eab' : '#212b36',
-            textDecoration: completed ? 'line-through' : 'none',
-            lineHeight: 1.35,
-            wordBreak: 'break-word',
-          }}
-        >
-          {task.title}
-        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {task.parent && <ParentHint title={task.parent.title} size={s.chip} />}
+          <span
+            style={{
+              display: 'block',
+              fontSize: s.title,
+              fontWeight: 500,
+              color: completed ? '#919eab' : '#212b36',
+              textDecoration: completed ? 'line-through' : 'none',
+              lineHeight: 1.35,
+              wordBreak: 'break-word',
+            }}
+          >
+            {task.title}
+          </span>
+        </div>
       </div>
 
       {/* Meta chips */}

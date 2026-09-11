@@ -131,6 +131,7 @@ export function TaskRow({ task, onUpdated, showObjective, onOpen }: TaskRowProps
               <span style={{ fontSize: '1.1rem', color: '#de3618', fontWeight: 500 }}>Vencida</span>
             )}
           </div>
+          {task.parent && <ParentHint title={task.parent.title} />}
           {showObjective && task.objective && (
             <span style={{ fontSize: '1.1rem', color: '#637381' }}>
               Objetivo: {task.objective.title}
@@ -163,5 +164,26 @@ export function TaskRow({ task, onUpdated, showObjective, onOpen }: TaskRowProps
         />
       )}
     </>
+  );
+}
+
+/** Muted one-line "↳ Parent title" shown on subtask rows / cards. */
+export function ParentHint({ title, size = '1.1rem' }: { title: string; size?: string }) {
+  return (
+    <span
+      title={`Subtarea de: ${title}`}
+      style={{
+        display: 'block',
+        fontSize: size,
+        color: '#919eab',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        lineHeight: 1.4,
+      }}
+    >
+      <span aria-hidden>↳ </span>
+      {title}
+    </span>
   );
 }

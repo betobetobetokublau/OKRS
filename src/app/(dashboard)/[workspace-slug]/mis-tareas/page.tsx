@@ -9,6 +9,7 @@ import { TaskRow } from '@/components/tasks/task-row';
 import { TaskForm } from '@/components/tasks/task-form';
 import { priorityRank } from '@/components/tasks/priority';
 import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
+import { PARENT_EMBED } from '@/hooks/use-tasks';
 import type { Task, Objective } from '@/types';
 
 interface GroupedTasks {
@@ -55,13 +56,13 @@ export default function MisTareasPage() {
     const supabase = createClient();
 
     // tasks.workspace_id exists since 2026-09-10 — no objective hop needed.
-    // Subtasks are excluded; they show up inside their parent's detail panel.
+    // Subtasks assigned to me are included (first-class tasks); rows show a
+    // "↳ parent" hint.
     const { data } = await supabase
       .from('tasks')
-      .select('*, assigned_user:profiles!tasks_assigned_user_id_fkey(*), objective:objectives!tasks_objective_id_fkey(*)')
+      .select(`*, assigned_user:profiles!tasks_assigned_user_id_fkey(*), objective:objectives!tasks_objective_id_fkey(*), ${PARENT_EMBED}`)
       .eq('assigned_user_id', profile.id)
       .eq('workspace_id', currentWorkspace.id)
-      .is('parent_task_id', null)
       .order('created_at', { ascending: true })
       .limit(300);
 

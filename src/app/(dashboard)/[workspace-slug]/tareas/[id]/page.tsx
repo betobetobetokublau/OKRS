@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { canManageContent } from '@/lib/utils/permissions';
 import { fetchTaskBoards } from '@/hooks/use-boards';
+import { PARENT_EMBED, decoupleTask, fetchTaskAncestors, type TaskAncestor } from '@/hooks/use-tasks';
 import { formatRelative, isOverdue } from '@/lib/utils/dates';
 import { InlineStatusSelect } from '@/components/okrs/inline-status-select';
 import { InlinePrioritySelect } from '@/components/okrs/inline-priority-select';
@@ -19,8 +20,7 @@ import { SubtasksSection } from '@/components/tasks/subtasks-section';
 import { TaskComments } from '@/components/tasks/task-comments';
 import type { BoardTask, Objective, Profile, Task } from '@/types';
 
-const TASK_SELECT =
-  '*, assigned_user:profiles!tasks_assigned_user_id_fkey(*), objective:objectives!tasks_objective_id_fkey(*)';
+const TASK_SELECT = `*, assigned_user:profiles!tasks_assigned_user_id_fkey(*), objective:objectives!tasks_objective_id_fkey(*), ${PARENT_EMBED}`;
 
 type LoadedTask = Task & { creator?: Profile | null };
 
@@ -39,15 +39,20 @@ export default function TaskPage() {
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
 
   const [task, setTask] = useState<LoadedTask | null>(null);
+  const [ancestors, setAncestors] = useState<TaskAncestor[]>([]);
   const [placements, setPlacements] = useState<BoardTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
-  const [actionBusy, setActionBusy] = useState<'duplicate' | 'delete' | null>(null);
+  const [actionBusy, setActionBusy] = useState<'duplicate' | 'delete' | 'decouple' | null>(null);
   const [deleteArmed, setDeleteArmed] = useState(false);
+  const [decoupleArmed, setDecoupleArmed] = useState(false);
 
   const load = useCallback(async () => {
+    // Navigating between tasks keeps this component mounted: show the loader
+    // instead of the previous task while the new one is fetched.
+    setLoading(true);
     const supabase = createClient();
     const [{ data: t }, boards] = await Promise.all([
       supabase.from('tasks').select(TASK_SELECT).eq('id', taskId).single(),
@@ -60,13 +65,15 @@ export default function TaskPage() {
     }
     const row = t as Task & { objective?: Objective | Objective[] | null };
     const objective = Array.isArray(row.objective) ? row.objective[0] ?? null : row.objective ?? null;
-    let creator: Profile | null = null;
-    if (row.created_by) {
-      const { data: p } = await supabase.from('profiles').select('*').eq('id', row.created_by).maybeSingle();
-      creator = (p as Profile | null) ?? null;
-    }
+    const [chain, creatorRes] = await Promise.all([
+      fetchTaskAncestors(row.parent_task_id),
+      row.created_by ? supabase.from('profiles').select('*').eq('id', row.created_by).maybeSingle() : Promise.resolve(null),
+    ]);
+    const creator = (creatorRes?.data as Profile | null) ?? null;
     setTask({ ...row, objective, creator });
+    setAncestors(chain);
     setPlacements(boards);
+    setNotFound(false);
     setLoading(false);
   }, [taskId]);
 
@@ -85,6 +92,12 @@ export default function TaskPage() {
     const t = setTimeout(() => setDeleteArmed(false), 3000);
     return () => clearTimeout(t);
   }, [deleteArmed]);
+
+  useEffect(() => {
+    if (!decoupleArmed) return;
+    const t = setTimeout(() => setDecoupleArmed(false), 3000);
+    return () => clearTimeout(t);
+  }, [decoupleArmed]);
 
   function refresh() {
     load();
@@ -126,6 +139,28 @@ export default function TaskPage() {
     } catch {
       setToast('No se pudo copiar el enlace');
     }
+  }
+
+  async function handleDecouple() {
+    if (!task || actionBusy) return;
+    if (!decoupleArmed) {
+      setDecoupleArmed(true);
+      return;
+    }
+    setDecoupleArmed(false);
+    setActionBusy('decouple');
+    const { error } = await decoupleTask(task.id);
+    setActionBusy(null);
+    if (error) {
+      setToast('No se pudo convertir la tarea en independiente.');
+      return;
+    }
+    setToast('Ahora es una tarea independiente');
+    refresh();
+  }
+
+  function openTask(id: string) {
+    router.push(`/${slug}/tareas/${id}`);
   }
 
   async function handleDelete() {
@@ -174,6 +209,26 @@ export default function TaskPage() {
     <div style={{ maxWidth: '1120px', margin: '0 auto' }}>
       {/* Breadcrumb */}
       <nav aria-label="Ubicación" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.8rem', fontSize: '1.3rem', color: '#637381', marginBottom: '1.6rem' }}>
+        {ancestors.length > 0 && (
+          <>
+            {ancestors.map((a) => (
+              <span key={a.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.8rem', minWidth: 0 }}>
+                <Link
+                  href={`/${slug}/tareas/${a.id}`}
+                  title={a.title}
+                  style={{ color: '#637381', textDecoration: 'none', maxWidth: '24rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
+                  {a.title}
+                </Link>
+                <span style={{ color: '#c4cdd5' }}>›</span>
+              </span>
+            ))}
+            <span style={{ color: '#212b36', maxWidth: '24rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={task.title}>
+              {task.title}
+            </span>
+            <span style={{ color: '#c4cdd5' }}>›</span>
+          </>
+        )}
         {firstPlacement?.board ? (
           <>
             <Link href={`/${slug}/tableros`} style={{ color: '#637381', textDecoration: 'none' }}>Tableros</Link>
@@ -235,7 +290,7 @@ export default function TaskPage() {
             />
           </div>
 
-          <SubtasksSection key={`sub-${refreshKey}`} parentTask={task} canEdit onChanged={() => load()} />
+          <SubtasksSection key={`sub-${refreshKey}`} parentTask={task} canEdit onChanged={() => load()} onOpen={openTask} />
 
           <TaskComments key={`com-${refreshKey}`} taskId={task.id} workspaceId={task.workspace_id} />
         </div>
@@ -284,6 +339,15 @@ export default function TaskPage() {
                 {actionBusy === 'duplicate' ? 'Duplicando...' : 'Duplicar'}
               </ActionButton>
               <ActionButton onClick={handleCopyLink}>Copiar enlace</ActionButton>
+              {task.parent_task_id && (
+                <ActionButton onClick={handleDecouple} disabled={actionBusy !== null} accent={decoupleArmed}>
+                  {actionBusy === 'decouple'
+                    ? 'Convirtiendo...'
+                    : decoupleArmed
+                      ? 'Confirmar: será independiente'
+                      : 'Convertir en tarea independiente'}
+                </ActionButton>
+              )}
               <ActionButton onClick={handleDelete} disabled={actionBusy !== null} danger={deleteArmed}>
                 {actionBusy === 'delete' ? 'Eliminando...' : deleteArmed ? 'Confirmar eliminación' : 'Eliminar'}
               </ActionButton>
@@ -335,12 +399,17 @@ function ActionButton({
   onClick,
   disabled,
   danger,
+  accent,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
+  /** Armed destructive state (red). */
   danger?: boolean;
+  /** Armed structural state (primary). */
+  accent?: boolean;
 }) {
+  const filled = Boolean(danger || accent);
   return (
     <button
       type="button"
@@ -351,8 +420,8 @@ function ActionButton({
         padding: '0.7rem 0.8rem',
         fontSize: '1.3rem',
         fontWeight: 500,
-        color: danger ? 'white' : '#212b36',
-        backgroundColor: danger ? '#bf0711' : 'transparent',
+        color: filled ? 'white' : '#212b36',
+        backgroundColor: danger ? '#bf0711' : accent ? '#5c6ac4' : 'transparent',
         border: 'none',
         borderRadius: '4px',
         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -360,10 +429,10 @@ function ActionButton({
         transition: 'background-color 120ms',
       }}
       onMouseEnter={(e) => {
-        if (!danger) e.currentTarget.style.backgroundColor = '#f4f6f8';
+        if (!filled) e.currentTarget.style.backgroundColor = '#f4f6f8';
       }}
       onMouseLeave={(e) => {
-        if (!danger) e.currentTarget.style.backgroundColor = 'transparent';
+        if (!filled) e.currentTarget.style.backgroundColor = 'transparent';
       }}
     >
       {children}

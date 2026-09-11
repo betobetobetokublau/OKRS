@@ -87,6 +87,21 @@ describe('formatActivity', () => {
     );
   });
 
+  it('formats re-parenting (decouple / move under another task)', () => {
+    const titles: Record<string, string> = { 'cccccccc-cccc-cccc-cccc-cccccccccccc': 'Lanzar campaña' };
+    const lookupTitle = (id: string) => titles[id] ?? null;
+    expect(formatActivityBody(act('parent', { from: 'cccccccc-cccc-cccc-cccc-cccccccccccc', to: null }), lookup)).toBe(
+      'convirtió la tarea en independiente',
+    );
+    expect(formatActivity(act('parent', { from: null, to: 'cccccccc-cccc-cccc-cccc-cccccccccccc' }, 'Ruth'), lookup, lookupTitle)).toBe(
+      'Ruth movió la tarea bajo “Lanzar campaña”',
+    );
+    // Unknown target title (deleted parent, or no lookup provided) degrades gracefully.
+    expect(formatActivityBody(act('parent', { from: null, to: 'zzzz' }), lookup, lookupTitle)).toBe('movió la tarea bajo otra tarea');
+    expect(formatActivityBody(act('parent', { from: null, to: 'zzzz' }), lookup)).toBe('movió la tarea bajo otra tarea');
+    expect(formatActivityBody(act('parent', {}), lookup)).toBe('convirtió la tarea en independiente');
+  });
+
   it('never throws on unknown kinds or empty payloads', () => {
     expect(formatActivityBody({ kind: 'weird' as TaskActivityKind, payload: {} }, lookup)).toBe('actualizó la tarea');
     expect(formatActivityBody({ kind: 'status', payload: {} }, lookup)).toBe('cambió el estado Sin estado → Sin estado');
