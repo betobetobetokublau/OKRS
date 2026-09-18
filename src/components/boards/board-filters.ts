@@ -21,7 +21,7 @@ export interface BoardFilters {
 
 export type BoardSort = 'manual' | 'priority' | 'due_date' | 'status' | 'assignee' | 'alpha';
 export type BoardGrouping = 'section' | 'status' | 'assignee';
-export type BoardTab = 'board' | 'list';
+export type BoardTab = 'board' | 'list' | 'progress';
 
 export interface BoardView {
   filters: BoardFilters;
@@ -282,7 +282,7 @@ export function normalizeView(parsed: Partial<BoardView> | null | undefined): Bo
     },
     sort: parsed?.sort && SORT_VALUES.has(parsed.sort) ? parsed.sort : 'manual',
     grouping: parsed?.grouping && GROUPING_VALUES.has(parsed.grouping) ? parsed.grouping : 'section',
-    tab: parsed?.tab === 'list' ? 'list' : 'board',
+    tab: parsed?.tab === 'list' || parsed?.tab === 'progress' ? parsed.tab : 'board',
   };
 }
 

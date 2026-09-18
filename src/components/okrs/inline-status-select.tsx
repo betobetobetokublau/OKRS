@@ -25,7 +25,7 @@ interface InlineStatusSelectProps {
 
 const CHEVRON_DOWN = 'M6 9l6 6 6-6';
 
-function StaticChip({ chip }: { chip: StatusChip }) {
+export function StaticChip({ chip }: { chip: StatusChip }) {
   return (
     <span
       style={{

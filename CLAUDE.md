@@ -199,3 +199,14 @@ cycles). Objective task lists / progress roll-ups / check-in / OKRs tables filte
 you or explicitly placed on a board is shown as its own item with a `↳ padre`
 hint. "Convertir en tarea independiente" clears `parent_task_id` and keeps the
 subtask's own children.
+
+## Monitored projects (boards)
+
+`boards.is_monitored` promotes a board to a project card on `/tableros`
+(vertical stack above the plain tile grid) with `boards.status` (7 project
+states, `boardStatusChip`), the latest `board_updates` post, the next
+`board_milestones` entry and recent `task_activity` + `comments` of its tasks
+(`useMonitoredOverview`). The board page has an **Avances** tab
+(`BoardProgressTab`, reachable via `?tab=avances`). Updates and milestones are
+commentary only — they never write to `tasks`. Posting an update with a status
+also sets the board status (`createBoardUpdate`).

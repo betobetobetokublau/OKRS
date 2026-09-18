@@ -132,6 +132,7 @@ export async function createBoard(input: {
   visibility?: 'workspace' | 'private';
   description?: string | null;
   owner_id?: string | null;
+  is_monitored?: boolean;
 }): Promise<Board | null> {
   const supabase = createClient();
   const { data, error } = await supabase
@@ -143,6 +144,7 @@ export async function createBoard(input: {
       visibility: input.visibility ?? 'workspace',
       description: input.description ?? null,
       owner_id: input.owner_id ?? null,
+      is_monitored: input.is_monitored ?? false,
     })
     .select('*')
     .single();
@@ -157,7 +159,7 @@ export async function createBoard(input: {
   return board;
 }
 
-export async function updateBoard(id: string, patch: Partial<Pick<Board, 'name' | 'description' | 'color' | 'visibility' | 'owner_id' | 'is_favorite' | 'archived_at'>>) {
+export async function updateBoard(id: string, patch: Partial<Pick<Board, 'name' | 'description' | 'color' | 'visibility' | 'owner_id' | 'is_favorite' | 'archived_at' | 'is_monitored' | 'status'>>) {
   const supabase = createClient();
   return supabase.from('boards').update(patch).eq('id', id);
 }

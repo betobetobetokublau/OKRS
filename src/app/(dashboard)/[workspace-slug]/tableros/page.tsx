@@ -1,13 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { useBoards, fetchWorkspaceMembers, updateBoard } from '@/hooks/use-boards';
+import { useMonitoredOverview } from '@/hooks/use-board-progress';
 import { BoardFormModal } from '@/components/boards/board-form-modal';
+import { MonitoredBoardCard } from '@/components/boards/monitored-board-card';
 import { canManageContent } from '@/lib/utils/permissions';
 import type { Board, Profile } from '@/types';
 
+/**
+ * /tableros — two blocks:
+ *  1. "Proyectos monitoreados": a vertical stack, one wide card per board with
+ *     `is_monitored`, showing project status, last update, next milestone and
+ *     recent task activity. This is the boss's glance-at-everything view.
+ *  2. "Otros tableros": the compact tile grid for the rest.
+ */
 export default function TablerosPage() {
   const params = useParams<{ 'workspace-slug': string }>();
   const slug = params?.['workspace-slug'] ?? '';
@@ -16,10 +25,10 @@ export default function TablerosPage() {
   const { boards, loading, refetch } = useBoards(currentWorkspace?.id);
   const [showCreate, setShowCreate] = useState(false);
   const [members, setMembers] = useState<Profile[]>([]);
-  const canCreate = Boolean(userWorkspace && canManageContent(userWorkspace.role));
+  const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
 
   useEffect(() => {
-    if (!currentWorkspace?.id || !canCreate) return;
+    if (!currentWorkspace?.id || !canEdit) return;
     let cancelled = false;
     fetchWorkspaceMembers(currentWorkspace.id).then((list) => {
       if (!cancelled) setMembers(list);
@@ -27,10 +36,16 @@ export default function TablerosPage() {
     return () => {
       cancelled = true;
     };
-  }, [currentWorkspace?.id, canCreate]);
+  }, [currentWorkspace?.id, canEdit]);
 
   // Favorites first (the query already orders this way; re-sort so a star toggle re-orders instantly after refetch).
-  const sorted = [...boards].sort((a, b) => Number(b.is_favorite) - Number(a.is_favorite) || a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'es'));
+  const sorted = useMemo(
+    () => [...boards].sort((a, b) => Number(b.is_favorite) - Number(a.is_favorite) || a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'es')),
+    [boards],
+  );
+  const monitored = useMemo(() => sorted.filter((b) => b.is_monitored), [sorted]);
+  const others = useMemo(() => sorted.filter((b) => !b.is_monitored), [sorted]);
+  const { overview, refetch: refetchOverview } = useMonitoredOverview(monitored, currentWorkspace?.id);
 
   async function toggleFavorite(board: Board) {
     await updateBoard(board.id, { is_favorite: !board.is_favorite });
@@ -43,10 +58,10 @@ export default function TablerosPage() {
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36', margin: 0 }}>Tableros</h1>
           <p style={{ fontSize: '1.4rem', color: '#637381', margin: '0.4rem 0 0' }}>
-            Organiza el trabajo del equipo en columnas. Una tarea puede vivir en varios tableros sin afectar sus OKRs.
+            Los proyectos monitoreados muestran su estado, avances e hitos de un vistazo. Una tarea puede vivir en varios tableros sin afectar sus OKRs.
           </p>
         </div>
-        {canCreate && (
+        {canEdit && (
           <button
             type="button"
             onClick={() => setShowCreate(true)}
@@ -62,18 +77,54 @@ export default function TablerosPage() {
       ) : sorted.length === 0 ? (
         <div style={{ padding: '4rem', textAlign: 'center', borderRadius: '8px', border: '1px dashed #c4cdd5', backgroundColor: 'white' }}>
           <p style={{ color: '#637381', fontSize: '1.4rem', margin: 0 }}>Aún no hay tableros.</p>
-          {canCreate && (
+          {canEdit && (
             <button type="button" onClick={() => setShowCreate(true)} style={{ marginTop: '1.2rem', border: 'none', background: 'none', color: '#5c6ac4', fontSize: '1.4rem', fontWeight: 600, cursor: 'pointer' }}>
               Crear el primero
             </button>
           )}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.6rem' }}>
-          {sorted.map((b) => (
-            <BoardCardTile key={b.id} board={b} onOpen={() => router.push(`/${slug}/tableros/${b.id}`)} onToggleFavorite={() => toggleFavorite(b)} />
-          ))}
-        </div>
+        <>
+          <section aria-labelledby="monitoreados-title" style={{ marginBottom: '3.2rem' }}>
+            <SectionTitle id="monitoreados-title" count={monitored.length}>
+              Proyectos monitoreados
+            </SectionTitle>
+            {monitored.length === 0 ? (
+              <p style={{ margin: 0, padding: '2rem', fontSize: '1.3rem', color: '#637381', borderRadius: '8px', border: '1px dashed #c4cdd5', backgroundColor: 'white' }}>
+                Ningún tablero está marcado como proyecto monitoreado. Actívalo desde “Configuración del tablero”.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                {monitored.map((b) => (
+                  <MonitoredBoardCard
+                    key={b.id}
+                    slug={slug}
+                    board={b}
+                    overview={overview[b.id]}
+                    canEdit={canEdit}
+                    onStatusChanged={() => {
+                      refetch();
+                      refetchOverview();
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {others.length > 0 && (
+            <section aria-labelledby="otros-title">
+              <SectionTitle id="otros-title" count={others.length}>
+                Otros tableros
+              </SectionTitle>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.6rem' }}>
+                {others.map((b) => (
+                  <BoardCardTile key={b.id} board={b} onOpen={() => router.push(`/${slug}/tableros/${b.id}`)} onToggleFavorite={() => toggleFavorite(b)} />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
       )}
 
       {currentWorkspace && (
@@ -94,6 +145,15 @@ export default function TablerosPage() {
 }
 
 // ---------------------------------------------------------------------------
+function SectionTitle({ id, count, children }: { id: string; count: number; children: React.ReactNode }) {
+  return (
+    <h2 id={id} style={{ display: 'flex', alignItems: 'baseline', gap: '0.8rem', fontSize: '1.6rem', fontWeight: 600, color: '#212b36', margin: '0 0 1.2rem' }}>
+      {children}
+      <span style={{ fontSize: '1.2rem', color: '#919eab', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+    </h2>
+  );
+}
+
 function BoardCardTile({ board, onOpen, onToggleFavorite }: { board: Board; onOpen: () => void; onToggleFavorite: () => void }) {
   const [hover, setHover] = useState(false);
   const count = board.task_count ?? 0;

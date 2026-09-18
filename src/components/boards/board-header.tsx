@@ -52,6 +52,9 @@ export function BoardHeader({ slug, board, taskCount, overdueCount, boardMembers
         <TabButton active={tab === 'list'} onClick={() => onTabChange('list')}>
           Lista
         </TabButton>
+        <TabButton active={tab === 'progress'} onClick={() => onTabChange('progress')}>
+          Avances
+        </TabButton>
         <TabButton disabled>Calendario</TabButton>
       </div>
     </>

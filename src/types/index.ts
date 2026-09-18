@@ -10,6 +10,8 @@ export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked';
 export type KPIStatus = 'on_track' | 'at_risk' | 'off_track' | 'achieved';
 export type TaskPriority = 'high' | 'medium' | 'low';
 export type BoardVisibility = 'workspace' | 'private';
+/** Project health shown on monitored boards and on their updates. */
+export type BoardStatus = 'on_time' | 'paused' | 'blocked' | 'off_track' | 'at_risk' | 'completed' | 'dropped';
 export type NotificationType =
   | 'monthly_review_reminder'
   | 'quarterly_session'
@@ -176,6 +178,9 @@ export interface Board {
   owner_id: string | null;
   department_id: string | null;
   is_favorite: boolean;
+  /** Monitored boards appear as project cards on /tableros with status, updates and milestones. */
+  is_monitored: boolean;
+  status: BoardStatus;
   sort_order: number;
   archived_at: string | null;
   created_by?: string | null;
@@ -205,6 +210,33 @@ export interface BoardTask {
   task?: Task;
   board?: Board;
   section?: BoardSection | null;
+}
+
+/** Free-text post on a monitored board's timeline; never touches tasks. */
+export interface BoardUpdate {
+  id: string;
+  board_id: string;
+  workspace_id: string;
+  author_id: string | null;
+  content: string;
+  /** Optional status the author attached; posting one also sets `boards.status`. */
+  status: BoardStatus | null;
+  created_at: string;
+  author?: Profile | null;
+}
+
+/** Dated event on a monitored board, past or future, done or not. */
+export interface BoardMilestone {
+  id: string;
+  board_id: string;
+  workspace_id: string;
+  title: string;
+  /** `YYYY-MM-DD` */
+  due_date: string;
+  done: boolean;
+  done_at: string | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 export type TaskActivityKind =

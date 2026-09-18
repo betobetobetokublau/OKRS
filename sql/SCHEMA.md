@@ -209,6 +209,47 @@ A board is a *lens* over tasks, orthogonal to KPI › Objective › Task. Boards
 
 RLS: select via `board_is_visible(id)`; insert/update require `user_is_in_workspace(workspace_id)`; delete requires visibility AND (`visibility = 'workspace'` OR owner). Every workspace was seeded with three boards (Sprint / Backlog / Iniciativas) on 2026-09-10.
 
+Monitored projects (2026-09-18): `is_monitored boolean NOT NULL default false` and `status text NOT NULL default 'on_time'` CHECK `on_time / paused / blocked / off_track / at_risk / completed / dropped`. Monitored boards render as project cards on `/tableros`. Sprint and Iniciativas were flagged monitored in the migration.
+
+| Column | Type | Nullable | Default | FK / Notes |
+|--------|------|----------|---------|------------|
+| is_monitored | boolean | NO | false | shows the board on the projects overview |
+| status | text | NO | 'on_time' | CHECK — project health, same vocabulary as `board_updates.status` |
+
+### board_updates
+
+Timeline of free-text posts on a (monitored) board. **Never touches tasks.** Posting one with a `status` also sets `boards.status` (done client-side in `createBoardUpdate`).
+
+| Column | Type | Nullable | Default | FK / Notes |
+|--------|------|----------|---------|------------|
+| id | uuid | NO | gen_random_uuid() | PK |
+| board_id | uuid | NO | | → boards(id) ON DELETE CASCADE |
+| workspace_id | uuid | NO | | → workspaces(id) ON DELETE CASCADE |
+| author_id | uuid | YES | | → profiles(id) ON DELETE SET NULL |
+| content | text | NO | | |
+| status | text | YES | | CHECK NULL or the boards.status vocabulary |
+| created_at | timestamptz | NO | now() | |
+
+RLS: select via `board_is_visible(board_id)`; insert requires visibility AND `author_id = auth.uid()`; update/delete only by the author. Index `(board_id, created_at desc)`. In the `supabase_realtime` publication.
+
+### board_milestones
+
+Dated events on a board (past or future), done or not. Never touches tasks.
+
+| Column | Type | Nullable | Default | FK / Notes |
+|--------|------|----------|---------|------------|
+| id | uuid | NO | gen_random_uuid() | PK |
+| board_id | uuid | NO | | → boards(id) ON DELETE CASCADE |
+| workspace_id | uuid | NO | | → workspaces(id) ON DELETE CASCADE |
+| title | text | NO | | |
+| due_date | date | NO | | |
+| done | boolean | NO | false | |
+| done_at | timestamptz | YES | | set/cleared by trigger `board_milestones_touch_done` |
+| created_by | uuid | YES | | → profiles(id) ON DELETE SET NULL |
+| created_at | timestamptz | NO | now() | |
+
+RLS: `board_milestones_all` FOR ALL on `board_is_visible(board_id)` (anyone who sees the board can add, toggle and delete). Index `(board_id, due_date)`. In the `supabase_realtime` publication.
+
 ### board_members
 
 Explicit allow-list for `visibility = 'private'` boards.

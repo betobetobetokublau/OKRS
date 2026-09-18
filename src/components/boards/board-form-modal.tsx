@@ -37,6 +37,7 @@ export function BoardFormModal({ open, workspaceId, members, board, onClose, onS
   const [description, setDescription] = useState('');
   const [color, setColor] = useState<string>(BOARD_PALETTE[0]!);
   const [visibility, setVisibility] = useState<BoardVisibility>('workspace');
+  const [isMonitored, setIsMonitored] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
@@ -53,6 +54,7 @@ export function BoardFormModal({ open, workspaceId, members, board, onClose, onS
     setDescription(board?.description ?? '');
     setColor(board?.color ?? BOARD_PALETTE[0]!);
     setVisibility(board?.visibility ?? 'workspace');
+    setIsMonitored(board?.is_monitored ?? false);
     const base = new Set<string>(profile ? [profile.id] : []);
     setSelected(base);
     if (!board) return;
@@ -94,6 +96,7 @@ export function BoardFormModal({ open, workspaceId, members, board, onClose, onS
       color,
       visibility,
       owner_id: visibility === 'private' ? profile?.id ?? null : null,
+      is_monitored: isMonitored,
     };
     let saved: Board | null = null;
     if (board) {
@@ -180,6 +183,17 @@ export function BoardFormModal({ open, workspaceId, members, board, onClose, onS
               Privado — solo miembros
             </label>
           </div>
+        </div>
+
+        <div style={{ marginBottom: '1.4rem' }}>
+          <span style={LABEL}>Seguimiento</span>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem', cursor: 'pointer', fontSize: '1.3rem', color: '#212b36' }}>
+            <input type="checkbox" checked={isMonitored} onChange={(e) => setIsMonitored(e.target.checked)} style={{ marginTop: '0.3rem' }} />
+            <span>
+              Proyecto monitoreado
+              <span style={{ display: 'block', fontSize: '1.2rem', color: '#637381' }}>Aparece en la lista de proyectos con su estado, avances e hitos.</span>
+            </span>
+          </label>
         </div>
 
         <div style={{ marginBottom: '2rem' }}>

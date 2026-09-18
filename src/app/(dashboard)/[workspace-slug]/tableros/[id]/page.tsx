@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -27,6 +27,7 @@ import { BoardHeader } from '@/components/boards/board-header';
 import { BoardFormModal } from '@/components/boards/board-form-modal';
 import { TaskComposer } from '@/components/boards/task-composer';
 import { StandupMode } from '@/components/boards/standup-mode';
+import { BoardProgressTab } from '@/components/boards/board-progress-tab';
 import { useBoardPageData } from '@/components/boards/use-board-page-data';
 import {
   DEFAULT_VIEW,
@@ -48,6 +49,7 @@ export default function TableroPage() {
   const slug = params?.['workspace-slug'] ?? '';
   const boardId = params?.id;
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentWorkspace, activePeriod, userWorkspace, profile, setProfile } = useWorkspaceStore();
   const { data, loading, error, refetch } = useBoard(boardId);
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
@@ -74,9 +76,11 @@ export default function TableroPage() {
     if (!boardId || viewLoaded) return;
     const initial = loadBoardView(profile, boardId) ?? loadView(boardId);
     setSavedView(initial);
-    setView(initial);
+    // `?tab=avances` (links from the project cards) opens the Avances tab without touching the saved default.
+    const requested = searchParams?.get('tab');
+    setView(requested === 'avances' ? { ...initial, tab: 'progress' } : initial);
     setViewLoaded(true);
-  }, [boardId, profile, viewLoaded]);
+  }, [boardId, profile, viewLoaded, searchParams]);
   const viewDirty = viewLoaded && !viewsEqual(view, savedView);
   async function handleSaveView() {
     if (!boardId || !profile?.id) return;
@@ -297,6 +301,10 @@ export default function TableroPage() {
         onTabChange={(tab) => setView((v) => ({ ...v, tab }))}
       />
 
+      {view.tab === 'progress' ? (
+        <BoardProgressTab slug={slug} board={board} items={allItems} canEdit={canEdit} onBoardChanged={refresh} />
+      ) : (
+      <>
       <BoardToolbar
         canEdit={canEdit}
         members={members}
@@ -320,6 +328,8 @@ export default function TableroPage() {
         <BoardList columns={columns} canEdit={canEdit} members={members} onOpen={openTask} onChanged={refresh} {...composerProps} />
       ) : (
         renderKanban(columns, 'normal', view.grouping === 'section')
+      )}
+      </>
       )}
 
       {standup && (
