@@ -21,6 +21,7 @@ import { formatMilestoneDate, isMilestoneOverdue, sortMilestones, summarizeMiles
 import { BoardStatusSelect } from './board-status-select';
 import { formatRelative } from '@/lib/utils/dates';
 import { INPUT_STYLE, TEXTAREA_STYLE } from '@/lib/styles/form';
+import type { BoardActivityGroup } from '@/hooks/use-board-progress';
 import type { Board, BoardMilestone, BoardStatus, BoardTask, BoardUpdate } from '@/types';
 
 interface BoardProgressTabProps {
@@ -159,18 +160,9 @@ export function BoardProgressTab({ slug, board, items, canEdit, onBoardChanged }
           {activity.length === 0 ? (
             <p style={{ ...MUTED, margin: 0, fontSize: '1.3rem' }}>Sin movimientos en las tareas de este tablero.</p>
           ) : (
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-              {activity.map((e) => (
-                <li key={e.id} style={{ display: 'flex', gap: '0.8rem', fontSize: '1.3rem', color: '#212b36', lineHeight: 1.45 }}>
-                  {e.actor ? <UserAvatar user={e.actor} size="small" /> : <span style={{ width: 24 }} />}
-                  <div style={{ minWidth: 0 }}>
-                    <span style={{ fontWeight: 600 }}>{e.actor?.full_name ?? 'Alguien'}</span> {e.body}{' '}
-                    <Link href={`/${slug}/tareas/${e.taskId}`} style={{ color: '#5c6ac4', textDecoration: 'none' }}>
-                      “{e.taskTitle}”
-                    </Link>
-                    <div style={MUTED}>{formatRelative(e.created_at)}</div>
-                  </div>
-                </li>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {activity.map((g) => (
+                <ActivityGroupRow key={g.taskId} group={g} slug={slug} />
               ))}
             </ul>
           )}
@@ -181,6 +173,44 @@ export function BoardProgressTab({ slug, board, items, canEdit, onBoardChanged }
 }
 
 // ---------------------------------------------------------------------------
+
+/** One task per row: headline event + collapsible "+N cambios más". */
+function ActivityGroupRow({ group, slug }: { group: BoardActivityGroup; slug: string }) {
+  const [open, setOpen] = useState(false);
+  const h = group.headline;
+  const extra = group.others.length;
+  return (
+    <li style={{ display: 'flex', gap: '0.8rem', fontSize: '1.3rem', color: '#212b36', lineHeight: 1.45 }}>
+      <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: h.dot, marginTop: '0.5rem', flexShrink: 0 }} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div>
+          <span style={{ fontWeight: 600 }}>{h.actor?.full_name ?? 'Alguien'}</span> {h.body}{' '}
+          <Link href={`/${slug}/tareas/${h.taskId}`} style={{ color: '#5c6ac4', textDecoration: 'none' }}>
+            “{group.taskTitle}”
+          </Link>
+        </div>
+        <div style={{ ...MUTED, display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+          <span>{formatRelative(h.created_at)}</span>
+          {extra > 0 && (
+            <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} style={{ border: 'none', background: 'none', padding: 0, color: '#5c6ac4', fontSize: '1.2rem', cursor: 'pointer' }}>
+              {open ? 'Ocultar' : `+${extra} ${extra === 1 ? 'cambio más' : 'cambios más'}`}
+            </button>
+          )}
+        </div>
+        {open && (
+          <ul style={{ listStyle: 'none', margin: '0.6rem 0 0', padding: '0 0 0 1rem', borderLeft: '2px solid #f1f2f4', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {group.others.map((e) => (
+              <li key={e.id} style={{ fontSize: '1.2rem', color: '#637381' }}>
+                <span style={{ fontWeight: 600, color: '#454f5b' }}>{e.actor?.full_name?.split(' ')[0] ?? 'Alguien'}</span> {e.body}
+                <span style={MUTED}> · {formatRelative(e.created_at)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </li>
+  );
+}
 
 function ProgressBar({ pct }: { pct: number }) {
   return (

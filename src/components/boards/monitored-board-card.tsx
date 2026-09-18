@@ -127,11 +127,18 @@ export function MonitoredBoardCard({ slug, board, overview, canEdit, onStatusCha
           {activity.length === 0 ? (
             <p style={{ margin: 0, ...MUTED, fontSize: '1.3rem' }}>Sin movimientos en las tareas.</p>
           ) : (
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {activity.slice(0, 3).map((e) => (
-                <li key={e.id} style={{ fontSize: '1.2rem', color: '#212b36', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                  <span style={{ fontWeight: 600 }}>{e.actor?.full_name?.split(' ')[0] ?? 'Alguien'}</span> {e.body} <span style={{ color: '#637381' }}>“{e.taskTitle}”</span>
-                  <span style={MUTED}> · {formatRelative(e.created_at)}</span>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              {activity.slice(0, 3).map((g) => (
+                <li key={g.taskId} style={{ display: 'flex', gap: '0.6rem', fontSize: '1.2rem', color: '#212b36', lineHeight: 1.4 }}>
+                  <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: g.headline.dot, marginTop: '0.45rem', flexShrink: 0 }} />
+                  <span style={{ minWidth: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    <span style={{ fontWeight: 600 }}>{g.headline.actor?.full_name?.split(' ')[0] ?? 'Alguien'}</span> {g.headline.body} <span style={{ color: '#637381' }}>“{g.taskTitle}”</span>
+                    <span style={MUTED}>
+                      {' · '}
+                      {formatRelative(g.headline.created_at)}
+                      {g.others.length > 0 && ` · +${g.others.length}`}
+                    </span>
+                  </span>
                 </li>
               ))}
             </ul>

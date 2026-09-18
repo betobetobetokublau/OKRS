@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatMilestoneDate, isMilestoneOverdue, sortMilestones, summarizeMilestones, taskStats, todayISO } from './board-progress';
+import { activityDot, activityWeight, formatMilestoneDate, groupActivityByTask, isMilestoneOverdue, sortMilestones, summarizeMilestones, taskStats, todayISO } from './board-progress';
 import type { BoardMilestone } from '@/types';
 
 function ms(partial: Partial<BoardMilestone> & Pick<BoardMilestone, 'id' | 'due_date'>): BoardMilestone {
@@ -87,5 +87,56 @@ describe('taskStats', () => {
 describe('formatMilestoneDate', () => {
   it('formats YYYY-MM-DD without shifting the day', () => {
     expect(formatMilestoneDate('2026-10-03')).toBe('3 oct 2026');
+  });
+});
+
+
+describe('activityWeight', () => {
+  it('ranks completion, blocking, creation, comments and assignment as high', () => {
+    expect(activityWeight('status', { to: 'completed' })).toBe('high');
+    expect(activityWeight('status', { to: 'blocked' })).toBe('high');
+    expect(activityWeight('created')).toBe('high');
+    expect(activityWeight('comment')).toBe('high');
+    expect(activityWeight('assignee', { to: 'u1' })).toBe('high');
+  });
+  it('treats ordinary status moves, dates and subtasks as medium', () => {
+    expect(activityWeight('status', { to: 'in_progress' })).toBe('medium');
+    expect(activityWeight('due_date', { to: '2026-10-01' })).toBe('medium');
+    expect(activityWeight('subtask_added')).toBe('medium');
+  });
+  it('hides column moves, board placement, renames and priority', () => {
+    for (const k of ['section', 'board_added', 'board_removed', 'title', 'priority', 'unknown']) expect(activityWeight(k)).toBe('low');
+  });
+});
+
+describe('groupActivityByTask', () => {
+  const ev = (id: string, taskId: string, at: string, weight: 'high' | 'medium' | 'low') => ({ id, taskId, taskTitle: `T${taskId}`, created_at: at, weight });
+  it('drops low events, groups per task with newest as headline and keeps headline order', () => {
+    const groups = groupActivityByTask(
+      [
+        ev('a', '1', '2026-09-18T10:00:00Z', 'high'),
+        ev('b', '1', '2026-09-18T09:00:00Z', 'medium'),
+        ev('c', '1', '2026-09-18T08:30:00Z', 'low'),
+        ev('d', '2', '2026-09-18T09:30:00Z', 'medium'),
+        ev('e', '1', '2026-09-18T08:00:00Z', 'high'),
+      ],
+      5,
+    );
+    expect(groups.map((g) => g.taskId)).toEqual(['1', '2']);
+    expect(groups[0]?.headline.id).toBe('a');
+    expect(groups[0]?.others.map((o) => o.id)).toEqual(['b', 'e']);
+    expect(groups[1]?.others).toEqual([]);
+  });
+  it('caps the number of groups', () => {
+    const list = ['1', '2', '3'].map((t, i) => ev(t, t, `2026-09-18T0${i}:00:00Z`, 'high' as const));
+    expect(groupActivityByTask(list, 2)).toHaveLength(2);
+  });
+});
+
+describe('activityDot', () => {
+  it('colours completion green, blocking purple, comments blue', () => {
+    expect(activityDot('status', { to: 'completed' })).toBe('#108043');
+    expect(activityDot('status', { to: 'blocked' })).toBe('#9c6ade');
+    expect(activityDot('comment')).toBe('#006fbb');
   });
 });

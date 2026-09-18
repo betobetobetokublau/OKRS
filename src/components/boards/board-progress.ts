@@ -69,3 +69,69 @@ export function formatMilestoneDate(iso: string): string {
   const month = months[Number(m[2]) - 1] ?? m[2];
   return `${Number(m[3])} ${month} ${m[1]}`;
 }
+
+// ---------------------------------------------------------------------------
+// Activity feed: signal weighting + grouping per task
+// ---------------------------------------------------------------------------
+
+export type ActivityWeight = 'high' | 'medium' | 'low';
+
+/**
+ * How much a `task_activity` row deserves attention on a project card.
+ * `low` rows (column moves, board add/remove, renames, priority) are hidden.
+ */
+export function activityWeight(kind: string, payload: Record<string, unknown> = {}): ActivityWeight {
+  switch (kind) {
+    case 'created':
+    case 'comment':
+    case 'assignee':
+      return 'high';
+    case 'status':
+      return payload.to === 'completed' || payload.to === 'blocked' ? 'high' : 'medium';
+    case 'due_date':
+    case 'subtask_added':
+    case 'objective':
+    case 'parent':
+      return 'medium';
+    default:
+      return 'low';
+  }
+}
+
+/** Dot colour for the headline of a group, by the event kind (+ status target). */
+export function activityDot(kind: string, payload: Record<string, unknown> = {}): string {
+  if (kind === 'status' && payload.to === 'completed') return '#108043';
+  if (kind === 'status' && payload.to === 'blocked') return '#9c6ade';
+  if (kind === 'comment') return '#006fbb';
+  if (kind === 'created') return '#5c6ac4';
+  if (kind === 'assignee') return '#f49342';
+  return '#919eab';
+}
+
+export interface ActivityGroup<T> {
+  taskId: string;
+  taskTitle: string;
+  /** Most recent visible event on that task. */
+  headline: T;
+  /** Older events on the same task, newest first. */
+  others: T[];
+}
+
+/**
+ * Collapses a newest-first event list into one group per task (headline =
+ * newest event, the rest folded under "+N cambios más"). `low` weight events
+ * are dropped first. Groups keep the order of their headline.
+ */
+export function groupActivityByTask<T extends { taskId: string; taskTitle: string; created_at: string; weight: ActivityWeight }>(
+  events: T[],
+  maxGroups: number,
+): ActivityGroup<T>[] {
+  const visible = [...events].filter((e) => e.weight !== 'low').sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  const groups = new Map<string, ActivityGroup<T>>();
+  for (const e of visible) {
+    const g = groups.get(e.taskId);
+    if (g) g.others.push(e);
+    else groups.set(e.taskId, { taskId: e.taskId, taskTitle: e.taskTitle, headline: e, others: [] });
+  }
+  return Array.from(groups.values()).slice(0, maxGroups);
+}

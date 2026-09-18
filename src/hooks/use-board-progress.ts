@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { fetchWorkspaceMembers } from '@/hooks/use-boards';
 import { formatActivityBody } from '@/components/tasks/task-activity-format';
-import { taskStats, type TaskStats } from '@/components/boards/board-progress';
+import { activityDot, activityWeight, groupActivityByTask, taskStats, type ActivityGroup, type ActivityWeight, type TaskStats } from '@/components/boards/board-progress';
 import type { Board, BoardMilestone, BoardStatus, BoardUpdate, Profile, Task, TaskActivity } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -128,17 +128,39 @@ export interface BoardActivityEvent {
   taskId: string;
   taskTitle: string;
   kind: 'activity' | 'comment';
+  weight: ActivityWeight;
+  /** Headline dot colour. */
+  dot: string;
 }
+
+export type BoardActivityGroup = ActivityGroup<BoardActivityEvent>;
 
 export interface BoardOverview {
   latestUpdate: BoardUpdate | null;
   milestones: BoardMilestone[];
   tasks: TaskStats;
-  activity: BoardActivityEvent[];
+  /** One group per task (newest first), low-signal rows already dropped. */
+  activity: BoardActivityGroup[];
+}
+
+/**
+ * Short verb for the feed headline. Falls back to the task-tab formatter for
+ * everything that has no compact form.
+ */
+function compactBody(a: ActivityRow, lookupName: (id: string) => string | null, lookupTitle: (id: string) => string | null): string {
+  const p = a.payload ?? {};
+  if (a.kind === 'created') return 'creó';
+  if (a.kind === 'status') {
+    if (p.to === 'completed') return 'completó';
+    if (p.to === 'blocked') return typeof p.block_reason === 'string' && p.block_reason ? `bloqueó (${p.block_reason})` : 'bloqueó';
+    if (p.to === 'in_progress') return 'empezó';
+    if (p.to === 'pending') return 'reabrió';
+  }
+  return formatActivityBody(a, lookupName, lookupTitle);
 }
 
 const EMPTY_STATS: TaskStats = { total: 0, completed: 0, overdue: 0, blocked: 0, pct: 0 };
-const ACTIVITY_PER_BOARD = 5;
+const ACTIVITY_GROUPS_PER_BOARD = 5;
 
 type PlacedTask = Pick<Task, 'id' | 'title' | 'status' | 'due_date'>;
 type ActivityRow = TaskActivity & { actor?: Profile | null };
@@ -192,16 +214,18 @@ export function useMonitoredOverview(boards: Board[], workspaceId: string | unde
     for (const p of placements) boardsOfTask.set(p.task_id, [...(boardsOfTask.get(p.task_id) ?? []), p.board_id]);
 
     for (const a of (activityRes.data || []) as ActivityRow[]) {
-      // Skip the "created" + "board_added" pair a fresh card produces; the created row alone tells the story.
-      if (a.kind === 'board_added') continue;
+      const weight = activityWeight(a.kind, a.payload ?? {});
+      if (weight === 'low') continue;
       events.push({
         id: `a-${a.id}`,
         created_at: a.created_at,
         actor: a.actor ?? null,
-        body: formatActivityBody(a, lookupName, (id) => titleById.get(id) ?? null),
+        body: compactBody(a, lookupName, (id) => titleById.get(id) ?? null),
         taskId: a.task_id,
         taskTitle: titleById.get(a.task_id) ?? '',
         kind: 'activity',
+        weight,
+        dot: activityDot(a.kind, a.payload ?? {}),
         boardIds: boardsOfTask.get(a.task_id) ?? [],
       });
     }
@@ -215,6 +239,8 @@ export function useMonitoredOverview(boards: Board[], workspaceId: string | unde
         taskId: c.task_id,
         taskTitle: titleById.get(c.task_id) ?? '',
         kind: 'comment',
+        weight: 'high',
+        dot: activityDot('comment'),
         boardIds: boardsOfTask.get(c.task_id) ?? [],
       });
     }
@@ -227,7 +253,7 @@ export function useMonitoredOverview(boards: Board[], workspaceId: string | unde
         latestUpdate: ((updatesRes.data || []) as BoardUpdate[]).find((u) => u.board_id === id) ?? null,
         milestones: ((milestonesRes.data || []) as BoardMilestone[]).filter((m) => m.board_id === id),
         tasks: tasks.length ? taskStats(tasks) : EMPTY_STATS,
-        activity: events.filter((e) => e.boardIds.includes(id)).slice(0, ACTIVITY_PER_BOARD),
+        activity: groupActivityByTask(events.filter((e) => e.boardIds.includes(id)), ACTIVITY_GROUPS_PER_BOARD),
       };
     }
     setOverview(next);
