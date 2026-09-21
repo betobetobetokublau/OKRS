@@ -898,7 +898,8 @@ function CheckinKpiTable({
         )}
         {kpiDepartmentLabel && <DepartmentBadge label={kpiDepartmentLabel} />}
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse' }}>
         <thead>
           <tr>
             <th style={{ ...headerCell, width: '36%' }}>Nombre</th>
@@ -1091,6 +1092,7 @@ function CheckinKpiTable({
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -1726,6 +1728,7 @@ function CheckinHero({
       {/* Stats row: weeks-remaining / %-elapsed / timeline bar.
           Lays out in a 3-cell grid centered on the column. */}
       <div
+        className="m-stats"
         style={{
           display: 'grid',
           gridTemplateColumns: 'minmax(120px, 1fr) minmax(120px, 1fr) minmax(200px, 1.4fr)',

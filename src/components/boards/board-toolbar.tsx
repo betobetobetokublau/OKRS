@@ -122,6 +122,7 @@ export function BoardToolbar({
       )}
       <button
         type="button"
+        className="m-hide"
         onClick={onToggleStandup}
         aria-pressed={standupActive}
         title="Modo standup (pantalla completa)"

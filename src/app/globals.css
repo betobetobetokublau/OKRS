@@ -198,6 +198,9 @@ body {
   .m-static { position: static !important; }
   .m-full { max-width: none !important; }
   .m-pad { padding: 1.2rem !important; }
+  .m-row100 { flex: 1 1 100% !important; order: -1; }
+  .m-stats { grid-template-columns: 1fr 1fr !important; gap: 1.6rem !important; }
+  .m-stats > :last-child { grid-column: 1 / -1; }
 }
 
 /* Kanban on phones: one column per swipe. The kanban's flex children are

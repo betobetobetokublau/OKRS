@@ -272,6 +272,21 @@ export function BoardKanban({
       onDragCancel={handleDragCancel}
     >
       <SortableContext items={columnSortableIds} strategy={horizontalListSortingStrategy}>
+        {isMobile && cols.length > 1 && (
+          <div role="tablist" aria-label="Columnas" style={{ display: 'flex', justifyContent: 'center', gap: '0.6rem', padding: '0 0 1rem' }}>
+            {cols.map((c, i) => (
+              <button
+                key={c.key}
+                type="button"
+                role="tab"
+                aria-selected={i === activeCol}
+                aria-label={c.title}
+                onClick={() => scrollToCol(i)}
+                style={{ width: i === activeCol ? 18 : 7, height: 7, borderRadius: 4, border: 'none', padding: 0, backgroundColor: i === activeCol ? '#5c6ac4' : '#c4cdd5', transition: 'width 0.15s ease', cursor: 'pointer' }}
+              />
+            ))}
+          </div>
+        )}
         <div
           ref={scrollerRef}
           onScroll={isMobile ? handleScroll : undefined}
@@ -320,21 +335,6 @@ export function BoardKanban({
               </button>
             ))}
         </div>
-        {isMobile && cols.length > 1 && (
-          <div role="tablist" aria-label="Columnas" style={{ display: 'flex', justifyContent: 'center', gap: '0.6rem', padding: '0 0 1.2rem' }}>
-            {cols.map((c, i) => (
-              <button
-                key={c.key}
-                type="button"
-                role="tab"
-                aria-selected={i === activeCol}
-                aria-label={c.title}
-                onClick={() => scrollToCol(i)}
-                style={{ width: i === activeCol ? 18 : 7, height: 7, borderRadius: 4, border: 'none', padding: 0, backgroundColor: i === activeCol ? '#5c6ac4' : '#c4cdd5', transition: 'width 0.15s ease', cursor: 'pointer' }}
-              />
-            ))}
-          </div>
-        )}
       </SortableContext>
       <DragOverlay dropAnimation={null}>
         {activeItem && (

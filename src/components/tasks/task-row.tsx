@@ -52,6 +52,7 @@ export function TaskRow({ task, onUpdated, showObjective, onOpen }: TaskRowProps
   return (
     <>
       <div
+        className="m-wrap"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -81,8 +82,8 @@ export function TaskRow({ task, onUpdated, showObjective, onOpen }: TaskRowProps
           <option value="blocked">Bloqueada</option>
         </select>
 
-        {/* Task info */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Task info — on phones it takes the whole first line (.m-row100). */}
+        <div className="m-row100" style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
             {onOpen ? (
               <button
