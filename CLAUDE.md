@@ -210,3 +210,21 @@ states, `boardStatusChip`), the latest `board_updates` post, the next
 (`BoardProgressTab`, reachable via `?tab=avances`). Updates and milestones are
 commentary only — they never write to `tasks`. Posting an update with a status
 also sets the board status (`createBoardUpdate`).
+
+## Mobile shell (phones < 768px)
+
+Design B1 «Proyectos + Hoy» (`~/.gstack/projects/betobetobetokublau-OKRS/designs/movil-plataforma-20260920/approved.json`).
+`useIsMobile()` (matchMedia, false on the first render so hydration matches) swaps
+the sidebar for `MobileTabBar` (Proyectos · Mis Tareas · Objetivos · Check-in ·
+Más) and opens tasks as full pages instead of the side panel. `globals.css` has
+the `m-*` utilities (`m-hide`, `m-stack`, `m-wrap`, `m-pad`, `m-only`, `m-snap`,
+`m-kcol`…), all `!important` because they override inline styles.
+
+**Hard rule: nothing may overflow the document horizontally on a phone.** One
+overflowing element makes mobile browsers grow the *layout* viewport past the
+visual one; the fixed tab bar then sits below the fold (it "only appears when
+scrolling") and the whole page pans sideways. `body { overflow-x: hidden }`
+inside the phone media query is the backstop — it propagates to the viewport
+while `body` stays `visible`, so the sticky topbar keeps working. Wide tables
+must live in their own `overflowX: auto` wrapper with a `minWidth` on the
+`<table>`; never let the card clip them with `overflow: hidden`.

@@ -153,9 +153,10 @@ export default function DepartamentosPage() {
 
       <div
         className="Polaris-Card"
-        style={{ borderRadius: '8px', border: '1px solid var(--color-border)', backgroundColor: 'white', overflow: 'hidden' }}
+        style={{ borderRadius: '8px', border: '1px solid var(--color-border)', backgroundColor: 'white', overflowX: 'auto' }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        {/* minWidth keeps the columns readable; the card scrolls sideways on phones. */}
+        <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse' }}>
           <thead>
             <tr>
               <th style={{ ...headerCell, width: '40%' }}>Nombre</th>

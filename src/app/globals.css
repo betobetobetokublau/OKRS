@@ -189,6 +189,15 @@ body {
    MOBILE_MAX_WIDTH in src/hooks/use-is-mobile.ts. ── */
 .m-only { display: none !important; }
 @media (max-width: 767px) {
+  /* Nothing may widen the document on a phone. A single overflowing element
+     makes mobile browsers grow the LAYOUT viewport past the visual one, which
+     pushes the fixed bottom tab bar off-screen (it then only shows after
+     scrolling) and lets the whole page pan sideways. The fixed bar itself is
+     sized to the layout viewport, so with a classic scrollbar it is ~16px
+     wider than the content box — clipping here keeps that from cascading.
+     Set on `body`: the value propagates to the viewport while `body` stays
+     `visible`, so `position: sticky` (topbar) keeps working. */
+  body { overflow-x: hidden; }
   .m-only { display: block !important; }
   .m-hide { display: none !important; }
   .m-stack { grid-template-columns: minmax(0, 1fr) !important; }
