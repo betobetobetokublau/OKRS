@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -28,6 +29,48 @@ interface Tab {
  */
 export function MobileTabBar({ slug, checkinPending }: MobileTabBarProps) {
   const pathname = usePathname() ?? '';
+  // `position: fixed` resolves against the initial containing block, and the ICB
+  // is NOT the visible box. Measured identically in two Chromes on an iPhone 16
+  // Pro Max profile: visible 440x956, ICB 456x991 — so `right: 0` / `bottom: 0`
+  // put this bar 16px to the right and 35px BELOW the fold, which is why it only
+  // appeared after scrolling. Two traps found while fixing it:
+  //   · `overflow-x: hidden` never clips a fixed element, so it cannot help.
+  //   · `documentElement.clientWidth/Height` only equal the visible box while a
+  //     scrollbar is present; on a short page they report the ICB instead.
+  // `visualViewport`, scaled back by its own zoom factor, is the one measure
+  // that always describes the visible box. Where ICB and visible box agree
+  // (real phones) both offsets are 0 and this is a no-op.
+  const [fit, setFit] = useState<{ width: number | null; bottom: number }>({ width: null, bottom: 0 });
+
+  useEffect(() => {
+    // Deliberately NOT subscribed to visualViewport resize: on a phone the
+    // software keyboard shrinks it, and the bar should stay put, not hop above
+    // the keyboard mid-typing.
+    const measure = () => {
+      const de = document.documentElement;
+      const vv = window.visualViewport;
+      const visibleW = Math.min(de.clientWidth, vv ? Math.round(vv.width * vv.scale) : Infinity);
+      const visibleH = Math.min(de.clientHeight, vv ? Math.round(vv.height * vv.scale) : Infinity);
+      const next = { width: visibleW, bottom: Math.max(0, window.innerHeight - visibleH) };
+      setFit((prev) => (prev.width === next.width && prev.bottom === next.bottom ? prev : next));
+    };
+    measure();
+    // A late pass plus a body observer: the visible box also changes when a slow
+    // page swaps its spinner for content and a scrollbar appears, and no
+    // `resize` event is fired for that.
+    const late = setTimeout(measure, 400);
+    const ro = new ResizeObserver(measure);
+    ro.observe(document.body);
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    return () => {
+      clearTimeout(late);
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+    };
+  }, []);
+
   const base = `/${slug}`;
   const tabs: Tab[] = [
     { label: 'Proyectos', href: `${base}/tableros`, match: [`${base}/tableros`, `${base}/tareas`], icon: 'M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v6h-4z' },
@@ -45,8 +88,9 @@ export function MobileTabBar({ slug, checkinPending }: MobileTabBarProps) {
       style={{
         position: 'fixed',
         left: 0,
-        right: 0,
-        bottom: 0,
+        // Self-corrected to the visible box; `right: 0` / `bottom: 0` target the ICB.
+        width: fit.width ?? '100%',
+        bottom: fit.bottom,
         zIndex: 140,
         height: `calc(${MOBILE_TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom, 0px))`,
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',

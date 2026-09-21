@@ -220,6 +220,18 @@ Más) and opens tasks as full pages instead of the side panel. `globals.css` has
 the `m-*` utilities (`m-hide`, `m-stack`, `m-wrap`, `m-pad`, `m-only`, `m-snap`,
 `m-kcol`…), all `!important` because they override inline styles.
 
+**The bottom bar is positioned from `visualViewport`, not from `bottom: 0`.**
+`position: fixed` resolves against the initial containing block, and the ICB is
+not the visible box: on an iPhone 16 Pro Max profile Chrome reports a visible
+440x956 against an ICB of 456x991, so `right: 0` / `bottom: 0` land the bar 16px
+right and 35px below the fold (it "only appears when scrolling"). Two things
+that do NOT fix it: `overflow-x: hidden` (never clips a fixed element) and
+`documentElement.clientWidth/Height` (they only match the visible box while a
+scrollbar is present; on a short page they report the ICB). `MobileTabBar`
+measures `visualViewport.width/height * scale`, clamped by the client box, and
+re-measures on resize plus a `ResizeObserver` on `body` — a slow page swapping
+its spinner for content changes the visible box with no `resize` event.
+
 **Hard rule: nothing may overflow the document horizontally on a phone.** One
 overflowing element makes mobile browsers grow the *layout* viewport past the
 visual one; the fixed tab bar then sits below the fold (it "only appears when
