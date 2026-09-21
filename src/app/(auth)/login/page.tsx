@@ -74,6 +74,7 @@ export default function LoginPage() {
 
   return (
     <div
+      className="m-stack"
       style={{
         display: 'grid',
         gridTemplateColumns: '1fr 1fr',
@@ -84,6 +85,7 @@ export default function LoginPage() {
     >
       {/* ─────── Left: form column ─────── */}
       <div
+        className="m-pad"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -195,6 +197,7 @@ export default function LoginPage() {
 
       {/* ─────── Right: product peek column ─────── */}
       <div
+        className="m-hide"
         style={{
           position: 'relative',
           background: 'linear-gradient(140deg, #e9ebf9 0%, #f4f6f8 55%, #fef4ee 100%)',

@@ -3,6 +3,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { useObjectivesTable } from '@/hooks/use-objectives-table';
+import { useIsMobile } from '@/hooks/use-is-mobile';
+import { ObjetivosMobile } from '@/components/mobile/objetivos-mobile';
 import { ObjectivesTable } from '@/components/objectives/objectives-table';
 import { ObjectiveForm } from '@/components/objectives/objective-form';
 import { ObjectivesOverview } from '@/components/objectives/objectives-overview';
@@ -53,6 +55,7 @@ function isBehindSchedule(o: ObjectiveRow, now: Date = new Date()): boolean {
 export default function ObjetivosPage() {
   const { currentWorkspace, activePeriod, userWorkspace, profile } = useWorkspaceStore();
   const { rows, loading, refetch } = useObjectivesTable(currentWorkspace?.id, activePeriod?.id);
+  const { isMobile } = useIsMobile();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [kpis, setKpis] = useState<KPI[]>([]);
   // `createFor` drives the ObjectiveForm modal.
@@ -391,6 +394,38 @@ export default function ObjetivosPage() {
   // On Métricas the same data is presented as full stat cards, and on the
   // Skill Tree it would crowd the canvas, so we hide it there.
   const showHeroBlock = activeTab === 'listado' || activeTab === 'gantt';
+
+  // Phones get the flat card list (design B1); the create modal is shared with the desktop page.
+  const renderCreateModal = () =>
+    createFor !== undefined && activePeriod && currentWorkspace ? (
+      <ObjectiveForm
+        workspaceId={currentWorkspace.id}
+        periodId={activePeriod.id}
+        onClose={() => setCreateFor(undefined)}
+        onSaved={() => {
+          setCreateFor(undefined);
+          refetch();
+        }}
+        initialData={createFor ? { kpi_ids: [createFor] } : undefined}
+      />
+    ) : null;
+  if (isMobile) {
+    return (
+      <>
+        <ObjetivosMobile
+          slug={currentWorkspace?.slug ?? ''}
+          rows={rows}
+          departments={departments}
+          periodName={activePeriod?.name}
+          loading={loading}
+          profileId={profile?.id}
+          canCreate={Boolean(canEdit && activePeriod)}
+          onCreate={() => setCreateFor(null)}
+        />
+        {renderCreateModal()}
+      </>
+    );
+  }
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
@@ -755,15 +790,7 @@ export default function ObjetivosPage() {
       )}
       </>}
 
-      {createFor !== undefined && activePeriod && currentWorkspace && (
-        <ObjectiveForm
-          workspaceId={currentWorkspace.id}
-          periodId={activePeriod.id}
-          onClose={() => setCreateFor(undefined)}
-          onSaved={() => { setCreateFor(undefined); refetch(); }}
-          initialData={createFor ? { kpi_ids: [createFor] } : undefined}
-        />
-      )}
+      {renderCreateModal()}
 
       <OkrDetailPanel
         target={panelTarget}

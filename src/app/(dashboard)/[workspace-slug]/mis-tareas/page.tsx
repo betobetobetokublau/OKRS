@@ -9,6 +9,8 @@ import { TaskRow } from '@/components/tasks/task-row';
 import { TaskForm } from '@/components/tasks/task-form';
 import { priorityRank } from '@/components/tasks/priority';
 import { OkrDetailPanel, type PanelTarget } from '@/components/okrs/okr-detail-panel';
+import { useIsMobile } from '@/hooks/use-is-mobile';
+import { useRouter } from 'next/navigation';
 import { PARENT_EMBED } from '@/hooks/use-tasks';
 import type { Task, Objective } from '@/types';
 
@@ -47,6 +49,8 @@ export default function MisTareasPage() {
   const [sortByPriority, setSortByPriority] = useState(false);
   const [panelTarget, setPanelTarget] = useState<PanelTarget>(null);
   const [showNewTask, setShowNewTask] = useState(false);
+  const { isMobile } = useIsMobile();
+  const router = useRouter();
 
   const role = userWorkspace?.role ?? 'member';
   const canEdit = canManageContent(role);
@@ -231,7 +235,7 @@ export default function MisTareasPage() {
                     key={task.id}
                     task={task}
                     onUpdated={loadTasks}
-                    onOpen={() => setPanelTarget({ type: 'task', id: task.id })}
+                    onOpen={() => (isMobile ? router.push(`/${currentWorkspace.slug}/tareas/${task.id}`) : setPanelTarget({ type: 'task', id: task.id }))}
                   />
                 ))}
               </div>

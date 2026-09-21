@@ -38,6 +38,7 @@ export function MonitoredBoardCard({ slug, board, overview, canEdit, onStatusCha
 
   return (
     <article
+      className="m-pad"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -46,6 +47,7 @@ export function MonitoredBoardCard({ slug, board, overview, canEdit, onStatusCha
         borderLeft: `4px solid ${board.color}`,
         borderRadius: '10px',
         padding: '1.6rem 2rem',
+        // On phones the card is the whole row; the class trims the padding.
         boxShadow: hover ? '0 4px 14px rgba(33,43,54,0.08)' : 'none',
         transition: 'box-shadow 0.15s ease, border-color 0.15s ease',
       }}
@@ -74,7 +76,7 @@ export function MonitoredBoardCard({ slug, board, overview, canEdit, onStatusCha
       {board.description && <p style={{ margin: '0.4rem 0 0', fontSize: '1.3rem', color: '#637381' }}>{board.description}</p>}
 
       {/* Glance columns */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.6rem', marginTop: '1.4rem', paddingTop: '1.4rem', borderTop: '1px solid #f1f2f4' }}>
+      <div className="m-stack" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.6rem', marginTop: '1.4rem', paddingTop: '1.4rem', borderTop: '1px solid #f1f2f4' }}>
         <div style={{ minWidth: 0 }}>
           <p style={COL_TITLE}>Último avance</p>
           {latest ? (

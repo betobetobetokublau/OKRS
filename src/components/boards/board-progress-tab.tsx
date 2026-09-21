@@ -68,7 +68,7 @@ export function BoardProgressTab({ slug, board, items, canEdit, onBoardChanged }
   const msSummary = summarizeMilestones(milestones, today);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(280px, 2fr)', gap: '1.6rem', alignItems: 'start' }}>
+    <div className="m-stack" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(280px, 2fr)', gap: '1.6rem', alignItems: 'start' }}>
       {/* ── Left: updates timeline ─────────────────────────────────────── */}
       <section style={CARD} aria-labelledby="avances-title">
         <header style={{ display: 'flex', alignItems: 'baseline', gap: '0.8rem', marginBottom: '1.2rem' }}>

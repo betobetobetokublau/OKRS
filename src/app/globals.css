@@ -181,3 +181,29 @@ body {
   animation: backdropFadeOut 200ms ease-out both;
 }
 
+
+
+/* ── Mobile utilities (phone < 768px). Inline styles win over classes, so
+   these use !important on purpose; apply the class alongside the inline
+   desktop style and the phone rule overrides it. Breakpoint mirrors
+   MOBILE_MAX_WIDTH in src/hooks/use-is-mobile.ts. ── */
+.m-only { display: none !important; }
+@media (max-width: 767px) {
+  .m-only { display: block !important; }
+  .m-hide { display: none !important; }
+  .m-stack { grid-template-columns: minmax(0, 1fr) !important; }
+  .m-col { flex-direction: column !important; align-items: stretch !important; }
+  .m-wrap { flex-wrap: wrap !important; }
+  .m-first { order: -1 !important; }
+  .m-static { position: static !important; }
+  .m-full { max-width: none !important; }
+  .m-pad { padding: 1.2rem !important; }
+}
+
+/* Kanban on phones: one column per swipe. The kanban's flex children are
+   display:contents wrappers, so the snap target is the column inside. */
+@media (max-width: 767px) {
+  .m-snap { scroll-snap-type: x mandatory !important; scroll-padding-left: 1.6rem; -webkit-overflow-scrolling: touch; }
+  .m-snap > div > * { scroll-snap-align: start; }
+  .m-snap .m-kcol { width: 82vw !important; min-width: 82vw !important; }
+}

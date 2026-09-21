@@ -20,6 +20,7 @@ import { BoardCard, SCALE, type KanbanScale } from './board-card';
 import { Column, ColumnOverlay, NewSectionColumn, columnKeyFromSortableId, columnSortableId, isColumnSortableId } from './board-column';
 import type { BoardColumn, BoardGrouping } from './board-filters';
 import type { BoardTask, Profile } from '@/types';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 
 export interface DropPayload {
   taskId: string;
@@ -91,6 +92,23 @@ export function BoardKanban({
   const dragging = useRef(false);
   const [newSectionAt, setNewSectionAt] = useState<number | null>(null);
   const dims = SCALE[scale];
+  // Phones: one column per swipe (CSS scroll-snap via .m-snap/.m-kcol) + a dots pager.
+  const { isMobile } = useIsMobile();
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [activeCol, setActiveCol] = useState(0);
+  const handleScroll = () => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const first = el.querySelector<HTMLElement>('.m-kcol');
+    const step = (first?.offsetWidth ?? 1) + 12; // column + flex gap (1.2rem)
+    setActiveCol(Math.max(0, Math.round(el.scrollLeft / step)));
+  };
+  const scrollToCol = (idx: number) => {
+    const el = scrollerRef.current;
+    const first = el?.querySelector<HTMLElement>('.m-kcol');
+    if (!el || !first) return;
+    el.scrollTo({ left: idx * (first.offsetWidth + 12), behavior: 'smooth' });
+  };
 
   // Mirror props whenever they change, unless a drag is in flight. After a
   // drop the optimistic local order stays until the parent refetches.
@@ -255,6 +273,9 @@ export function BoardKanban({
     >
       <SortableContext items={columnSortableIds} strategy={horizontalListSortingStrategy}>
         <div
+          ref={scrollerRef}
+          onScroll={isMobile ? handleScroll : undefined}
+          className={isMobile ? 'm-snap' : undefined}
           style={{
             display: 'flex',
             alignItems: 'flex-start',
@@ -299,6 +320,21 @@ export function BoardKanban({
               </button>
             ))}
         </div>
+        {isMobile && cols.length > 1 && (
+          <div role="tablist" aria-label="Columnas" style={{ display: 'flex', justifyContent: 'center', gap: '0.6rem', padding: '0 0 1.2rem' }}>
+            {cols.map((c, i) => (
+              <button
+                key={c.key}
+                type="button"
+                role="tab"
+                aria-selected={i === activeCol}
+                aria-label={c.title}
+                onClick={() => scrollToCol(i)}
+                style={{ width: i === activeCol ? 18 : 7, height: 7, borderRadius: 4, border: 'none', padding: 0, backgroundColor: i === activeCol ? '#5c6ac4' : '#c4cdd5', transition: 'width 0.15s ease', cursor: 'pointer' }}
+              />
+            ))}
+          </div>
+        )}
       </SortableContext>
       <DragOverlay dropAnimation={null}>
         {activeItem && (

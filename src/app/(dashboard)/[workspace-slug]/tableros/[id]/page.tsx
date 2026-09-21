@@ -28,6 +28,7 @@ import { BoardFormModal } from '@/components/boards/board-form-modal';
 import { TaskComposer } from '@/components/boards/task-composer';
 import { StandupMode } from '@/components/boards/standup-mode';
 import { BoardProgressTab } from '@/components/boards/board-progress-tab';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { useBoardPageData } from '@/components/boards/use-board-page-data';
 import {
   DEFAULT_VIEW,
@@ -54,6 +55,7 @@ export default function TableroPage() {
   const { data, loading, error, refetch } = useBoard(boardId);
   const canEdit = Boolean(userWorkspace && canManageContent(userWorkspace.role));
   const { members, departments, objectiveGroups, boardMembers, refetchBoardMembers } = useBoardPageData(currentWorkspace?.id, activePeriod?.id, boardId);
+  const { isMobile } = useIsMobile();
 
   const [view, setView] = useState<BoardView>(DEFAULT_VIEW);
   const [viewLoaded, setViewLoaded] = useState(false);
@@ -230,7 +232,8 @@ export default function TableroPage() {
     await refresh();
   }
 
-  const openTask = (item: BoardTask) => setPanelTarget({ type: 'task', id: item.task_id });
+  // Phones have no room for the side panel: the task opens as its own page (design B1).
+  const openTask = (item: BoardTask) => (isMobile ? router.push(`/${slug}/tareas/${item.task_id}`) : setPanelTarget({ type: 'task', id: item.task_id }));
 
   const renderComposer = (column: BoardColumn) =>
     currentWorkspace && boardId ? (

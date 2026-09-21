@@ -134,6 +134,7 @@ function ColumnFrame({
     <section
       ref={setNodeRef}
       aria-label={column.title}
+      className="m-kcol"
       style={{
         width: dims.column,
         minWidth: dims.column,

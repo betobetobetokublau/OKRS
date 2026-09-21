@@ -7,6 +7,8 @@ import { useBoards, fetchWorkspaceMembers, updateBoard } from '@/hooks/use-board
 import { useMonitoredOverview } from '@/hooks/use-board-progress';
 import { BoardFormModal } from '@/components/boards/board-form-modal';
 import { MonitoredBoardCard } from '@/components/boards/monitored-board-card';
+import { HoyStrip } from '@/components/mobile/hoy-strip';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { canManageContent } from '@/lib/utils/permissions';
 import type { Board, Profile } from '@/types';
 
@@ -21,7 +23,8 @@ export default function TablerosPage() {
   const params = useParams<{ 'workspace-slug': string }>();
   const slug = params?.['workspace-slug'] ?? '';
   const router = useRouter();
-  const { currentWorkspace, userWorkspace } = useWorkspaceStore();
+  const { currentWorkspace, userWorkspace, profile } = useWorkspaceStore();
+  const { isMobile } = useIsMobile();
   const { boards, loading, refetch } = useBoards(currentWorkspace?.id);
   const [showCreate, setShowCreate] = useState(false);
   const [members, setMembers] = useState<Profile[]>([]);
@@ -54,10 +57,10 @@ export default function TablerosPage() {
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.6rem', marginBottom: '2.4rem' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.6rem', marginBottom: isMobile ? '1.6rem' : '2.4rem' }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: '2.4rem', fontWeight: 600, color: '#212b36', margin: 0 }}>Tableros</h1>
-          <p style={{ fontSize: '1.4rem', color: '#637381', margin: '0.4rem 0 0' }}>
+          <h1 style={{ fontSize: isMobile ? '2rem' : '2.4rem', fontWeight: 600, color: '#212b36', margin: 0 }}>{isMobile ? 'Proyectos' : 'Tableros'}</h1>
+          <p className="m-hide" style={{ fontSize: '1.4rem', color: '#637381', margin: '0.4rem 0 0' }}>
             Los proyectos monitoreados muestran su estado, avances e hitos de un vistazo. Una tarea puede vivir en varios tableros sin afectar sus OKRs.
           </p>
         </div>
@@ -65,12 +68,15 @@ export default function TablerosPage() {
           <button
             type="button"
             onClick={() => setShowCreate(true)}
-            style={{ padding: '0.8rem 1.6rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: '#5c6ac4', border: 'none', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            aria-label="Nuevo tablero"
+            style={{ padding: isMobile ? '0.6rem 1.2rem' : '0.8rem 1.6rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: '#5c6ac4', border: 'none', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
-            + Nuevo tablero
+            {isMobile ? '+' : '+ Nuevo tablero'}
           </button>
         )}
       </div>
+
+      {isMobile && currentWorkspace && profile && <HoyStrip slug={slug} workspaceId={currentWorkspace.id} userId={profile.id} />}
 
       {loading ? (
         <p style={{ color: '#637381', textAlign: 'center', padding: '4rem' }}>Cargando tableros...</p>

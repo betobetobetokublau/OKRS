@@ -15,6 +15,9 @@ import { useSidebarStore } from '@/stores/sidebar-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { useBoards } from '@/hooks/use-boards';
 import { useWarmRoutes } from '@/lib/pwa/warm-routes';
+import { useIsMobile } from '@/hooks/use-is-mobile';
+import { useCheckinPending } from '@/hooks/use-checkin-pending';
+import { MobileTabBar, MOBILE_TAB_BAR_HEIGHT } from '@/components/mobile/mobile-tab-bar';
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   const params = useParams();
@@ -22,6 +25,9 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   const { currentWorkspace, userWorkspace, profile } = useWorkspace(workspaceSlug);
   const collapsed = useSidebarStore((s) => s.collapsed);
   const isImpersonating = useWorkspaceStore((s) => s.isImpersonating);
+  // Phone shell (design B1): no sidebar, bottom tab bar, tighter padding.
+  const { isMobile } = useIsMobile();
+  const { pending: checkinPending } = useCheckinPending(currentWorkspace?.id, profile?.id);
 
   // Local override so the carousel disappears immediately on completion
   // without waiting for the profile re-fetch to return `onboarded_at`.
@@ -98,7 +104,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   // Main content is offset by the COLLAPSED-OR-EXPANDED width (the persisted
   // state). The sidebar's hover expansion overlays on top without nudging the
   // main content.
-  const mainOffset = collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
+  const mainOffset = isMobile ? 0 : collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
 
   // Show the first-login carousel for members + managers who've never
   // completed it. Admins skip entirely (they're the ones provisioning
@@ -129,22 +135,28 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
         workspaceName={currentWorkspace.name}
       />
       <div style={{ display: 'flex', flex: 1 }}>
-        <Sidebar
-          workspaceSlug={workspaceSlug}
-          role={userWorkspace.role}
-          workspaceName={currentWorkspace.name}
-        />
+        {!isMobile && (
+          <Sidebar
+            workspaceSlug={workspaceSlug}
+            role={userWorkspace.role}
+            workspaceName={currentWorkspace.name}
+          />
+        )}
         <main
           style={{
             flex: 1,
+            minWidth: 0,
             marginLeft: `${mainOffset}px`,
-            padding: '2.4rem',
+            padding: isMobile ? '1.6rem 1.6rem 0' : '2.4rem',
+            // Room for the fixed tab bar (+ the device's home indicator).
+            paddingBottom: isMobile ? `calc(${MOBILE_TAB_BAR_HEIGHT}px + 2rem + env(safe-area-inset-bottom, 0px))` : undefined,
             transition: 'margin-left 0.18s cubic-bezier(0.2, 0.8, 0.2, 1)',
           }}
         >
           {children}
         </main>
       </div>
+      {isMobile && <MobileTabBar slug={workspaceSlug} checkinPending={checkinPending === true} />}
       {shouldShowOnboarding && (
         <OnboardingCarousel
           role={userWorkspace.role}

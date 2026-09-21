@@ -252,7 +252,7 @@ export default function TaskPage() {
         )}
       </nav>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: '2rem', alignItems: 'start' }}>
+      <div className="m-stack" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: '2rem', alignItems: 'start' }}>
         {/* Left column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', minWidth: 0 }}>
           <div style={cardStyle}>
@@ -296,7 +296,7 @@ export default function TaskPage() {
         </div>
 
         {/* Right column (sticky) */}
-        <aside style={{ position: 'sticky', top: '2rem', display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
+        <aside className="m-static" style={{ position: 'sticky', top: '2rem', display: 'flex', flexDirection: 'column', gap: '1.6rem' }}>
           <div style={{ ...cardStyle, padding: '1.6rem' }}>
             <PropertyRow label="Estado">
               <InlineStatusSelect entity="task" id={task.id} currentStatus={task.status} canEdit onChanged={refresh} />

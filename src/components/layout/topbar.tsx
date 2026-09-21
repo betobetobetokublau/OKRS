@@ -2,14 +2,14 @@
 
 import Link from 'next/link';
 import { useRouter, useParams, usePathname } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
-import { forgetLastUser } from '@/lib/supabase/session';
+import { signOutEverywhere } from '@/lib/auth/logout';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { NotificationBell } from './notification-bell';
 import { UserAvatar } from '@/components/common/user-avatar';
 import { useSidebarStore } from '@/stores/sidebar-store';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { useOfflineStore } from '@/stores/offline-store';
-import { clearUserCaches, promptInstall } from '@/lib/pwa/install-prompt';
+import { promptInstall } from '@/lib/pwa/install-prompt';
 import { writeImpersonationTarget } from '@/lib/impersonation';
 import type { Profile } from '@/types';
 import { useState, useRef, useEffect } from 'react';
@@ -37,6 +37,8 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
   // check-in" button in the header, so the topbar suppresses its
   // middle CTA entirely to avoid a duplicate affordance.
   const onCheckinPage = pathname === `/${workspaceSlug}/check-in`;
+  // Phone: no hamburger (no sidebar), no centre CTA (Check-in is a tab), no name/email next to the avatar.
+  const { isMobile } = useIsMobile();
 
   // In impersonation mode the whole topbar flips to a near-black fill so
   // admins always know at a glance they're not looking at their own view.
@@ -62,17 +64,7 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
   }, []);
 
   async function handleLogout() {
-    forgetLastUser();
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    // Clear the `kublau-pwd-ok` cache cookie so a shared browser can't
-    // inherit it across users. Cookie was set by middleware with httpOnly;
-    // expiring via document.cookie still works because we're explicitly
-    // overwriting with maxAge=0 on the same path.
-    document.cookie = 'kublau-pwd-ok=; Max-Age=0; Path=/; SameSite=Lax';
-    // Drop the SW's user-scoped caches (HTML/RSC + Supabase rows) so the next
-    // user on this device can't browse the previous session offline.
-    clearUserCaches();
+    await signOutEverywhere();
     router.push('/login');
   }
 
@@ -85,7 +77,7 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 2.4rem',
+        padding: isMobile ? '0 1.6rem' : '0 2.4rem',
         position: 'sticky',
         // Offset by the PWA status banner when it is visible (see globals.css).
         top: 'var(--pwa-banner-h, 0px)',
@@ -101,7 +93,7 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
           onClick={toggleSidebar}
           aria-label="Alternar barra lateral"
           style={{
-            display: 'inline-flex',
+            display: isMobile ? 'none' : 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             width: '32px',
@@ -182,7 +174,7 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
           anywhere else. Hidden on /check-in itself since the page
           already shows its own purple "Guardar check-in" button in the
           header and a duplicate CTA would be confusing. */}
-      {workspaceSlug && !onCheckinPage && (
+      {workspaceSlug && !onCheckinPage && !isMobile && (
         <Link
           href={`/${workspaceSlug}/check-in`}
           style={{
@@ -245,7 +237,7 @@ export function Topbar({ profile, userId, workspaceId, workspaceName, breadcrumb
             }}
           >
             {profile && <UserAvatar user={profile} size="small" />}
-            <div style={{ textAlign: 'left' }}>
+            <div style={{ textAlign: 'left', display: isMobile ? 'none' : 'block' }}>
               <div style={{ fontSize: '1.3rem', color: 'white', fontWeight: 500, lineHeight: '1.4' }}>
                 {profile?.full_name || ''}
               </div>
