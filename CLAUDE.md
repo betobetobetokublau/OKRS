@@ -237,9 +237,12 @@ keeps the bar above its own toolbar.
 
 **Hard rule: nothing may overflow the document horizontally on a phone.** One
 overflowing element makes mobile browsers grow the *layout* viewport past the
-visual one; the fixed tab bar then sits below the fold (it "only appears when
-scrolling") and the whole page pans sideways. `body { overflow-x: hidden }`
-inside the phone media query is the backstop — it propagates to the viewport
-while `body` stays `visible`, so the sticky topbar keeps working. Wide tables
-must live in their own `overflowX: auto` wrapper with a `minWidth` on the
-`<table>`; never let the card clip them with `overflow: hidden`.
+visual one; the fixed tab bar then sits below the fold and the page pans
+sideways. Wide tables must live in their own `overflowX: auto` wrapper with a
+`minWidth` on the `<table>`; never let the card clip them with `overflow:
+hidden`. `html, body { overscroll-behavior-x: none }` blocks the sideways
+rubber-band, which on iOS used to leave the document with a latched scroll
+gutter — everything shifted left with a scrollbar-wide strip on the right until
+a reload. Do NOT reach for `body { overflow-x: hidden }` instead: on iOS it did
+not stop the pan and it made `body` a scroll container that reserved that very
+gutter.
