@@ -29,28 +29,32 @@ interface Tab {
  */
 export function MobileTabBar({ slug, checkinPending }: MobileTabBarProps) {
   const pathname = usePathname() ?? '';
-  // `position: fixed` resolves against the initial containing block, and the ICB
-  // is NOT the visible box. Measured identically in two Chromes on an iPhone 16
-  // Pro Max profile: visible 440x956, ICB 456x991 — so `right: 0` / `bottom: 0`
-  // put this bar 16px to the right and 35px BELOW the fold, which is why it only
-  // appeared after scrolling. Two traps found while fixing it:
-  //   · `overflow-x: hidden` never clips a fixed element, so it cannot help.
-  //   · `documentElement.clientWidth/Height` only equal the visible box while a
-  //     scrollbar is present; on a short page they report the ICB instead.
-  // `visualViewport`, scaled back by its own zoom factor, is the one measure
-  // that always describes the visible box. Where ICB and visible box agree
-  // (real phones) both offsets are 0 and this is a no-op.
+  // `position: fixed` resolves against the initial containing block, and in
+  // Chrome's device emulation the ICB is BIGGER than the emulated screen (an
+  // iPhone 16 Pro Max profile reports a 440x956 screen against a 456x991 ICB),
+  // so `right: 0` / `bottom: 0` put the bar 16px right and 35px below the fold
+  // and it only appeared after scrolling. Things that look like a fix and are
+  // not, all checked in a real browser:
+  //   · `overflow-x: hidden` never clips a fixed element.
+  //   · `clientWidth/Height` only match the visible box while a scrollbar is
+  //     present; on a short page they report the ICB instead.
+  //   · `visualViewport` is wrong on a real iPhone: Safari shrinks it by the
+  //     height of its own toolbar, so the bar floated well above the bottom.
+  // `screen` is the one box no browser chrome distorts. Capping the client box
+  // with it fixes the emulator and is a no-op on a real device, where the two
+  // already agree — there the browser keeps the bar above its toolbar itself.
   const [fit, setFit] = useState<{ width: number | null; bottom: number }>({ width: null, bottom: 0 });
 
   useEffect(() => {
-    // Deliberately NOT subscribed to visualViewport resize: on a phone the
-    // software keyboard shrinks it, and the bar should stay put, not hop above
-    // the keyboard mid-typing.
     const measure = () => {
       const de = document.documentElement;
-      const vv = window.visualViewport;
-      const visibleW = Math.min(de.clientWidth, vv ? Math.round(vv.width * vv.scale) : Infinity);
-      const visibleH = Math.min(de.clientHeight, vv ? Math.round(vv.height * vv.scale) : Infinity);
+      // `screen` does not rotate on iOS, so pick the side that matches the
+      // current orientation instead of trusting screen.width to be the width.
+      const shorter = Math.min(screen.width, screen.height);
+      const longer = Math.max(screen.width, screen.height);
+      const portrait = window.innerHeight >= window.innerWidth;
+      const visibleW = Math.min(de.clientWidth, portrait ? shorter : longer);
+      const visibleH = Math.min(de.clientHeight, window.innerHeight, portrait ? longer : shorter);
       const next = { width: visibleW, bottom: Math.max(0, window.innerHeight - visibleH) };
       setFit((prev) => (prev.width === next.width && prev.bottom === next.bottom ? prev : next));
     };

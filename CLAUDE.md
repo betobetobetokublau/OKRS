@@ -220,17 +220,20 @@ Más) and opens tasks as full pages instead of the side panel. `globals.css` has
 the `m-*` utilities (`m-hide`, `m-stack`, `m-wrap`, `m-pad`, `m-only`, `m-snap`,
 `m-kcol`…), all `!important` because they override inline styles.
 
-**The bottom bar is positioned from `visualViewport`, not from `bottom: 0`.**
-`position: fixed` resolves against the initial containing block, and the ICB is
-not the visible box: on an iPhone 16 Pro Max profile Chrome reports a visible
-440x956 against an ICB of 456x991, so `right: 0` / `bottom: 0` land the bar 16px
-right and 35px below the fold (it "only appears when scrolling"). Two things
-that do NOT fix it: `overflow-x: hidden` (never clips a fixed element) and
-`documentElement.clientWidth/Height` (they only match the visible box while a
-scrollbar is present; on a short page they report the ICB). `MobileTabBar`
-measures `visualViewport.width/height * scale`, clamped by the client box, and
-re-measures on resize plus a `ResizeObserver` on `body` — a slow page swapping
-its spinner for content changes the visible box with no `resize` event.
+**The bottom bar is positioned from `screen`, not from `bottom: 0`.**
+`position: fixed` resolves against the initial containing block, and in Chrome's
+device emulation the ICB is bigger than the emulated screen (an iPhone 16 Pro Max
+profile reports a 440x956 screen against a 456x991 ICB), so `right: 0` /
+`bottom: 0` land the bar 16px right and 35px below the fold — it "only appears
+when scrolling". Three things that look like a fix and are not, each verified in
+a browser: `overflow-x: hidden` (never clips a fixed element),
+`documentElement.clientWidth/Height` (only match the visible box while a
+scrollbar is present; a short page reports the ICB) and `visualViewport` (Safari
+on a real iPhone shrinks it by its own toolbar, which floats the bar well above
+the bottom). `MobileTabBar` caps the client box with `screen`, picking the side
+that matches the current orientation because `screen` does not rotate on iOS. On
+a real device both boxes already agree, so the offsets are 0 and the browser
+keeps the bar above its own toolbar.
 
 **Hard rule: nothing may overflow the document horizontally on a phone.** One
 overflowing element makes mobile browsers grow the *layout* viewport past the
