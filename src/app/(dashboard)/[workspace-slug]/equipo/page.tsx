@@ -1,5 +1,7 @@
 'use client';
 
+import { MobileReadOnlyBanner } from '@/components/mobile/read-only-banner';
+
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -363,7 +365,7 @@ export default function EquipoPage() {
               must_change_password: true,
             });
           }}
-          className="Polaris-Button Polaris-Button--primary"
+          className="Polaris-Button Polaris-Button--primary m-hide"
           style={{
             padding: '0.8rem 1.6rem',
             fontSize: '1.4rem',
@@ -378,10 +380,11 @@ export default function EquipoPage() {
           + Crear usuario
         </button>
       </div>
+      <MobileReadOnlyBanner what="el equipo" />
 
-      {/* Team list */}
-      <div className="Polaris-Card" style={{ borderRadius: '8px', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '1.4rem' }}>
+      {/* Team list — scrolls sideways on phones (table keeps a 640px minimum). */}
+      <div className="Polaris-Card" style={{ borderRadius: '8px', border: '1px solid var(--color-border)', overflowX: 'auto' }}>
+        <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', fontSize: '1.4rem' }}>
           <thead>
             <tr style={{ backgroundColor: '#f9fafb' }}>
               <th style={headStyle}>Usuario</th>

@@ -1,5 +1,7 @@
 'use client';
 
+import { MobileReadOnlyBanner } from '@/components/mobile/read-only-banner';
+
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/stores/workspace-store';
@@ -76,12 +78,14 @@ export default function PeriodosPage() {
           <p style={{ color: '#637381', fontSize: '1.4rem', marginTop: '0.4rem' }}>Gestiona los periodos trimestrales</p>
         </div>
         <button
+          className="m-hide"
           onClick={() => setShowCreateModal(true)}
           style={{ padding: '0.8rem 1.6rem', fontSize: '1.4rem', fontWeight: 600, color: 'white', backgroundColor: '#5c6ac4', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
         >
           + Crear periodo
         </button>
       </div>
+      <MobileReadOnlyBanner what="la lista de periodos" />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
         {loading ? (
